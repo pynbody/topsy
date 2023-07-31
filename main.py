@@ -1,73 +1,18 @@
 import moderngl_window as mglw
 import moderngl
 import numpy as np
+import pynbody
 
-vertex_shader = """
-#version 330
-uniform mat4 model;
-uniform float scale;
-
-in vec3 in_vert;
-in float in_size;
-out float color;
-
-
-void main() {
-    gl_Position = model * vec4(in_vert/scale, 1.0);
-    color = 0.01;
-    gl_PointSize = 500*in_size/scale;
-}
-
-"""
-
-fragment_shader="""
-#version 330
-in float color;
-out vec4 fragColor;
-void main() {
-    float distance = (gl_PointCoord.x-0.5)*(gl_PointCoord.x-0.5)+(gl_PointCoord.y-0.5)*(gl_PointCoord.y-0.5);
-    fragColor = vec4(color,color,color,distance<0.25?1.0:0.0);
-}
-"""
-
-vertex_shader_log = """
-
-#version 330
-in vec2 in_vert;
-out vec2 textureLocation;
-
-void main() {
-    gl_Position = vec4(in_vert, 0.0, 1.0);
-    textureLocation = in_vert/2+0.5;
-}
-"""
-
-fragment_shader_log = """
-#version 330
-
-uniform sampler2D inputImage;
-uniform sampler2D inputColorMap;
-uniform float vmin;
-uniform float vmax;
-out vec4 fragColor;
-in vec2 textureLocation;
-
-void main() {
-    vec4 tex = texture(inputImage, textureLocation);
-    float scaledLogVal = clamp((log(tex.x)-vmin)/(vmax-vmin), 0.001, 0.999);
-    fragColor = texture(inputColorMap, vec2(scaledLogVal,0.5));
-    // fragColor = texture(inputImage, vec2(tex.x,0.5));
-    // fragColor = vec4(tex.x,tex.x,tex.x,1);
-    
-}
-    
-"""
 
 def get_colormap_texture(name='twilight_shifted', num_points=1000):
     import matplotlib.cm as cm
     cmap = cm.get_cmap(name)
     rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
     return rgba
+
+def load_shader(name):
+    with open(name, 'r') as f:
+        return f.read()
 
 class Test(mglw.WindowConfig):
     gl_version = (3, 3)
@@ -78,13 +23,20 @@ class Test(mglw.WindowConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.render_resolution = (500, 500)
+        self.particleRenderer = self.ctx.program(
+            vertex_shader=load_shader("sph_vertex_shader.glsl"),
+            fragment_shader=load_shader("sph_fragment_shader.glsl"),
+            geometry_shader=load_shader("sph_geometry_shader.glsl")
+        )
+
+        self.render_resolution = (50, 50)
 
         self.model = np.eye(4, dtype=np.float32)
 
-        pos, smooth = self.get_data()
+        pos, smooth, mass = self.get_data()
         self.points = self.ctx.buffer(pos)
         self.smooth = self.ctx.buffer(smooth)
+        self.mass = self.ctx.buffer(mass)
 
         self.texture = self.ctx.texture(self.render_resolution, 4,  dtype='f4')
 
@@ -94,12 +46,20 @@ class Test(mglw.WindowConfig):
 
         self.render_buffer = self.ctx.framebuffer(color_attachments=[self.texture])
 
-        self.particleRenderer = self.ctx.program(vertex_shader=vertex_shader, fragment_shader=fragment_shader)
+
         self.scale = 100.0
+        self.downsample_factor = 1
         self.particleRenderer['scale'] = self.scale
+        self.particleRenderer['outputResolution'] = self.render_resolution[0]
+        self.particleRenderer['downsampleFactor'] = self.downsample_factor
+        self.particleRenderer['smoothScale'] = 1.0
+        #self.particleRenderer['randomNumbers'] = np.random.uniform(0, 1, 1000).astype(np.float32)
+
+
         self.vertex_array = self.ctx.vertex_array(
-            self.particleRenderer, [(self.points, '3f', 'in_vert'),
-                                    (self.smooth, '1f', 'in_size')])
+            self.particleRenderer, [(self.points, '3f', 'in_pos'),
+                                    (self.smooth, '1f', 'in_smooth'),
+                                    (self.mass, '1f', 'in_mass')])
 
         self.model_matr = np.eye(4)
 
@@ -107,9 +67,12 @@ class Test(mglw.WindowConfig):
         self.ctx.enable(moderngl.BLEND)
 
         self.vmin_vmax_is_set = False
-        self.needs_render = True
+        self.invalidate()
+        self.last_render = 0
 
-        self.logMapper = self.ctx.program(vertex_shader=vertex_shader_log, fragment_shader=fragment_shader_log)
+        self.logMapper = self.ctx.program(vertex_shader=load_shader("colormap_vertex_shader.glsl"),
+                                          fragment_shader=load_shader("colormap_fragment_shader.glsl"))
+
         self.log_mapper_vertex_array = self.ctx.simple_vertex_array(
             self.logMapper,
             self.ctx.buffer(np.array([[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0],
@@ -121,12 +84,35 @@ class Test(mglw.WindowConfig):
         self.texture.use(0)
         self.colormap_texture.use(1)
 
+        self.setup_kernel_texture()
+
+
     def get_data(self):
-        import pynbody
-        f = pynbody.load("/Users/app/Science/pynbody/testdata/g15784.lr.01024")
+        f = pynbody.load("/Volumes/oaktree/EDGE/Halo339_DMO/output_00101")
         f.physical_units()
-        pynbody.analysis.halo.center(f.st)
-        return f.dm['pos'].astype(np.float32), f.dm['smooth'].astype(np.float32)
+        import pickle
+
+        try:
+            f.dm['smooth'] = pickle.load(open('smooth.pkl', 'rb'))
+            f.dm['rho'] = pickle.load(open('rho.pkl', 'rb'))
+        except OSError:
+            pickle.dump(f.dm['smooth'], open('smooth.pkl', 'wb'))
+            pickle.dump(f.dm['rho'], open('rho.pkl', 'wb'))
+
+        pynbody.analysis.halo.center(f.dm[f.dm['mass']<f.dm['mass'].min()*1.01])
+        return f.dm['pos'].astype(np.float32), f.dm['smooth'].astype(np.float32), f.dm['mass'].astype(np.float32)
+
+    def setup_kernel_texture(self, n_samples=100):
+        pynbody_sph_kernel = pynbody.sph.Kernel2D()
+        x, y = np.meshgrid(np.linspace(-2, 2, n_samples), np.linspace(-2, 2, n_samples))
+        distance = np.sqrt(x ** 2 + y ** 2)
+        kernel_im = np.array([pynbody_sph_kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
+
+        self.kernel_texture = self.ctx.texture((n_samples, n_samples), 1, kernel_im.astype(np.float32), dtype='f4')
+        self.kernel_texture.use(2)
+        self.particleRenderer['kernel'] = 2
+
+
     def render(self, time, frametime):
 
 
@@ -137,20 +123,44 @@ class Test(mglw.WindowConfig):
         screenbuffer = self.ctx.fbo
 
 
-        self.render_buffer.use()
 
-        self.render_sph()
+        if self.needs_render:
+            query = self.ctx.query(time=True)
+            with query:
+                self.render_buffer.use()
+                self.render_sph()
+                screenbuffer.use()
+
+            time_taken = float(query.elapsed)*1e-9
+
+            print(f"Render took {time_taken} seconds with downsampling factor {self.downsample_factor}")
+            if time_taken>0.02:
+                self.downsample_factor = int(np.ceil(self.downsample_factor*time_taken/0.02))
+                self.particleRenderer['downsampleFactor'] = self.downsample_factor
+
+
+            self.needs_render = False
+            self.last_render = time
+
+        self.display_render_buffer()
 
         if not self.vmin_vmax_is_set:
             self.set_vmin_vmax()
 
+        if time-self.last_render>0.3 and self.allow_autorender:
+            self.downsample_factor = 1
+            self.particleRenderer['downsampleFactor'] = 1
+            self.particleRenderer['smoothScale'] = 1.0
+            self.needs_render = True
+            self.allow_autorender = False
 
-        screenbuffer.use()
+
+
 
         #self.render_sph()
-        self.display_render_buffer()
 
-        self.needs_render=False
+
+
 
 
     def set_vmin_vmax(self):
@@ -161,7 +171,6 @@ class Test(mglw.WindowConfig):
         print(len(vals), vals.min(), vals.max(), vmin, vmax)
         self.logMapper['vmin'] = vmin
         self.logMapper['vmax'] = vmax
-        print("RANGE:",vmin,vmax)
         self.save()
         self.vmin_vmax_is_set = True
 
@@ -201,7 +210,7 @@ class Test(mglw.WindowConfig):
                                         [0, 0, 0, 1]])
         self.model_matr = self.model_matr @ dx_rotation_matrix @ dy_rotation_matrix
         super().mouse_drag_event(x, y, dx, dy)
-        self.needs_render = True
+        self.invalidate()
 
 
 
@@ -209,11 +218,15 @@ class Test(mglw.WindowConfig):
         self.scale*=np.exp(y_offset*0.05)
         self.particleRenderer['scale'] = self.scale
         if abs(y_offset)>0.001:
-            self.vmin_vmax_is_set = False
+            self.vmin_vmax_is_set = True
 
+        self.invalidate()
+
+    def invalidate(self):
         self.needs_render = True
+        self.allow_autorender = True
 
 
+if __name__=="__main__":
+    Test.run()
 
-
-Test.run()
