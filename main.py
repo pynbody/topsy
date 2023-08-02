@@ -15,7 +15,7 @@ def load_shader(name):
         return f.read()
 
 class Test(mglw.WindowConfig):
-    gl_version = (3, 3)
+    gl_version = (4, 1)
     aspect_ratio = None
     title = "pynbody-vis"
     # clear_color = None
@@ -29,7 +29,8 @@ class Test(mglw.WindowConfig):
             geometry_shader=load_shader("sph_geometry_shader.glsl")
         )
 
-        self.render_resolution = (50, 50)
+        self.render_resolution = (500, 500)
+        self.texture_size = (int(np.ceil(self.render_resolution[0]*1.5)), self.render_resolution[0])
 
         self.model = np.eye(4, dtype=np.float32)
 
@@ -38,14 +39,12 @@ class Test(mglw.WindowConfig):
         self.smooth = self.ctx.buffer(smooth)
         self.mass = self.ctx.buffer(mass)
 
-        self.texture = self.ctx.texture(self.render_resolution, 4,  dtype='f4')
+        self.render_texture = self.ctx.texture(self.texture_size, 4, dtype='f4')
+        # self.accumulation_buffer = self.ctx.texture(self.)
 
         self.colormap_texture = self.ctx.texture((1000, 1), 4, get_colormap_texture(), dtype='f4')
 
-        print(np.frombuffer(self.colormap_texture.read(),dtype='f4').reshape(1000,4))
-
-        self.render_buffer = self.ctx.framebuffer(color_attachments=[self.texture])
-
+        self.render_buffer = self.ctx.framebuffer(color_attachments=[self.render_texture])
 
         self.scale = 100.0
         self.downsample_factor = 1
@@ -73,34 +72,66 @@ class Test(mglw.WindowConfig):
         self.logMapper = self.ctx.program(vertex_shader=load_shader("colormap_vertex_shader.glsl"),
                                           fragment_shader=load_shader("colormap_fragment_shader.glsl"))
 
+        self.accumulator = self.ctx.program(vertex_shader=load_shader("accumulator_vertex_shader.glsl"),
+                                            fragment_shader=load_shader("accumulator_fragment_shader.glsl"))
+
         self.log_mapper_vertex_array = self.ctx.simple_vertex_array(
             self.logMapper,
             self.ctx.buffer(np.array([[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0],
                                       [-1.0, 1.0], [1.0, 1.0], [1.0, -1.0]], dtype=np.float32)),
             'in_vert'
         )
+
+        def geometric_series(n):
+            """Return sum_{m=1}^n 2**-m = 1-2**-n"""
+            return 1.-2.**-n
+        def corners_of_nth_framebuffer(n):
+            return [2./3, geometric_series(n-1)], \
+                   [2./3 + 2./3*(2**-n), geometric_series(n-1)], \
+                   [2./3, geometric_series(n)], \
+                   [2./3, geometric_series(n)], \
+                   [2./3 + 2./3*(2**-n), geometric_series(n-1)], \
+                   [2./3 + 2./3*(2**-n), geometric_series(n)]
+
+
+        self.accumulator_vertex_array = self.ctx.vertex_array(
+            self.accumulator,
+            [
+                (self.ctx.buffer(np.array([corners_of_nth_framebuffer(n) for n in range(1,6)], dtype=np.float32)),
+                 '2f', 'from_position'),
+                (self.ctx.buffer(np.array([[[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0], \
+                                            [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]] for n in range(1,6)], dtype=np.float32)),
+                 '2f', 'to_position'),
+            ]
+        )
+
         self.logMapper['inputImage'] = 0
         self.logMapper['inputColorMap'] = 1
-        self.texture.use(0)
+        self.render_texture.use(0)
         self.colormap_texture.use(1)
 
         self.setup_kernel_texture()
 
 
     def get_data(self):
-        f = pynbody.load("/Volumes/oaktree/EDGE/Halo339_DMO/output_00101")
+        f = pynbody.load("/Users/app/Science/tangos/test_tutorial_build/tutorial_changa/pioneer50h128.1536gst1.bwK1.000960")
         f.physical_units()
+
+        f_region = f.dm
+
         import pickle
 
         try:
-            f.dm['smooth'] = pickle.load(open('smooth.pkl', 'rb'))
-            f.dm['rho'] = pickle.load(open('rho.pkl', 'rb'))
-        except OSError:
-            pickle.dump(f.dm['smooth'], open('smooth.pkl', 'wb'))
-            pickle.dump(f.dm['rho'], open('rho.pkl', 'wb'))
+            f_region['smooth'] = pickle.load(open('smooth.pkl', 'rb'))
+            f_region['rho'] = pickle.load(open('rho.pkl', 'rb'))
+        except:
+            pickle.dump(f_region['smooth'], open('smooth.pkl', 'wb'))
+            pickle.dump(f_region['rho'], open('rho.pkl', 'wb'))
 
-        pynbody.analysis.halo.center(f.dm[f.dm['mass']<f.dm['mass'].min()*1.01])
-        return f.dm['pos'].astype(np.float32), f.dm['smooth'].astype(np.float32), f.dm['mass'].astype(np.float32)
+        pynbody.analysis.halo.center(f.gas,cen_size="1 kpc")
+        return f_region['pos'].astype(np.float32), \
+            f_region['smooth'].astype(np.float32), \
+            f_region['mass'].astype(np.float32)
 
     def setup_kernel_texture(self, n_samples=100):
         pynbody_sph_kernel = pynbody.sph.Kernel2D()
@@ -122,22 +153,24 @@ class Test(mglw.WindowConfig):
 
         screenbuffer = self.ctx.fbo
 
-
+        w, h = self.wnd.width, self.wnd.height
 
         if self.needs_render:
             query = self.ctx.query(time=True)
             with query:
                 self.render_buffer.use()
+
+                self.setup_multires_viewport()
+
                 self.render_sph()
                 screenbuffer.use()
 
             time_taken = float(query.elapsed)*1e-9
 
-            print(f"Render took {time_taken} seconds with downsampling factor {self.downsample_factor}")
+            #print(f"Render took {time_taken} seconds with downsampling factor {self.downsample_factor}")
             if time_taken>0.02:
                 self.downsample_factor = int(np.ceil(self.downsample_factor*time_taken/0.02))
                 self.particleRenderer['downsampleFactor'] = self.downsample_factor
-
 
             self.needs_render = False
             self.last_render = time
@@ -159,9 +192,20 @@ class Test(mglw.WindowConfig):
 
         #self.render_sph()
 
+    def setup_multires_viewport(self):
+        import OpenGL.GL
+        OpenGL.GL.glViewportIndexedf(0, 0, 0, self.render_resolution[0], self.render_resolution[1])
+        y_offset = 0
+        for i in range(1, 5):
+            res_factor = 2 ** i
+            OpenGL.GL.glViewportIndexedf(i, self.render_resolution[0], y_offset,
+                                         self.render_resolution[0] // res_factor,
+                                         self.render_resolution[1] // res_factor)
+            y_offset += self.render_resolution[1] // res_factor
 
-
-
+    def perform_multires_accumulation(self):
+        self.ctx.blend_func = moderngl.ONE, moderngl.ONE
+        self.accumulator_vertex_array.render(moderngl.TRIANGLES)
 
     def set_vmin_vmax(self):
         vals = np.log(self.get_sph_result()).ravel()
@@ -184,9 +228,10 @@ class Test(mglw.WindowConfig):
         self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
         self.vertex_array.render(moderngl.POINTS)
+        self.perform_multires_accumulation()
 
     def get_sph_result(self):
-        mybuffer = np.empty(self.render_resolution, dtype=np.float32)
+        mybuffer = np.empty(self.texture_size, dtype=np.float32)
         self.render_buffer.read_into(mybuffer, components=1, dtype='f4')
         return mybuffer
 

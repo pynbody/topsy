@@ -1,4 +1,4 @@
-#version 330
+#version 410
 in vec2 in_vert;
 out vec2 textureLocation;
 
