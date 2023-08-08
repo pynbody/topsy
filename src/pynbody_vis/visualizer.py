@@ -4,25 +4,28 @@ import numpy as np
 import pynbody
 import matplotlib
 
-import multiresolution_geometry
+import OpenGL.GL
 
-def get_colormap_texture(name='twilight_shifted', num_points=1000):
+from . import config, multiresolution_geometry, scalebar
+
+def get_colormap_texture(name, context, num_points=config.COLORMAP_NUM_SAMPLES):
     cmap = matplotlib.colormaps[name]
     rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
-    return rgba
+    return context.texture((1000, 1), 4, rgba, dtype='f4')
 
 def load_shader(name):
-    with open(name, 'r') as f:
+    from importlib import resources
+    with open(resources.files("pynbody_vis.shaders") / name, "r") as f:
         return f.read()
 
-class Test(mglw.WindowConfig):
+class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
     gl_version = (4, 1)
     aspect_ratio = None
-    title = "pynbody-vis"
+    title = "pynbody visualizer"
 
-    colormap_name = 'twilight_shifted'
-    colorbar_aspect_ratio = 0.15
-    # clear_color = None
+    colormap_name = config.DEFAULT_COLORMAP
+    colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
+    clear_color = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -33,47 +36,25 @@ class Test(mglw.WindowConfig):
             geometry_shader=load_shader("sph_geometry_shader.glsl")
         )
 
-        self.render_resolution = (500, 500)
+        self.render_resolution = (self.args['resolution'], self.args['resolution'])
+
         self._mrg = multiresolution_geometry.MultiresolutionGeometry(self.render_resolution[0])
 
         self.texture_size = (int(np.ceil(self.render_resolution[0]*1.5)), self.render_resolution[0])
 
-        self.model = np.eye(4, dtype=np.float32)
-
-        pos, smooth, mass = self.get_data()
-        self.points = self.ctx.buffer(pos)
-        self.smooth = self.ctx.buffer(smooth)
-        self.mass = self.ctx.buffer(mass)
-
         self.render_texture = self.ctx.texture(self.texture_size, 4, dtype='f4')
-        # self.accumulation_buffer = self.ctx.texture(self.)
 
-        self.colormap_texture = self.ctx.texture((1000, 1), 4, get_colormap_texture(self.colormap_name), dtype='f4')
+        self.colormap_texture = get_colormap_texture(self.args['colormap'], self.ctx)
 
         self.render_buffer = self.ctx.framebuffer(color_attachments=[self.render_texture])
 
-        self.scale = 100.0
-        self.downsample_factor = 1
-        self.particleRenderer['scale'] = self.scale
-        self.particleRenderer['outputResolution'] = self.render_resolution[0]
-        self.particleRenderer['downsampleFactor'] = self.downsample_factor
-        self.particleRenderer['smoothScale'] = 1.0
-        #self.particleRenderer['randomNumbers'] = np.random.uniform(0, 1, 1000).astype(np.float32)
+        self._setup_sph_rendering()
 
 
-        self.vertex_array = self.ctx.vertex_array(
-            self.particleRenderer, [(self.points, '3f', 'in_pos'),
-                                    (self.smooth, '1f', 'in_smooth'),
-                                    (self.mass, '1f', 'in_mass')])
-
-        self.model_matr = np.eye(4)
 
         self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
         self.ctx.enable(moderngl.BLEND)
 
-        self.vmin_vmax_is_set = False
-        self.invalidate()
-        self.last_render = 0
 
         self.logMapper = self.ctx.program(vertex_shader=load_shader("colormap_vertex_shader.glsl"),
                                           fragment_shader=load_shader("colormap_fragment_shader.glsl"))
@@ -93,7 +74,7 @@ class Test(mglw.WindowConfig):
         self.logMapper['inputImage'] = 0
         self.logMapper['inputColorMap'] = 1
 
-        self.setup_final_render_positions(*self.window_size)
+
 
 
         self.log_mapper_vertex_array = self.ctx.simple_vertex_array(
@@ -102,6 +83,8 @@ class Test(mglw.WindowConfig):
             'in_vert'
         )
 
+        # the scalebar vertex array is just a single point; it will be turned into a line of the right length by the
+        # geometry shader
         self.scalebar_vertex_array = self.ctx.vertex_array(
             self.scalebarRender,
             [
@@ -110,7 +93,6 @@ class Test(mglw.WindowConfig):
                     '2f', 'in_pos')
             ]
         )
-
 
 
         self.textureRender['inputImage'] = 3
@@ -137,11 +119,28 @@ class Test(mglw.WindowConfig):
         self.colormap_texture.use(1)
 
         self.setup_kernel_texture()
+        self.update_scalebar_length()
 
+    def _setup_sph_rendering(self):
+        self.scale = 100.0
+        self.downsample_factor = 1
+        self.particleRenderer['scale'] = self.scale
+        self.particleRenderer['outputResolution'] = self.render_resolution[0]
+        self.particleRenderer['downsampleFactor'] = self.downsample_factor
+        self.particleRenderer['smoothScale'] = 1.0
+        self._load_data_into_buffers()
+        self.vertex_array = self.ctx.vertex_array(
+            self.particleRenderer, [(self.points, '3f', 'in_pos'),
+                                    (self.smooth, '1f', 'in_smooth'),
+                                    (self.mass, '1f', 'in_mass')])
+        self.vmin_vmax_is_set = False
+        self.last_render = 0
+        self.invalidate()
+        self.model_matr = np.eye(4)
 
     def setup_final_render_positions(self, width, height):
         maxdim = max(width, height)
-        self.logMapper['texturePortion'] = [2. / 3 * width / maxdim, height / maxdim]
+        self.logMapper['texturePortion'] = [3. / 3 * width / maxdim, height / maxdim]
         self.logMapper['textureOffset'] = [1. / 3 * (1. - width / maxdim), (1. - height / maxdim) / 2]
 
         cb_width = 2. * self.colorbar_aspect_ratio * height / width
@@ -154,6 +153,8 @@ class Test(mglw.WindowConfig):
             ]
         )
 
+        self._update_scalebar_label_vertex_array()
+
     def triangle_buffer(self, x0, y0, w, h):
         return self.ctx.buffer(np.array([
             [x0, y0],
@@ -163,8 +164,8 @@ class Test(mglw.WindowConfig):
             [x0 + w, y0 + h],
             [x0 + w, y0]
         ], dtype=np.float32))
-    def get_data(self):
-        f = pynbody.load("/Users/app/Science/tangos/test_tutorial_build/tutorial_changa/pioneer50h128.1536gst1.bwK1.000960")
+    def _load_data(self):
+        f = pynbody.load(self.args['filename'])
         f.physical_units()
 
         f_region = f.dm
@@ -175,6 +176,7 @@ class Test(mglw.WindowConfig):
             f_region['smooth'] = pickle.load(open('smooth.pkl', 'rb'))
             f_region['rho'] = pickle.load(open('rho.pkl', 'rb'))
         except:
+            del f_region['smooth']
             pickle.dump(f_region['smooth'], open('smooth.pkl', 'wb'))
             pickle.dump(f_region['rho'], open('rho.pkl', 'wb'))
 
@@ -187,6 +189,12 @@ class Test(mglw.WindowConfig):
             f_region['smooth'].astype(np.float32)[random_order], \
             f_region['mass'].astype(np.float32)[random_order]
 
+    def _load_data_into_buffers(self):
+        pos, smooth, mass = self._load_data()
+        self.points = self.ctx.buffer(pos)
+        self.smooth = self.ctx.buffer(smooth)
+        self.mass = self.ctx.buffer(mass)
+
     def setup_kernel_texture(self, n_samples=100):
         pynbody_sph_kernel = pynbody.sph.Kernel2D()
         x, y = np.meshgrid(np.linspace(-2, 2, n_samples), np.linspace(-2, 2, n_samples))
@@ -198,12 +206,10 @@ class Test(mglw.WindowConfig):
         self.particleRenderer['kernel'] = 2
 
 
-    def render(self, time, frametime):
+    def render(self, time_now, frametime):
 
 
-
-        self.model = self.model_matr.astype(np.float32)
-        self.particleRenderer['model'].write(self.model)
+        self.particleRenderer['model'].write(self.model_matr.astype(np.float32))
 
         screenbuffer = self.ctx.fbo
 
@@ -226,7 +232,12 @@ class Test(mglw.WindowConfig):
                 self.particleRenderer['downsampleFactor'] = self.downsample_factor
 
             self.needs_render = False
-            self.last_render = time
+            self.last_render = time_now
+
+
+        else:
+            import time
+            time.sleep(config.INACTIVITY_WAIT)
 
         self.setup_final_render_positions(self.wnd.width, self.wnd.height)
         self.display_render_buffer()
@@ -236,7 +247,7 @@ class Test(mglw.WindowConfig):
         if not self.vmin_vmax_is_set:
             self.set_vmin_vmax()
 
-        if time-self.last_render>0.3 and self.allow_autorender:
+        if time_now-self.last_render>config.FULL_RESOLUTION_RENDER_AFTER and self.allow_autorender:
             self.downsample_factor = 1
             self.particleRenderer['downsampleFactor'] = 1
             self.particleRenderer['smoothScale'] = 1.0
@@ -245,7 +256,6 @@ class Test(mglw.WindowConfig):
 
 
     def setup_multires_viewport(self):
-        import OpenGL.GL
         OpenGL.GL.glViewportIndexedf(0, 0, 0, self.render_resolution[0], self.render_resolution[1])
 
         for i in range(0, 5):
@@ -253,6 +263,11 @@ class Test(mglw.WindowConfig):
             OpenGL.GL.glViewportIndexedf(i, vp_corners[0][0], vp_corners[0][1],
                                          vp_corners[2][0] - vp_corners[0][0],
                                          vp_corners[2][1] - vp_corners[0][1])
+            OpenGL.GL.glScissorIndexed(i, vp_corners[0][0], vp_corners[0][1],
+                                         vp_corners[2][0] - vp_corners[0][0],
+                                         vp_corners[2][1] - vp_corners[0][1])
+
+
 
 
     def perform_multires_accumulation(self):
@@ -291,7 +306,7 @@ class Test(mglw.WindowConfig):
         fig = plt.figure(figsize=(10*self.colorbar_aspect_ratio, 10), dpi=200,
                          facecolor=(1.0,1.0,1.0,0.5))
 
-        cmap = matplotlib.colormaps[self.colormap_name]
+        cmap = matplotlib.colormaps[self.args['colormap']]
         cNorm = colors.Normalize(vmin=self.vmin, vmax=self.vmax)
         cb1 = matplotlib.colorbar.ColorbarBase(fig.add_axes([0.05, 0.05, 0.3, 0.9]),
                                                   cmap=cmap,norm=cNorm, orientation='vertical')
@@ -325,7 +340,9 @@ class Test(mglw.WindowConfig):
 
     def render_sph(self):
         self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE
+        OpenGL.GL.glDisable(OpenGL.GL.GL_SCISSOR_TEST)
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
+        OpenGL.GL.glEnable(OpenGL.GL.GL_SCISSOR_TEST)
         self.vertex_array.render(moderngl.POINTS)
         self.perform_multires_accumulation()
 
@@ -348,75 +365,37 @@ class Test(mglw.WindowConfig):
         p.savefig("output.png")
         p.close(fig)
 
-        # now also save the framebuffer as a png using pillow
-        import PIL.Image
-        print(self.ctx.fbo.size)
-        print(self.ctx.fbo)
-        img = PIL.Image.frombytes('RGB', self.ctx.fbo.size,
-                                  self.ctx.fbo.read(), 'raw', 'RGB', 0, -1)
-        img.save("output2.png")
+        # alternatively, save the framebuffer directly:
+        # import PIL.Image
+        # img = PIL.Image.frombytes('RGB', self.ctx.fbo.size,
+        #                           self.ctx.fbo.read(), 'raw', 'RGB', 0, -1)
+        # img.save("output2.png")
 
 
     def mouse_drag_event(self, x, y, dx, dy):
-        dx_rotation_matrix = np.array([[np.cos(dx*0.01), 0, np.sin(dx*0.01), 0],
-                                        [0, 1, 0, 0],
-                                        [-np.sin(dx*0.01), 0, np.cos(dx*0.01), 0],
-                                        [0, 0, 0, 1]])
-        dy_rotation_matrix = np.array([[1, 0, 0, 0],
-                                        [0, np.cos(dy*0.01), -np.sin(dy*0.01), 0],
-                                        [0, np.sin(dy*0.01), np.cos(dy*0.01), 0],
-                                        [0, 0, 0, 1]])
+        dx_rotation_matrix = np.array(self._x_rotation_matrix(dx))
+        dy_rotation_matrix = np.array(self._y_rotation_matrix(dy))
         self.model_matr = self.model_matr @ dx_rotation_matrix @ dy_rotation_matrix
         super().mouse_drag_event(x, y, dx, dy)
         self.invalidate()
 
+    def _y_rotation_matrix(self, angle):
+        return np.array([[1, 0, 0, 0],
+                         [0, np.cos(angle * 0.01), -np.sin(angle * 0.01), 0],
+                         [0, np.sin(angle * 0.01), np.cos(angle * 0.01), 0],
+                         [0, 0, 0, 1]])
+
+    def _x_rotation_matrix(self, angle):
+        return np.array([[np.cos(angle * 0.01), 0, np.sin(angle * 0.01), 0],
+                         [0, 1, 0, 0],
+                         [-np.sin(angle * 0.01), 0, np.cos(angle * 0.01), 0],
+                         [0, 0, 0, 1]])
 
     def mouse_scroll_event(self, x_offset: float, y_offset: float):
         self.scale*=np.exp(y_offset*0.05)
         self.particleRenderer['scale'] = self.scale
         self.update_scalebar_length()
         self.invalidate()
-
-    def update_scalebar_length(self):
-        # target is for the scalebar to be around 1/3rd of the viewport
-        # however the length is to be 10^n or 5*10^n, so we need to find the
-        # closest power of 10 to 1/3rd of the viewport
-
-        # in world coordinates the viewport is self.scale kpc wide
-        # so we need to find the closest power of 10 to self.scale/3
-
-        physical_scalebar_length = self.scale/3.0
-        # now quantize it:
-        power_of_ten = np.floor(np.log10(physical_scalebar_length))
-        mantissa = physical_scalebar_length/10**power_of_ten
-        if mantissa<2.0:
-            physical_scalebar_length = 10.0**power_of_ten
-        elif mantissa<5.0:
-            physical_scalebar_length = 2.0*10.0**power_of_ten
-        else:
-            physical_scalebar_length = 5.0*10.0**power_of_ten
-
-        import text
-        labelRgba = (text.text_to_rgba(f"{physical_scalebar_length:.0f} kpc", dpi=200, color='white')*255).astype(dtype=np.int8)
-
-        print(labelRgba.shape)
-
-        texture = self.ctx.texture(labelRgba.shape[1::-1], 4,
-                                   labelRgba, dtype='f1')
-        self.label_texture = texture
-
-        aspect_ratio = labelRgba.shape[1]/labelRgba.shape[0]
-        target_aspect_ratio = self.wnd.width/self.wnd.height
-
-        self.scalebar_label_vertex_array = self.ctx.vertex_array(
-            self.textureRender,
-            [
-                (self.triangle_buffer(0, 1, 1, -1), '2f', 'from_position'),
-                (self.triangle_buffer(-0.9, -0.84, 0.05*aspect_ratio/target_aspect_ratio, 0.05), '2f', 'to_position')
-            ]
-        )
-
-        self.scalebarRender['length'] = physical_scalebar_length/self.scale
 
     def key_event(self, key, action, modifiers):
         print("key_event",key,chr(key))
@@ -431,7 +410,4 @@ class Test(mglw.WindowConfig):
 
 
 
-
-if __name__=="__main__":
-    Test.run()
 

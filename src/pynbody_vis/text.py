@@ -2,8 +2,6 @@ from io import BytesIO
 
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from matplotlib.transforms import IdentityTransform
-
 
 def text_to_rgba(s, *, dpi, **kwargs):
     """Render text to RGBA image.
