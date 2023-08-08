@@ -2,11 +2,12 @@ import moderngl_window as mglw
 import moderngl
 import numpy as np
 import pynbody
+import matplotlib
 
+import multiresolution_geometry
 
 def get_colormap_texture(name='twilight_shifted', num_points=1000):
-    import matplotlib.cm as cm
-    cmap = cm.get_cmap(name)
+    cmap = matplotlib.colormaps[name]
     rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
     return rgba
 
@@ -18,6 +19,9 @@ class Test(mglw.WindowConfig):
     gl_version = (4, 1)
     aspect_ratio = None
     title = "pynbody-vis"
+
+    colormap_name = 'twilight_shifted'
+    colorbar_aspect_ratio = 0.15
     # clear_color = None
 
     def __init__(self, **kwargs):
@@ -30,6 +34,8 @@ class Test(mglw.WindowConfig):
         )
 
         self.render_resolution = (500, 500)
+        self._mrg = multiresolution_geometry.MultiresolutionGeometry(self.render_resolution[0])
+
         self.texture_size = (int(np.ceil(self.render_resolution[0]*1.5)), self.render_resolution[0])
 
         self.model = np.eye(4, dtype=np.float32)
@@ -42,7 +48,7 @@ class Test(mglw.WindowConfig):
         self.render_texture = self.ctx.texture(self.texture_size, 4, dtype='f4')
         # self.accumulation_buffer = self.ctx.texture(self.)
 
-        self.colormap_texture = self.ctx.texture((1000, 1), 4, get_colormap_texture(), dtype='f4')
+        self.colormap_texture = self.ctx.texture((1000, 1), 4, get_colormap_texture(self.colormap_name), dtype='f4')
 
         self.render_buffer = self.ctx.framebuffer(color_attachments=[self.render_texture])
 
@@ -72,47 +78,91 @@ class Test(mglw.WindowConfig):
         self.logMapper = self.ctx.program(vertex_shader=load_shader("colormap_vertex_shader.glsl"),
                                           fragment_shader=load_shader("colormap_fragment_shader.glsl"))
 
-        self.accumulator = self.ctx.program(vertex_shader=load_shader("accumulator_vertex_shader.glsl"),
-                                            fragment_shader=load_shader("accumulator_fragment_shader.glsl"))
+        self.accumulator = self.ctx.program(vertex_shader=load_shader("drawtexture_vertex_shader.glsl"),
+                                            fragment_shader=load_shader("drawtexture_fragment_shader.glsl"))
+
+        self.textureRender = self.ctx.program(vertex_shader=load_shader("drawtexture_vertex_shader.glsl"),
+                                              fragment_shader=load_shader("drawtexture_fragment_shader.glsl"))
+
+        self.scalebarRender = self.ctx.program(vertex_shader=load_shader("scalebar_vertex_shader.glsl"),
+                                               fragment_shader=load_shader("scalebar_fragment_shader.glsl"),
+                                               geometry_shader=load_shader("scalebar_geometry_shader.glsl"))
+
+
+
+        self.logMapper['inputImage'] = 0
+        self.logMapper['inputColorMap'] = 1
+
+        self.setup_final_render_positions(*self.window_size)
+
 
         self.log_mapper_vertex_array = self.ctx.simple_vertex_array(
             self.logMapper,
-            self.ctx.buffer(np.array([[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0],
-                                      [-1.0, 1.0], [1.0, 1.0], [1.0, -1.0]], dtype=np.float32)),
+            self.triangle_buffer(-1,-1,2,2),
             'in_vert'
         )
 
-        def geometric_series(n):
-            """Return sum_{m=1}^n 2**-m = 1-2**-n"""
-            return 1.-2.**-n
-        def corners_of_nth_framebuffer(n):
-            return [2./3, geometric_series(n-1)], \
-                   [2./3 + 2./3*(2**-n), geometric_series(n-1)], \
-                   [2./3, geometric_series(n)], \
-                   [2./3, geometric_series(n)], \
-                   [2./3 + 2./3*(2**-n), geometric_series(n-1)], \
-                   [2./3 + 2./3*(2**-n), geometric_series(n)]
+        self.scalebar_vertex_array = self.ctx.vertex_array(
+            self.scalebarRender,
+            [
+                (self.ctx.buffer(np.array([
+                    -0.9,-0.9], dtype=np.float32)),
+                    '2f', 'in_pos')
+            ]
+        )
+
+
+
+        self.textureRender['inputImage'] = 3
 
 
         self.accumulator_vertex_array = self.ctx.vertex_array(
             self.accumulator,
             [
-                (self.ctx.buffer(np.array([corners_of_nth_framebuffer(n) for n in range(1,6)], dtype=np.float32)),
+                (self.ctx.buffer(np.array([
+                    self._mrg.corners_to_triangles(self._mrg.get_texture_corners_for_level(n))
+                    for n in range(1,6)], dtype=np.float32)),
                  '2f', 'from_position'),
-                (self.ctx.buffer(np.array([[[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0], \
-                                            [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0]] for n in range(1,6)], dtype=np.float32)),
+                (self.ctx.buffer(np.array(
+                    [self._mrg.corners_to_triangles(self._mrg.get_clipspace_corners()) for n in range(1,6)]
+                    , dtype=np.float32)),
                  '2f', 'to_position'),
             ]
         )
 
-        self.logMapper['inputImage'] = 0
-        self.logMapper['inputColorMap'] = 1
+        self.accumulator['inputImage'] = 0
+
+
         self.render_texture.use(0)
         self.colormap_texture.use(1)
 
         self.setup_kernel_texture()
 
 
+    def setup_final_render_positions(self, width, height):
+        maxdim = max(width, height)
+        self.logMapper['texturePortion'] = [2. / 3 * width / maxdim, height / maxdim]
+        self.logMapper['textureOffset'] = [1. / 3 * (1. - width / maxdim), (1. - height / maxdim) / 2]
+
+        cb_width = 2. * self.colorbar_aspect_ratio * height / width
+        self.colorbar_vertex_array = self.ctx.vertex_array(
+            self.textureRender,
+            [
+                (self.triangle_buffer(0, 1, 1, -1), '2f', 'from_position'),
+                (self.triangle_buffer(1.0 - cb_width, -1,
+                                      cb_width, 2), '2f', 'to_position')
+            ]
+        )
+
+    def triangle_buffer(self, x0, y0, w, h):
+        return self.ctx.buffer(np.array([
+            [x0, y0],
+            [x0 + w, y0],
+            [x0, y0 + h],
+            [x0, y0 + h],
+            [x0 + w, y0 + h],
+            [x0 + w, y0]
+        ], dtype=np.float32))
     def get_data(self):
         f = pynbody.load("/Users/app/Science/tangos/test_tutorial_build/tutorial_changa/pioneer50h128.1536gst1.bwK1.000960")
         f.physical_units()
@@ -129,9 +179,13 @@ class Test(mglw.WindowConfig):
             pickle.dump(f_region['rho'], open('rho.pkl', 'wb'))
 
         pynbody.analysis.halo.center(f.gas,cen_size="1 kpc")
-        return f_region['pos'].astype(np.float32), \
-            f_region['smooth'].astype(np.float32), \
-            f_region['mass'].astype(np.float32)
+
+        # randomize order to avoid artifacts when downsampling number of particles on display
+        random_order = np.random.permutation(len(f_region))
+
+        return f_region['pos'].astype(np.float32)[random_order], \
+            f_region['smooth'].astype(np.float32)[random_order], \
+            f_region['mass'].astype(np.float32)[random_order]
 
     def setup_kernel_texture(self, n_samples=100):
         pynbody_sph_kernel = pynbody.sph.Kernel2D()
@@ -153,7 +207,6 @@ class Test(mglw.WindowConfig):
 
         screenbuffer = self.ctx.fbo
 
-        w, h = self.wnd.width, self.wnd.height
 
         if self.needs_render:
             query = self.ctx.query(time=True)
@@ -175,7 +228,10 @@ class Test(mglw.WindowConfig):
             self.needs_render = False
             self.last_render = time
 
+        self.setup_final_render_positions(self.wnd.width, self.wnd.height)
         self.display_render_buffer()
+        self.render_colorbar()
+        self.render_scalebar()
 
         if not self.vmin_vmax_is_set:
             self.set_vmin_vmax()
@@ -188,35 +244,78 @@ class Test(mglw.WindowConfig):
             self.allow_autorender = False
 
 
-
-
-        #self.render_sph()
-
     def setup_multires_viewport(self):
         import OpenGL.GL
         OpenGL.GL.glViewportIndexedf(0, 0, 0, self.render_resolution[0], self.render_resolution[1])
-        y_offset = 0
-        for i in range(1, 5):
-            res_factor = 2 ** i
-            OpenGL.GL.glViewportIndexedf(i, self.render_resolution[0], y_offset,
-                                         self.render_resolution[0] // res_factor,
-                                         self.render_resolution[1] // res_factor)
-            y_offset += self.render_resolution[1] // res_factor
+
+        for i in range(0, 5):
+            vp_corners = self._mrg.get_viewport_corners_for_level(i)
+            OpenGL.GL.glViewportIndexedf(i, vp_corners[0][0], vp_corners[0][1],
+                                         vp_corners[2][0] - vp_corners[0][0],
+                                         vp_corners[2][1] - vp_corners[0][1])
+
 
     def perform_multires_accumulation(self):
         self.ctx.blend_func = moderngl.ONE, moderngl.ONE
         self.accumulator_vertex_array.render(moderngl.TRIANGLES)
 
+    def render_colorbar(self):
+        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
+        if hasattr(self, 'colorbar_texture'):
+            self.colorbar_texture.use(3)
+            self.colorbar_vertex_array.render(moderngl.TRIANGLES)
+
+    def render_scalebar(self):
+        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
+        self.scalebar_vertex_array.render(moderngl.POINTS)
+        if hasattr(self, 'label_texture'):
+            self.label_texture.use(3)
+            self.scalebar_label_vertex_array.render(moderngl.TRIANGLES)
+
     def set_vmin_vmax(self):
         vals = np.log(self.get_sph_result()).ravel()
         vals = vals[np.isfinite(vals)]
 
-        vmin, vmax = np.percentile(vals, [1.0,99.9])
-        print(len(vals), vals.min(), vals.max(), vmin, vmax)
-        self.logMapper['vmin'] = vmin
-        self.logMapper['vmax'] = vmax
-        self.save()
+        self.vmin, self.vmax = np.percentile(vals, [1.0,99.9])
+        self.logMapper['vmin'] = self.vmin
+        self.logMapper['vmax'] = self.vmax
+        self.update_matplotlib_colorbar_texture()
         self.vmin_vmax_is_set = True
+
+    def update_matplotlib_colorbar_texture(self):
+        """Use matplotlib to get a colorbar, including labels based on vmin/vmax, and return it as a texture"""
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as colors
+        import matplotlib.cm as cmx
+
+        fig = plt.figure(figsize=(10*self.colorbar_aspect_ratio, 10), dpi=200,
+                         facecolor=(1.0,1.0,1.0,0.5))
+
+        cmap = matplotlib.colormaps[self.colormap_name]
+        cNorm = colors.Normalize(vmin=self.vmin, vmax=self.vmax)
+        cb1 = matplotlib.colorbar.ColorbarBase(fig.add_axes([0.05, 0.05, 0.3, 0.9]),
+                                                  cmap=cmap,norm=cNorm, orientation='vertical')
+        cb1.set_label('Density')
+
+
+
+        fig.canvas.draw()
+
+
+        import PIL.Image
+        img = PIL.Image.frombytes('RGBA', fig.canvas.get_width_height(), fig.canvas.buffer_rgba())
+        img.save("colorbar2.png")
+
+
+        texture = self.ctx.texture(fig.canvas.get_width_height(), 4,
+                                   fig.canvas.buffer_rgba(), dtype='f1')
+        self.colorbar_texture = texture
+        self.colorbar_texture.use(3)
+        self.colorbar_texture.filter = moderngl.LINEAR, moderngl.LINEAR
+
+        plt.savefig("colorbar.png")
+        plt.close(fig)
+
 
     def display_render_buffer(self):
         self.ctx.clear(1.0, 0.0, 0.0, 1.0)
@@ -231,17 +330,31 @@ class Test(mglw.WindowConfig):
         self.perform_multires_accumulation()
 
     def get_sph_result(self):
-        mybuffer = np.empty(self.texture_size, dtype=np.float32)
-        self.render_buffer.read_into(mybuffer, components=1, dtype='f4')
-        return mybuffer
+        mybuffer = np.empty(self.render_resolution, dtype=np.float32)
+        self.render_buffer.read_into(mybuffer, viewport=self.render_resolution,
+                                     components=1, dtype='f4')
+        return mybuffer[::-1]
 
     def save(self):
         mybuffer = self.get_sph_result()
         import pylab as p
-        p.imshow(np.log(mybuffer))
-        p.colorbar()
+        fig = p.figure()
+        p.clf()
+        p.set_cmap(self.colormap_name)
+        extent = np.array([-1., 1., -1., 1.])*self.scale
+        p.imshow(np.log(mybuffer), vmin=self.vmin,vmax=self.vmax, extent=extent).set_label("log density")
+        p.xlabel("$x$/kpc")
+        p.colorbar().set_label("log density")
         p.savefig("output.png")
-        #exit(0)
+        p.close(fig)
+
+        # now also save the framebuffer as a png using pillow
+        import PIL.Image
+        print(self.ctx.fbo.size)
+        print(self.ctx.fbo)
+        img = PIL.Image.frombytes('RGB', self.ctx.fbo.size,
+                                  self.ctx.fbo.read(), 'raw', 'RGB', 0, -1)
+        img.save("output2.png")
 
 
     def mouse_drag_event(self, x, y, dx, dy):
@@ -258,18 +371,65 @@ class Test(mglw.WindowConfig):
         self.invalidate()
 
 
-
     def mouse_scroll_event(self, x_offset: float, y_offset: float):
         self.scale*=np.exp(y_offset*0.05)
         self.particleRenderer['scale'] = self.scale
-        if abs(y_offset)>0.001:
-            self.vmin_vmax_is_set = True
-
+        self.update_scalebar_length()
         self.invalidate()
+
+    def update_scalebar_length(self):
+        # target is for the scalebar to be around 1/3rd of the viewport
+        # however the length is to be 10^n or 5*10^n, so we need to find the
+        # closest power of 10 to 1/3rd of the viewport
+
+        # in world coordinates the viewport is self.scale kpc wide
+        # so we need to find the closest power of 10 to self.scale/3
+
+        physical_scalebar_length = self.scale/3.0
+        # now quantize it:
+        power_of_ten = np.floor(np.log10(physical_scalebar_length))
+        mantissa = physical_scalebar_length/10**power_of_ten
+        if mantissa<2.0:
+            physical_scalebar_length = 10.0**power_of_ten
+        elif mantissa<5.0:
+            physical_scalebar_length = 2.0*10.0**power_of_ten
+        else:
+            physical_scalebar_length = 5.0*10.0**power_of_ten
+
+        import text
+        labelRgba = (text.text_to_rgba(f"{physical_scalebar_length:.0f} kpc", dpi=200, color='white')*255).astype(dtype=np.int8)
+
+        print(labelRgba.shape)
+
+        texture = self.ctx.texture(labelRgba.shape[1::-1], 4,
+                                   labelRgba, dtype='f1')
+        self.label_texture = texture
+
+        aspect_ratio = labelRgba.shape[1]/labelRgba.shape[0]
+        target_aspect_ratio = self.wnd.width/self.wnd.height
+
+        self.scalebar_label_vertex_array = self.ctx.vertex_array(
+            self.textureRender,
+            [
+                (self.triangle_buffer(0, 1, 1, -1), '2f', 'from_position'),
+                (self.triangle_buffer(-0.9, -0.84, 0.05*aspect_ratio/target_aspect_ratio, 0.05), '2f', 'to_position')
+            ]
+        )
+
+        self.scalebarRender['length'] = physical_scalebar_length/self.scale
+
+    def key_event(self, key, action, modifiers):
+        print("key_event",key,chr(key))
+        if chr(key)=="r":
+            self.set_vmin_vmax()
+        if chr(key)=="s":
+            self.save()
 
     def invalidate(self):
         self.needs_render = True
         self.allow_autorender = True
+
+
 
 
 if __name__=="__main__":
