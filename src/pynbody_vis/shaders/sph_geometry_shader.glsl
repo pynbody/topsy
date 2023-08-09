@@ -21,16 +21,16 @@ void main() {
         // At present, this is hardcoded to 5 levels of detail and
         // the if-elif chain may be inefficient -- TODO
 
-        if(gl_PointSize>80.0) {
+        if(gl_PointSize>160.0) {
             gl_ViewportIndex = 4;
             gl_PointSize/=16.0;
-        } else if(gl_PointSize>40.0) {
+        } else if(gl_PointSize>80.0) {
             gl_ViewportIndex = 3;
             gl_PointSize/=8.0;
-        } else if(gl_PointSize>20.0) {
+        } else if(gl_PointSize>40.0) {
             gl_ViewportIndex = 2;
             gl_PointSize/=4.0;
-        } else if(gl_PointSize>10.0) {
+        } else if(gl_PointSize>20.0) {
             gl_ViewportIndex = 1;
             gl_PointSize/=2.0;
         } else
