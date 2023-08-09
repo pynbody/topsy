@@ -1,4 +1,4 @@
-pynbody-vis
+topsy
 ===========
 
 This package visualises simulations, and is an add-on to the pynbody analysis package.
@@ -10,20 +10,20 @@ of interest from the community.
 Installing
 ----------
 
-You will need python 3.8 or later. You can then install `pynbody-vis` using `pip` 
+You will need python 3.8 or later. You can then install `topsy` using `pip` 
 as usual:
 
 ```
-pip install pynbody-vis
+pip install topsy
 ```
 
-This will install pynbody-vis and its dependencies (including `pynbody` itself) into
+This will install topsy and its dependencies (including `pynbody` itself) into
 your current python environment.
 
 As usual, you can also install direct from github, e.g.
 
 ```
-pip install git+https://github.com/pynbody/pynbody-vis
+pip install git+https://github.com/pynbody/topsy
 ```
 
 Or clone the repository and install for development using
@@ -34,7 +34,7 @@ pip install -e .
 
 from inside the cloned repository.
 
-If you want to play with `pynbody-vis` without disturbing your current installation,
+If you want to play with `topsy` without disturbing your current installation,
 I recommend using `venv`:
 
 ```
@@ -45,7 +45,7 @@ python -m venv visualiser-env
 source visualiser-env/bin/activate 
 
 # install
-pip install pynbody-vis
+pip install topsy
 
 ... other commands ...
 
@@ -60,8 +60,8 @@ For more information about venv, see its
 Trying it out
 -------------
 
-The package provides one simple command called `pynbody-vis`, to be 
-called straight from your shell. Pass `pynbody-vis` the path to the
+The package provides one simple command called `topsy`, to be 
+called straight from your shell. Pass `topsy` the path to the
 simulation that you wish to visualise. 
 
 You can (and probably should) also

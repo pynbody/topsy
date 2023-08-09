@@ -19,7 +19,7 @@ def get_colormap_texture(name, context, num_points=config.COLORMAP_NUM_SAMPLES):
 
 def load_shader(name):
     from importlib import resources
-    with open(resources.files("pynbody_vis.shaders") / name, "r") as f:
+    with open(resources.files("topsy.shaders") / name, "r") as f:
         return f.read()
 
 class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
@@ -205,22 +205,22 @@ class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
 
         try:
             logger.info("Looking for cached smoothing/density data...")
-            smooth = pickle.load(open('pynbody-vis-smooth.pkl', 'rb'))
+            smooth = pickle.load(open('topsy-smooth.pkl', 'rb'))
             if len(smooth)==len(f):
                 f['smooth'] = smooth
             else:
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
 
-            rho = pickle.load(open('pynbody-vis-rho.pkl', 'rb'))
+            rho = pickle.load(open('topsy-rho.pkl', 'rb'))
             if len(rho)==len(f):
                 f['rho'] = rho
             else:
                 raise ValueError("Incorrect number of particles in cached density data")
         except:
             logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(f['smooth'], open('pynbody-vis-smooth.pkl', 'wb'))
-            pickle.dump(f['rho'], open('pynbody-vis-rho.pkl', 'wb'))
+            pickle.dump(f['smooth'], open('topsy-smooth.pkl', 'wb'))
+            pickle.dump(f['rho'], open('topsy-rho.pkl', 'wb'))
 
 
 

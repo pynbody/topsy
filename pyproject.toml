@@ -3,7 +3,7 @@ requires = ["flit_core >=3.8,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "pynbody-vis"
+name = "topsy"
 authors = [{name = "Andrew Pontzen", email = "a.pontzen@ucl.ac.uk"}]
 dynamic = ["version", "description"]
 classifiers = [
@@ -30,7 +30,7 @@ dependencies = [
 
 
 [project.scripts]
-pynbody-vis = "pynbody_vis:main"
+topsy = "topsy:main"
 
 [project.urls]
-Home = "https://github.com/pynbody/pynbody-vis"
+Home = "https://github.com/pynbody/topsy"
