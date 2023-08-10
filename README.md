@@ -1,7 +1,7 @@
 topsy
 ===========
 
-This package visualises simulations, and is an add-on to the pynbody analysis package.
+This package visualises simulations, and is an add-on to the [pynbody](https://github.com/pynbody/pynbody) analysis package.
 Its name nods to the [TIPSY](https://github.com/N-BodyShop/tipsy) project.
 
 At the moment, it's a bit of a toy project, but it already works quite well with zoom 
