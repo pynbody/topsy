@@ -24,7 +24,7 @@ dependencies = [
     "pynbody >=1.3.0",
     "PyOpenGL >=3.1.5",
     "matplotlib >=3.6.0",
-    "pillow >=8.3.0",
+    "pillow >=9.5.0", # 9.5.0 needed for Image.frombytes accepting memoryview
     "pyglet >=2.0.0"
 ]
 
