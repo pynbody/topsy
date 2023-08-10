@@ -25,7 +25,7 @@ def load_shader(name):
 class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
     gl_version = (4, 1)
     aspect_ratio = None
-    title = "pynbody visualizer"
+    title = "topsy"
 
     colorbar_label = r"$\mathrm{log}_{10}$ density / $M_{\odot} / \mathrm{kpc}^2$"
     colormap_name = config.DEFAULT_COLORMAP
