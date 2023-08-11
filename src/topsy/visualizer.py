@@ -244,8 +244,19 @@ class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
         distance = np.sqrt(x ** 2 + y ** 2)
         kernel_im = np.array([pynbody_sph_kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
+        # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
+        # It should be normalized such that the integral over the kernel is 1/h^2. We have h=1 here, and the
+        # full width is 4h, so the width of a pixel is dx=4/n_samples. So we need to multiply by dx^2=(n_samples/4)^2.
+        # This results in a correction of a few percent, typically; not huge but not negligible either.
+        #
+        # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
+        kernel_im *= (n_samples/4)**2 / kernel_im.sum()
+
         self.kernel_texture = self.ctx.texture((n_samples, n_samples), 1, kernel_im.astype(np.float32), dtype='f4')
         self.kernel_texture.use(2)
+
+        # TODO - need to think about how the mass conservation works (or doesn't!) with the mipmap
+        # probably want to downsample manually in a mass-conserving way for each mipmap level
         self.kernel_texture.build_mipmaps()
 
         self.particleRenderer['kernel'] = 2
@@ -368,7 +379,8 @@ class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
 
 
         import PIL.Image
-        img = PIL.Image.frombytes('RGBA', fig.canvas.get_width_height(physical=True), fig.canvas.buffer_rgba())
+        img = PIL.Image.frombytes('RGBA', fig.canvas.get_width_height(physical=True),
+                                  fig.canvas.buffer_rgba())
         img.save("colorbar2.png")
 
 
