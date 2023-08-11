@@ -11,7 +11,7 @@ of interest from the community.
 Installing
 ----------
 
-You will need python 3.8 or later. You can then install `topsy` using `pip` 
+You will need python 3.8 or later, running in a UNIX variant (basically MacOS, Linux or if you're on Windows you need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)). You can then install `topsy` using `pip` 
 as usual:
 
 ```
@@ -62,7 +62,14 @@ For more information about venv, see its
 Trying it out
 -------------
 
-The package provides one simple command called `topsy`, to be 
+*Quick start: if you just want to try it out and you don't have a 
+suitable simulation snapshot to hand, you can download some
+from the [tangos tutorial datasets (4.8GB)](http://ftp.star.ucl.ac.uk/~app/tangos/tutorial_changa.tar.gz).
+You need to untar them (`tar -xzf tutorial_changa.tar.gz` from your command line), then
+you can type `topsy pioneer50h128.1536gst1.bwK1.000832` to visualise that file's
+dark matter content.*
+
+*Long version:* The package provides one simple command called `topsy`, to be 
 called straight from your shell. Pass `topsy` the path to the
 simulation that you wish to visualise. 
 
