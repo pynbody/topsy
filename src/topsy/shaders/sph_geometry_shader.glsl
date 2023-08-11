@@ -16,7 +16,7 @@ void main() {
         gl_PointSize = gl_in[0].gl_PointSize * smoothScale;
 
         // To improve efficiency, large points are rendered in dinky viewports,
-        // and everything will be added together in the end.
+        // like an output mimmap, and everything will be scaled/added together in the end.
         //
         // At present, this is hardcoded to 5 levels of detail and
         // the if-elif chain may be inefficient -- TODO
