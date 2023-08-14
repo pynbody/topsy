@@ -6,7 +6,7 @@ import logging
 import sys
 import argparse
 
-from . import config, visualizer
+from . import config, visualizer, visualizer_wgpu
 
 
 
@@ -50,4 +50,7 @@ def setup_logging():
 def main():
     setup_logging()
     parse_args()
-    visualizer.Visualizer.run()
+    # visualizer.Visualizer.run()
+
+    vis = visualizer_wgpu.Visualizer()
+    vis.run()
