@@ -15,20 +15,18 @@ struct FragmentOutput {
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
-    var pos = array<vec2<f32>, 5>(
+    var pos = array<vec2<f32>, 4>(
             vec2(-1.0, -1.0),
             vec2(-1.0, 1.0),
-            vec2(1.0, 1.0),
             vec2(1.0, -1.0),
-            vec2(-1.0, -1.0)
+            vec2(1.0, 1.0)
           );
 
-    var texc = array<vec2<f32>, 5>(
+    var texc = array<vec2<f32>, 4>(
             vec2(0.0, 1.0),
             vec2(0.0, 0.0),
-            vec2(1.0, 0.0),
             vec2(1.0, 1.0),
-            vec2(0.0, 1.0)
+            vec2(1.0, 0.0)
           );
 
     var output: VertexOutput;

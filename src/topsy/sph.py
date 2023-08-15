@@ -1,46 +1,39 @@
+from __future__ import annotations
+
 import numpy as np
 import wgpu
 import pynbody
 
 from .util import load_shader
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .visualizer_wgpu import Visualizer
+
 class SPH:
-    def __init__(self, visualizer):
+    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture):
         self._visualizer = visualizer
+        self._render_texture = render_texture
         self._device = visualizer.device
 
-        self._setup_sph_shader_module()
+        self._setup_shader_module()
         self._setup_particle_buffer()
         self._setup_transform_buffer()
         self._setup_kernel_texture()
-        self._setup_sph_render_pipeline()
+        self._setup_render_pipeline()
 
         self.scale = 1.0
         self.rotation_matrix = np.eye(3)
 
 
     def _setup_particle_buffer(self):
-        self._n_particles = int(5e6)
-        data = np.zeros((self._n_particles, 4), dtype=np.float32) #np.random.normal(size=(self._n_particles, 4)).astype(np.float32)
-
-        # xyz coordinates
-        data[:,:3] = np.random.normal(size=(self._n_particles, 3),scale=0.2).astype(np.float32)
-
-        data[:self._n_particles // 2, :3] = \
-            np.random.normal(size=(self._n_particles // 2, 3), scale=0.4).astype(np.float32)*[1.0,0.05,1.0]
-
-        data[:self._n_particles//4, :3] = \
-            np.random.normal(size=(self._n_particles//4, 3), scale=0.1).astype(np.float32) \
-            + [0.6,0.0,0.0]
-
-        # kernel size
-        data[:,3] = np.random.uniform(0.01,0.05,size=(self._n_particles,))
-
+        data = self._visualizer.get_data()
+        self._n_particles = len(data)
         self._particle_buffer = self._device.create_buffer_with_data(
             data = data,
             usage = wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-    def _setup_sph_shader_module(self):
-        self._sph_shader = self._device.create_shader_module(code=load_shader("sph.wgsl"), label="sph")
+    def _setup_shader_module(self):
+        self._shader = self._device.create_shader_module(code=load_shader("sph.wgsl"), label="sph")
 
     def _setup_transform_buffer(self):
         self._transform_buffer = self._device.create_buffer(
@@ -48,8 +41,8 @@ class SPH:
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
         )
 
-    def _setup_sph_render_pipeline(self):
-        self._sph_bind_group_layout = \
+    def _setup_render_pipeline(self):
+        self._bind_group_layout = \
             self._device.create_bind_group_layout(
                 label="sph_bind_group_layout",
                 entries=[
@@ -72,10 +65,10 @@ class SPH:
                 ]
             )
 
-        self._sph_bind_group = \
+        self._bind_group = \
             self._device.create_bind_group(
                 label="sph_bind_group",
-                layout=self._sph_bind_group_layout,
+                layout=self._bind_group_layout,
                 entries=[
                     {"binding": 0,
                      "resource": {
@@ -93,18 +86,18 @@ class SPH:
                 ]
             )
 
-        self._sph_pipeline_layout = \
+        self._pipeline_layout = \
             self._device.create_pipeline_layout(
                 label="sph_pipeline_layout",
-                bind_group_layouts=[self._sph_bind_group_layout]
+                bind_group_layouts=[self._bind_group_layout]
             )
 
-        self._sph_render_pipeline = \
+        self._render_pipeline = \
             self._device.create_render_pipeline(
-                layout=self._sph_pipeline_layout,
+                layout=self._pipeline_layout,
                 label="sph_render_pipeline",
                 vertex = {
-                    "module": self._sph_shader,
+                    "module": self._shader,
                     "entry_point": "vertex_main",
                     "buffers": [
                         {
@@ -127,7 +120,7 @@ class SPH:
                 depth_stencil=None,
                 multisample=None,
                 fragment={
-                    "module": self._sph_shader,
+                    "module": self._shader,
                     "entry_point": "fragment_main",
                     "targets": [
                         {
@@ -176,9 +169,9 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-    def encode_sph_render_pass(self, command_encoder):
+    def encode_render_pass(self, command_encoder):
         self._update_transform_buffer()
-        view: wgpu.GPUTextureView = self._visualizer.render_texture.create_view()
+        view: wgpu.GPUTextureView = self._render_texture.create_view()
         sph_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
@@ -190,14 +183,18 @@ class SPH:
                 }
             ]
         )
-        sph_render_pass.set_pipeline(self._sph_render_pipeline)
+        sph_render_pass.set_pipeline(self._render_pipeline)
         sph_render_pass.set_vertex_buffer(0, self._particle_buffer)
-        sph_render_pass.set_bind_group(0, self._sph_bind_group, [], 0, 99)
+        sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
         sph_render_pass.draw(6, self._n_particles, 0, 0)
         sph_render_pass.end()
 
 
     def _setup_kernel_texture(self, n_samples=64):
+        if hasattr(SPH, "_kernel_texture"):
+            # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
+            return
+
         pynbody_sph_kernel = pynbody.sph.Kernel2D()
         x, y = np.meshgrid(np.linspace(-2, 2, n_samples), np.linspace(-2, 2, n_samples))
         distance = np.sqrt(x ** 2 + y ** 2)
@@ -211,7 +208,7 @@ class SPH:
         # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
         kernel_im *= (n_samples/4)**2 / kernel_im.sum()
 
-        self._kernel_texture = self._device.create_texture(
+        SPH._kernel_texture = self._device.create_texture(
             label="kernel_texture",
             size=(n_samples, n_samples, 1),
             dimension=wgpu.TextureDimension.d2,
@@ -236,5 +233,5 @@ class SPH:
         )
 
 
-        self._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
+        SPH._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
                                                            mag_filter=wgpu.FilterMode.linear, )

@@ -6,7 +6,7 @@ import logging
 import sys
 import argparse
 
-from . import config, visualizer, visualizer_wgpu
+from . import config, visualizer_wgpu
 
 
 
@@ -34,8 +34,6 @@ def parse_args():
     # inflexibility in moderngl-window's instantiation of the visualizer
     #
     # in the longer term, we should use a different windowing framework
-    visualizer.Visualizer.args = vars(args)
-    print(visualizer.Visualizer.args)
 
 def setup_logging():
     logger = logging.getLogger(__name__)

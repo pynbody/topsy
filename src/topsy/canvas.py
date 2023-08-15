@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import numpy as np
 
 from wgpu.gui.auto import WgpuCanvas
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .visualizer_wgpu import Visualizer
+
 class VisualizerCanvas(WgpuCanvas):
     def __init__(self, *args, **kwargs):
-        from .visualizer import Visualizer
         self._visualizer : Visualizer = kwargs.pop("visualizer")
         super().__init__(*args, **kwargs)
         self._last_x = 0
