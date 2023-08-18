@@ -5,10 +5,11 @@ __version__ = "0.1.1"
 import logging
 import sys
 import argparse
+import matplotlib
 
 from . import config, visualizer_wgpu
 
-
+matplotlib.use("Agg")
 
 
 def parse_args():

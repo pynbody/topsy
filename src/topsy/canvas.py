@@ -44,5 +44,5 @@ class VisualizerCanvas(WgpuCanvas):
     def mouse_wheel(self, delta_x, delta_y):
         self._visualizer.scale*=np.exp(delta_y/1000)
 
-    def resize(self, width, height, pixel_ratio):
+    def resize(self, width, height, pixel_ratio=1):
         pass

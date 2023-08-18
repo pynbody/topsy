@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import numpy as np
 import wgpu
 import matplotlib
@@ -11,6 +12,12 @@ from .util import load_shader
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .visualizer_wgpu import Visualizer
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 
 class Colormap:
 

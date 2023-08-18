@@ -17,27 +17,22 @@ class SPH:
         self._device = visualizer.device
 
         self._setup_shader_module()
-        self._setup_particle_buffer()
         self._setup_transform_buffer()
         self._setup_kernel_texture()
         self._setup_render_pipeline()
 
         self.scale = 1.0
+        self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
+        self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
         self.rotation_matrix = np.eye(3)
 
 
-    def _setup_particle_buffer(self):
-        data = self._visualizer.get_data()
-        self._n_particles = len(data)
-        self._particle_buffer = self._device.create_buffer_with_data(
-            data = data,
-            usage = wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
     def _setup_shader_module(self):
         self._shader = self._device.create_shader_module(code=load_shader("sph.wgsl"), label="sph")
 
     def _setup_transform_buffer(self):
         self._transform_buffer = self._device.create_buffer(
-            size=(4*4*4) + 4 + 8 + 4,  # 4x4 float32 matrix + one float32 scale + float32 min,max size + padding
+            size=(4*4*4) + 4 + 8 + 8 + 12,  # 4x4 float32 matrix + one float32 scale + float32 min,max size + int32 x 2 + padding
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
         )
 
@@ -110,6 +105,17 @@ class SPH:
                                     "shader_location": 0,
                                 }
                             ]
+                        },
+                        {
+                            "array_stride": 4,
+                            "step_mode": wgpu.VertexStepMode.instance,
+                            "attributes": [
+                                {
+                                    "format": wgpu.VertexFormat.float32,
+                                    "offset": 16,
+                                    "shader_location": 1,
+                                }
+                            ]
                         }
 
                     ]
@@ -161,11 +167,21 @@ class SPH:
         scaled_displaced_transform = (displace @ scaled_transform).T
         transform_params_dtype = [("transform", np.float32, (4, 4)),
                                   ("scale_factor", np.float32, (1,)),
-                                  ("min_max_size", np.float32, (2,))]
+                                  ("min_max_size", np.float32, (2,)),
+                                  ("downsample_factor", np.uint32, (1,)),
+                                  ("downsample_offset", np.uint32, (1,)),
+                                  ("padding", np.int32, (3,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        transform_params["min_max_size"] = (0.0, 1000.0) # no restriction, for now
+
+        resolution = self._render_texture.width
+        assert resolution == self._render_texture.height
+
+        # min_max_size to be sent in viewport coordinates
+        transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
+        transform_params["downsample_factor"] = 1
+        transform_params["downsample_offset"] = 0
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
@@ -184,9 +200,10 @@ class SPH:
             ]
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
-        sph_render_pass.set_vertex_buffer(0, self._particle_buffer)
+        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
+        sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
-        sph_render_pass.draw(6, self._n_particles, 0, 0)
+        sph_render_pass.draw(6, len(self._visualizer.data_loader), 0, 0)
         sph_render_pass.end()
 
 

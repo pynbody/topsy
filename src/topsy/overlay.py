@@ -10,10 +10,26 @@ if TYPE_CHECKING:
     from .visualizer_wgpu import Visualizer
 
 class Overlay(metaclass=ABCMeta):
-    def __init__(self, visualizer: Visualizer):
+
+    _blending = (
+                    wgpu.BlendFactor.src_alpha,
+                    wgpu.BlendFactor.one_minus_src_alpha,
+                    wgpu.BlendOperation.add,
+                 )
+    def __init__(self, visualizer: Visualizer, target_texture: wgpu.GPUTexture | None = None):
+        """Setup the overlay.
+
+        :param visualizer: The visualizer instance
+        :param target_texture: The texture to render the overlay to. If None, the visualizer's canvas is used.
+        """
         self._visualizer = visualizer
         self._device = self._visualizer.device
         self._contents = None
+        self._target_texture = target_texture
+        if target_texture is None:
+            self._target_canvas_format = visualizer.canvas_format
+        else:
+            self._target_canvas_format = target_texture.format
 
         self._setup_shader_module()
         self._setup_texture()
@@ -159,18 +175,10 @@ class Overlay(metaclass=ABCMeta):
                 "entry_point": "fragment_main",
                 "targets": [
                     {
-                        "format": self._visualizer.canvas_format,
+                        "format": self._target_canvas_format,
                         "blend": {
-                            "color": (
-                                wgpu.BlendFactor.src_alpha,
-                                wgpu.BlendFactor.one_minus_src_alpha,
-                                wgpu.BlendOperation.add,
-                            ),
-                            "alpha": (
-                                wgpu.BlendFactor.src_alpha,
-                                wgpu.BlendFactor.one_minus_src_alpha,
-                                wgpu.BlendOperation.add,
-                            ),
+                            "color": self._blending,
+                            "alpha": self._blending,
                         },
                         "write_mask": wgpu.ColorWrite.ALL,
                     }
@@ -179,8 +187,11 @@ class Overlay(metaclass=ABCMeta):
         )
 
     def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder):
-
-        targ_tex: wgpu.GPUTextureView = self._visualizer.context.get_current_texture()
+        targ_tex: wgpu.GPUTextureView
+        if self._target_texture is None:
+            targ_tex = self._visualizer.context.get_current_texture()
+        else:
+            targ_tex = self._target_texture.create_view()
         self._update_params_buffer(targ_tex.size[0], targ_tex.size[1])
 
         render_pass = command_encoder.begin_render_pass(
