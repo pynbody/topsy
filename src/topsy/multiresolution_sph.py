@@ -4,6 +4,9 @@ import numpy as np
 import wgpu
 from . import sph
 from . import overlay
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -36,8 +39,8 @@ class MultiresolutionSPH:
     def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture, max_pixels=10.0):
         self._resolution_final = render_texture.width
         assert render_texture.width == render_texture.height
-        self._downsample_factors = [1, 8]
-        self._resolutions = [self._resolution_final//factor for factor in self._downsample_factors]
+        self._pixel_scaling_factors = [1]
+        self._resolutions = [self._resolution_final // factor for factor in self._pixel_scaling_factors]
         self._textures = [render_texture]
         for i,r in enumerate(self._resolutions[1:],1):
             self._textures.append(visualizer.device.create_texture(
@@ -52,18 +55,35 @@ class MultiresolutionSPH:
         self._accumulators = [SPHAccumulationOverlay(visualizer, self._textures[i], self._textures[0])
                               for i in range(len(self._textures)-1,0,-1)]
 
+        layer_counts = {}
+        for ds in self._pixel_scaling_factors:
+            layer_counts[ds] = layer_counts.get(ds, 0) + 1
+
+        logger.info(f"Multi-resolution SPH initialized: {len(self._renderers)} layers, with pixel downsample factors as follows:")
+
+        current_offsets = {ds: 0 for ds in layer_counts.keys()}
+
+        if self._pixel_scaling_factors[0]!=1:
+            raise RuntimeError("Factor 1 must be first entry in the pixel scaling factors list")
 
         for i in range(len(self._renderers)):
             r = self._renderers[i]
-            if i==0:
+            downsamp_fac = self._pixel_scaling_factors[i]
+            if downsamp_fac==1:
                 r.min_pixels = 0.0
             else:
-                r.min_pixels = max_pixels / self._downsample_factors[i]
+                next_highest_downsamp_fac = max([ds for ds in self._pixel_scaling_factors if ds < downsamp_fac])
+                r.min_pixels = max_pixels * next_highest_downsamp_fac / self._pixel_scaling_factors[i]
 
-            if i==len(self._renderers)-1:
+            if downsamp_fac==max(self._pixel_scaling_factors):
                 r.max_pixels = np.inf
             else:
                 r.max_pixels = max_pixels
+
+            r.downsample_offset = current_offsets[self._pixel_scaling_factors[i]]
+            current_offsets[self._pixel_scaling_factors[i]] += 1
+            r.downsample_factor = layer_counts[self._pixel_scaling_factors[i]]
+            logger.info(f"  Layer {i}: pixel_width={self._resolutions[i]} min_pixels={r.min_pixels}, max_pixels={r.max_pixels}, downsample_factor={r.downsample_factor}, downsample_offset={r.downsample_offset}")
 
         self._visualizer = visualizer
 

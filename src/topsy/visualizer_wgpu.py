@@ -23,7 +23,7 @@ class Visualizer:
     colorbar_label = r"$\mathrm{log}_{10}$ density / $M_{\odot} / \mathrm{kpc}^2$"
     colormap_name = config.DEFAULT_COLORMAP
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
-    def __init__(self):
+    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = ()):
 
 
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
@@ -31,6 +31,7 @@ class Visualizer:
         self.device: wgpu.GPUDevice = self.adapter.request_device()
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
         self.canvas_format = self.context.get_preferred_format(self.adapter)
+        self._recent_frame_times = []
         if self.canvas_format.endswith("-srgb"):
             # matplotlib colours aren't srgb. It might be better to convert
             # but for now, just stop the canvas being srgb
@@ -48,7 +49,7 @@ class Visualizer:
             label="sph_render_texture",
         )
 
-        self.data_loader = loader.TestDataLoader(self.device)
+        self.data_loader = data_loader_class(self.device, *data_loader_args)
 
         self._colormap = colormap.Colormap(self)
         #self._sph = sph.SPH(self, self.render_texture)
@@ -120,9 +121,13 @@ class Visualizer:
         self.device.queue.submit([command_encoder.finish()])
         end = time.time()
 
+        self._recent_frame_times.append(end-start)
+        if len(self._recent_frame_times)>20:
+            self._recent_frame_times.pop(0)
+
         if end - self._last_status_update>0.2:
             self._last_status_update = end
-            self._status.text = f"1/render_time = {1.0/(end-start):.0f} s$^{{-1}}$"
+            self._status.text = f"1/render_time = {1.0/np.mean(self._recent_frame_times):.0f} s$^{{-1}}$"
             self._status.update()
 
         command_encoder = self.device.create_command_encoder()

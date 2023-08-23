@@ -78,10 +78,8 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.pos = (trans_params.transform * output.pos);
     output.pos += vec4<f32>(clipspace_size*posOffset[input.vertexIndex],0.0,0.0);
     output.texcoord = texCoords[input.vertexIndex];
-    output.weight = input.mass/(input.pos.w*input.pos.w);
+    output.weight = input.mass/(smooth_length*smooth_length);
 
-    //output.weight = input.mass;
-    output.weight = 1.0;
     return output;
 }
 

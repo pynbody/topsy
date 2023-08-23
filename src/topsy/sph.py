@@ -24,6 +24,8 @@ class SPH:
         self.scale = 1.0
         self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
+        self.downsample_factor = 1 # number of particles to increment
+        self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
 
 
@@ -180,8 +182,8 @@ class SPH:
 
         # min_max_size to be sent in viewport coordinates
         transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
-        transform_params["downsample_factor"] = 1
-        transform_params["downsample_offset"] = 0
+        transform_params["downsample_factor"] = self.downsample_factor
+        transform_params["downsample_offset"] = self.downsample_offset
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
@@ -207,7 +209,7 @@ class SPH:
         sph_render_pass.end()
 
 
-    def _setup_kernel_texture(self, n_samples=64):
+    def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
         if hasattr(SPH, "_kernel_texture"):
             # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
             return
@@ -230,7 +232,7 @@ class SPH:
             size=(n_samples, n_samples, 1),
             dimension=wgpu.TextureDimension.d2,
             format=wgpu.TextureFormat.r32float,
-            mip_level_count=1,
+            mip_level_count=2,
             sample_count=1,
             usage=wgpu.TextureUsage.COPY_DST | wgpu.TextureUsage.TEXTURE_BINDING,
         )
@@ -248,6 +250,24 @@ class SPH:
             },
             (n_samples, n_samples, 1)
         )
+
+        kt_mip = kernel_im
+
+        for i in range(1, n_mip_levels):
+            kt_mip = kt_mip[::2, ::2]
+            self._device.queue.write_texture(
+                {
+                    "texture": self._kernel_texture,
+                    "mip_level": 1,
+                    "origin": (0, 0, 0),
+                },
+                kt_mip.astype(np.float32).tobytes(),
+                {
+                    "offset": 0,
+                    "bytes_per_row": 4 * n_samples // 2**i,
+                },
+                (n_samples//2**i, n_samples//2**i, 1)
+            )
 
 
         SPH._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
