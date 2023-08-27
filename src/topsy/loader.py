@@ -57,29 +57,31 @@ class PynbodyDataLoader(AbstractDataLoader):
         super().__init__(device)
 
         logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
-        self.f = pynbody.load(filename)
-        self.f.physical_units()
+        self.snapshot = pynbody.load(filename)
+        self.snapshot.physical_units()
+        self.filename = filename
 
-        self.f = self.f[pynbody.family.get_family(particle)]
+        self.snapshot = self.snapshot[pynbody.family.get_family(particle)]
 
         self._perform_centering(center)
         self._perform_smoothing()
 
         # randomize order to avoid artifacts when downsampling number of particles on display
-        self.random_order = np.random.permutation(len(self.f))
+        self.random_order = np.random.permutation(len(self.snapshot))
+        print(self.random_order)
 
     def _perform_centering(self, center):
         logger.info("Performing centering...")
         if center.startswith("halo-"):
             halo_number = int(center[5:])
-            h = self.f.ancestor.halos()
+            h = self.snapshot.ancestor.halos()
             pynbody.analysis.halo.center(h[halo_number])
 
         elif center == 'zoom':
-            f_dm = self.f.ancestor.dm
+            f_dm = self.snapshot.ancestor.dm
             pynbody.analysis.halo.center(f_dm[f_dm['mass'] < 1.01 * f_dm['mass'].min()])
         elif center == 'all':
-            pynbody.analysis.halo.center(self.f)
+            pynbody.analysis.halo.center(self.snapshot)
         elif center == 'none':
             pass
         else:
@@ -88,34 +90,34 @@ class PynbodyDataLoader(AbstractDataLoader):
     def _perform_smoothing(self):
         try:
             logger.info("Looking for cached smoothing/density data...")
-            smooth = pickle.load(open('topsy-smooth.pkl', 'rb'))
-            if len(smooth) == len(self.f):
-                self.f['smooth'] = smooth
+            smooth = pickle.load(open(self.filename+'-topsy-smooth.pkl', 'rb'))
+            if len(smooth) == len(self.snapshot):
+                self.snapshot['smooth'] = smooth
             else:
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
 
-            rho = pickle.load(open('topsy-rho.pkl', 'rb'))
-            if len(rho) == len(self.f):
-                self.f['rho'] = rho
+            rho = pickle.load(open(self.filename+'topsy-rho.pkl', 'rb'))
+            if len(rho) == len(self.snapshot):
+                self.snapshot['rho'] = rho
             else:
                 raise ValueError("Incorrect number of particles in cached density data")
         except:
             logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(self.f['smooth'], open('topsy-smooth.pkl', 'wb'))
-            pickle.dump(self.f['rho'], open('topsy-rho.pkl', 'wb'))
+            pickle.dump(self.snapshot['smooth'], open(self.filename+'topsy-smooth.pkl', 'wb'))
+            pickle.dump(self.snapshot['rho'], open(self.filename+'topsy-rho.pkl', 'wb'))
 
     def get_positions(self):
-        return self.f['pos'].astype(np.float32)[self.random_order]
+        return self.snapshot['pos'].astype(np.float32)
 
     def get_smooth(self):
-        return self.f['smooth'].astype(np.float32)[self.random_order]
+        return self.snapshot['smooth'].astype(np.float32)
 
     def get_mass(self):
-        return self.f['mass'].astype(np.float32)[self.random_order]
+        return self.snapshot['mass'].astype(np.float32)
 
     def __len__(self):
-        return len(self.f)
+        return len(self.snapshot)
 
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = int(5e6)):

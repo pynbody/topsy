@@ -36,10 +36,10 @@ class SPHAccumulationOverlay(overlay.Overlay):
 class MultiresolutionSPH:
     """A drop-in replacement for the SPH class, which renders to multiple resolutions and then combines them."""
 
-    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture, max_pixels=10.0):
+    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture, max_pixels=40.0):
         self._resolution_final = render_texture.width
         assert render_texture.width == render_texture.height
-        self._pixel_scaling_factors = [1]
+        self._pixel_scaling_factors = [1,4,16]
         self._resolutions = [self._resolution_final // factor for factor in self._pixel_scaling_factors]
         self._textures = [render_texture]
         for i,r in enumerate(self._resolutions[1:],1):

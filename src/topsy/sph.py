@@ -21,7 +21,7 @@ class SPH:
         self._setup_kernel_texture()
         self._setup_render_pipeline()
 
-        self.scale = 1.0
+        self.scale = 100.0
         self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
         self.downsample_factor = 1 # number of particles to increment

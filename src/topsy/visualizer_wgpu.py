@@ -99,8 +99,7 @@ class Visualizer:
 
     def draw(self):
         start = time.time()
-        command_encoder = self.device.create_command_encoder()
-
+        command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder()
         self._sph.encode_render_pass(command_encoder)
 
         if not self.vmin_vmax_is_set:
@@ -119,6 +118,18 @@ class Visualizer:
         self._scalebar.encode_render_pass(command_encoder)
 
         self.device.queue.submit([command_encoder.finish()])
+
+        # Now, we want to measure how much time the render has taken so that we can adapt
+        # for the next frame if needed. However, the GPU is asynchronous. In the long term
+        # there should be facilities like callbacks or querysets to help with this, but
+        # right now these don't seem to be implemented. So we need to make something block
+        # until the current queue is complete. The hack here is to do a trivial read
+        # operation
+        dummy_buffer = self.device.create_buffer(
+            size=16,
+            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
+        )
+        self.device.queue.read_buffer(dummy_buffer, 0)
         end = time.time()
 
         self._recent_frame_times.append(end-start)
