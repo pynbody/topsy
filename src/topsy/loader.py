@@ -67,7 +67,7 @@ class PynbodyDataLoader(AbstractDataLoader):
         self._perform_smoothing()
 
         # randomize order to avoid artifacts when downsampling number of particles on display
-        self.random_order = np.random.permutation(len(self.snapshot))
+        self._random_order = np.random.permutation(len(self.snapshot))
 
     def _perform_centering(self, center):
         logger.info("Performing centering...")
@@ -107,13 +107,13 @@ class PynbodyDataLoader(AbstractDataLoader):
             pickle.dump(self.snapshot['rho'], open(self.filename+'-topsy-rho.pkl', 'wb'))
 
     def get_positions(self):
-        return self.snapshot['pos'].astype(np.float32)
+        return self.snapshot['pos'].astype(np.float32)[self._random_order]
 
     def get_smooth(self):
-        return self.snapshot['smooth'].astype(np.float32)
+        return self.snapshot['smooth'].astype(np.float32)[self._random_order]
 
     def get_mass(self):
-        return self.snapshot['mass'].astype(np.float32)
+        return self.snapshot['mass'].astype(np.float32)[self._random_order]
 
     def __len__(self):
         return len(self.snapshot)

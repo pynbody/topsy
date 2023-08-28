@@ -208,10 +208,16 @@ class SPH:
             ]
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
-        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
-        sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
+
+        num_particles_to_render = len(self._visualizer.data_loader)//self.downsample_factor
+        start_particles = num_particles_to_render * self.downsample_offset
+
+        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer(),
+                                          offset=start_particles*16)
+        sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
+                                          offset=start_particles*4)
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
-        sph_render_pass.draw(6, len(self._visualizer.data_loader), 0, 0)
+        sph_render_pass.draw(6, num_particles_to_render, 0, 0)
         sph_render_pass.end()
 
 

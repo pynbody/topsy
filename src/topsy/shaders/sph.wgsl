@@ -55,13 +55,6 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
 
     var output: VertexOutput;
 
-
-    if(input.instanceIndex%trans_params.downsample_factor!=trans_params.downsample_offset) {
-        output.pos.w = 1.0;
-        output.pos.z = 100.0; // discard the vertex
-        return output;
-    }
-
     var smooth_length: f32 = input.pos.w;
 
     // factor 2: going out to 2h.
