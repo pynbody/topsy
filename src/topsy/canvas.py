@@ -29,7 +29,7 @@ class VisualizerCanvas(WgpuCanvas):
             self.resize(event['width'], event['height'], event['pixel_ratio'])
         else:
             pass
-            # print(event)
+        super().handle_event(event)
 
     def drag(self, dx, dy):
         self._visualizer.rotate(dx, dy)
