@@ -5,6 +5,7 @@ import wgpu
 import pynbody
 
 from .util import load_shader
+from . import config
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ class SPH:
         self._setup_kernel_texture()
         self._setup_render_pipeline()
 
-        self.scale = 100.0
+        self.scale = config.DEFAULT_SCALE
         self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
         self.downsample_factor = 1 # number of particles to increment
@@ -114,7 +115,7 @@ class SPH:
                             "attributes": [
                                 {
                                     "format": wgpu.VertexFormat.float32,
-                                    "offset": 16,
+                                    "offset": 0,
                                     "shader_location": 1,
                                 }
                             ]
@@ -150,6 +151,9 @@ class SPH:
                 }
             )
 
+    def _get_mass_scale(self):
+        return getattr(self, "mass_scale", np.float32(self.downsample_factor))
+
     def _update_transform_buffer(self):
         # self._transform is the transformation around the origin (fine for opengl)
         # but in webgpu, the clip space in the z direction is [0,1]
@@ -172,10 +176,12 @@ class SPH:
                                   ("min_max_size", np.float32, (2,)),
                                   ("downsample_factor", np.uint32, (1,)),
                                   ("downsample_offset", np.uint32, (1,)),
-                                  ("padding", np.int32, (3,))]
+                                  ("mass_scale", np.float32, (1,)),
+                                  ("padding", np.int32, (2,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
+        transform_params["mass_scale"] = self._get_mass_scale()
 
         resolution = self._render_texture.width
         assert resolution == self._render_texture.height

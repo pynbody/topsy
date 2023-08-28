@@ -68,7 +68,6 @@ class PynbodyDataLoader(AbstractDataLoader):
 
         # randomize order to avoid artifacts when downsampling number of particles on display
         self.random_order = np.random.permutation(len(self.snapshot))
-        print(self.random_order)
 
     def _perform_centering(self, center):
         logger.info("Performing centering...")
@@ -97,15 +96,15 @@ class PynbodyDataLoader(AbstractDataLoader):
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
 
-            rho = pickle.load(open(self.filename+'topsy-rho.pkl', 'rb'))
+            rho = pickle.load(open(self.filename+'-topsy-rho.pkl', 'rb'))
             if len(rho) == len(self.snapshot):
                 self.snapshot['rho'] = rho
             else:
                 raise ValueError("Incorrect number of particles in cached density data")
         except:
             logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(self.snapshot['smooth'], open(self.filename+'topsy-smooth.pkl', 'wb'))
-            pickle.dump(self.snapshot['rho'], open(self.filename+'topsy-rho.pkl', 'wb'))
+            pickle.dump(self.snapshot['smooth'], open(self.filename+'-topsy-smooth.pkl', 'wb'))
+            pickle.dump(self.snapshot['rho'], open(self.filename+'-topsy-rho.pkl', 'wb'))
 
     def get_positions(self):
         return self.snapshot['pos'].astype(np.float32)

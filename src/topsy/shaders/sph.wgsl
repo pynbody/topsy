@@ -4,7 +4,8 @@ struct TransformParams {
     clipspace_size_min: f32,
     clipspace_size_max: f32,
     downsample_factor: u32,
-    downsample_offset: u32
+    downsample_offset: u32,
+    mass_scale: f32
 };
 
 @group(0) @binding(0)
@@ -78,7 +79,7 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.pos = (trans_params.transform * output.pos);
     output.pos += vec4<f32>(clipspace_size*posOffset[input.vertexIndex],0.0,0.0);
     output.texcoord = texCoords[input.vertexIndex];
-    output.weight = input.mass/(smooth_length*smooth_length);
+    output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);
 
     return output;
 }

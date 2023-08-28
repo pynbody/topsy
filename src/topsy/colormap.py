@@ -209,9 +209,6 @@ class Colormap:
             self.vmin, self.vmax = 0.0, 1.0
 
         self._update_vmin_vmax_buffer()
-        # self.logMapper['vmin'] = self.vmin
-        # self.logMapper['vmax'] = self.vmax
-        # self.update_matplotlib_colorbar_texture()
 
 
     def _update_vmin_vmax_buffer(self):

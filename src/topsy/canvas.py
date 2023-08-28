@@ -40,6 +40,8 @@ class VisualizerCanvas(WgpuCanvas):
         elif key=='r':
             self._visualizer.vmin_vmax_is_set = False
             self._visualizer.invalidate()
+        elif key=='h':
+            self._visualizer.reset_view()
 
     def mouse_wheel(self, delta_x, delta_y):
         self._visualizer.scale*=np.exp(delta_y/1000)
