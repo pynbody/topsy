@@ -9,7 +9,7 @@ from . import config
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer_wgpu import Visualizer
+    from .visualizer import Visualizer
 
 class SPH:
     def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture):

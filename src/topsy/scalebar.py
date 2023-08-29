@@ -8,7 +8,7 @@ from . import overlay
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer_wgpu import Visualizer
+    from .visualizer import Visualizer
 
 class BarOverlay(overlay.Overlay):
     """Overlay that implements a bar."""

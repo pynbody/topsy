@@ -6,7 +6,7 @@ from wgpu.gui.auto import WgpuCanvas
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer_wgpu import Visualizer
+    from .visualizer import Visualizer
 
 class VisualizerCanvas(WgpuCanvas):
     def __init__(self, *args, **kwargs):
