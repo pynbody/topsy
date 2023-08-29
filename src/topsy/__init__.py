@@ -7,7 +7,7 @@ import sys
 import argparse
 import matplotlib
 
-from . import config, visualizer_wgpu, loader
+from . import config, visualizer, loader
 
 matplotlib.use("Agg")
 
@@ -44,6 +44,6 @@ def main():
     setup_logging()
     args = parse_args()
 
-    vis = visualizer_wgpu.Visualizer(data_loader_class=loader.PynbodyDataLoader,
+    vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
                                      data_loader_args=(args.filename, args.center, args.particle))
     vis.run()

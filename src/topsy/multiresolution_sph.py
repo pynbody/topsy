@@ -10,7 +10,7 @@ logger = getLogger(__name__)
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer_wgpu import Visualizer
+    from .visualizer import Visualizer
 
 class SPHAccumulationOverlay(overlay.Overlay):
     _blending = (

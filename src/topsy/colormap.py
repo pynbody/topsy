@@ -11,7 +11,7 @@ from .util import load_shader
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer_wgpu import Visualizer
+    from .visualizer import Visualizer
 
 
 logger = logging.getLogger(__name__)

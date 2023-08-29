@@ -1,478 +1,203 @@
-import moderngl_window as mglw
-import moderngl
-import numpy as np
-import pynbody
-import matplotlib
-import logging
-import pickle
-import OpenGL.GL
+from __future__ import annotations
 
-from . import config, multiresolution_geometry, scalebar
+import logging
+import numpy as np
+import time
+import wgpu
+import wgpu.backends.rs # noqa: F401, Select Rust backend
+
+from . import config
+from . import canvas
+from . import colormap
+from . import multiresolution_sph, sph
+from . import colorbar
+from . import text
+from . import scalebar
+from . import loader
+from . import util
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def get_colormap_texture(name, context, num_points=config.COLORMAP_NUM_SAMPLES):
-    cmap = matplotlib.colormaps[name]
-    rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
-    return context.texture((1000, 1), 4, rgba, dtype='f4')
 
-def load_shader(name):
-    from importlib import resources
-    with open(resources.files("topsy.shaders") / name, "r") as f:
-        return f.read()
-
-class Visualizer(mglw.WindowConfig, scalebar.Scalebar):
-    gl_version = (4, 1)
-    aspect_ratio = None
-    title = "topsy"
-
+class Visualizer:
     colorbar_label = r"$\mathrm{log}_{10}$ density / $M_{\odot} / \mathrm{kpc}^2$"
     colormap_name = config.DEFAULT_COLORMAP
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
-    clear_color = None
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    show_status = True
+    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = ()):
 
-        self.particleRenderer = self.ctx.program(
-            vertex_shader=load_shader("sph_vertex_shader.glsl"),
-            fragment_shader=load_shader("sph_fragment_shader.glsl"),
-            geometry_shader=load_shader("sph_geometry_shader.glsl")
+
+        self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
+        self.adapter: wgpu.GPUAdapter = wgpu.request_adapter(canvas=self.canvas, power_preference="high-performance")
+        self.device: wgpu.GPUDevice = self.adapter.request_device()
+        self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
+        self.canvas_format = self.context.get_preferred_format(self.adapter)
+        self._n_sph_channels = 1
+        self._recent_frame_times = []
+        if self.canvas_format.endswith("-srgb"):
+            # matplotlib colours aren't srgb. It might be better to convert
+            # but for now, just stop the canvas being srgb
+            self.canvas_format = self.canvas_format[:-5]
+
+        self.context.configure(device=self.device, format=self.canvas_format)
+
+        self._render_resolution = 1024
+
+        self.render_texture: wgpu.GPUTexture = self.device.create_texture(
+            size=(self._render_resolution, self._render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                  wgpu.TextureUsage.TEXTURE_BINDING |
+                  wgpu.TextureUsage.COPY_SRC,
+            format=wgpu.TextureFormat.r32float,
+            label="sph_render_texture",
         )
 
-        self.render_resolution = (self.args['resolution'], self.args['resolution'])
+        self.data_loader = data_loader_class(self.device, *data_loader_args)
 
-        self._mrg = multiresolution_geometry.MultiresolutionGeometry(self.render_resolution[0])
+        self._colormap = colormap.Colormap(self)
+        self._sph = sph.SPH(self, self.render_texture)
+        #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
-        self.texture_size = (int(np.ceil(self.render_resolution[0]*1.5)), self.render_resolution[0])
+        self._last_status_update = 0.0
 
-        self.render_texture = self.ctx.texture(self.texture_size, 4, dtype='f4')
+        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, self.colorbar_label)
+        self._scalebar = scalebar.ScalebarOverlay(self)
+        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
+        self._display_fullres_render_status = False # when True, customises info text to refer to full-res render
 
-        self.colormap_texture = get_colormap_texture(self.args['colormap'], self.ctx)
+        self._render_timer = util.TimeGpuOperation(self.device)
 
-        self.render_buffer = self.ctx.framebuffer(color_attachments=[self.render_texture])
-
-        self._setup_sph_rendering()
-
-
-
-        self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
-        self.ctx.enable(moderngl.BLEND)
-
-
-        self.logMapper = self.ctx.program(vertex_shader=load_shader("colormap_vertex_shader.glsl"),
-                                          fragment_shader=load_shader("colormap_fragment_shader.glsl"))
-
-        self.accumulator = self.ctx.program(vertex_shader=load_shader("drawtexture_vertex_shader.glsl"),
-                                            fragment_shader=load_shader("drawtexture_fragment_shader.glsl"))
-
-        self.textureRender = self.ctx.program(vertex_shader=load_shader("drawtexture_vertex_shader.glsl"),
-                                              fragment_shader=load_shader("drawtexture_fragment_shader.glsl"))
-
-        self.scalebarRender = self.ctx.program(vertex_shader=load_shader("scalebar_vertex_shader.glsl"),
-                                               fragment_shader=load_shader("scalebar_fragment_shader.glsl"),
-                                               geometry_shader=load_shader("scalebar_geometry_shader.glsl"))
-
-
-
-        self.logMapper['inputImage'] = 0
-        self.logMapper['inputColorMap'] = 1
-
-
-
-
-        self.log_mapper_vertex_array = self.ctx.simple_vertex_array(
-            self.logMapper,
-            self.triangle_buffer(-1,-1,2,2),
-            'in_vert'
-        )
-
-        # the scalebar vertex array is just a single point; it will be turned into a line of the right length by the
-        # geometry shader
-        self.scalebar_vertex_array = self.ctx.vertex_array(
-            self.scalebarRender,
-            [
-                (self.ctx.buffer(np.array([
-                    -0.9,-0.9], dtype=np.float32)),
-                    '2f', 'in_pos')
-            ]
-        )
-
-
-        self.textureRender['inputImage'] = 3
-
-
-        self.accumulator_vertex_array = self.ctx.vertex_array(
-            self.accumulator,
-            [
-                (self.ctx.buffer(np.array([
-                    self._mrg.corners_to_triangles(self._mrg.get_texture_corners_for_level(n))
-                    for n in range(1,5)], dtype=np.float32)),
-                 '2f', 'from_position'),
-                (self.ctx.buffer(np.array(
-                    [self._mrg.corners_to_triangles(self._mrg.get_clipspace_corners()) for n in range(1,5)]
-                    , dtype=np.float32)),
-                 '2f', 'to_position'),
-            ]
-        )
-
-        self.accumulator['inputImage'] = 0
-
-
-        self.render_texture.use(0)
-        self.colormap_texture.use(1)
-
-        self.setup_kernel_texture()
-        self.update_scalebar_length()
-
-    def _setup_sph_rendering(self):
-
-        self.reset_view()
-
-        self.downsample_factor = 1
-        self.particleRenderer['scale'] = self.scale
-        self.particleRenderer['outputResolution'] = self.render_resolution[0]
-        self.particleRenderer['downsampleFactor'] = self.downsample_factor
-        self.particleRenderer['smoothScale'] = 1.0
-        self._load_data_into_buffers()
-        self.vertex_array = self.ctx.vertex_array(
-            self.particleRenderer, [(self.points, '3f', 'in_pos'),
-                                    (self.smooth, '1f', 'in_smooth'),
-                                    (self.mass, '1f', 'in_mass')])
         self.vmin_vmax_is_set = False
-        self.last_render = 0
+
         self.invalidate()
 
+
+
+    def invalidate(self):
+        self.canvas.request_draw(self.draw)
+
+    def rotate(self, dx, dy):
+        dx_rotation_matrix = self._x_rotation_matrix(dx*0.01)
+        dy_rotation_matrix = self._y_rotation_matrix(dy*0.01)
+        self._sph.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self._sph.rotation_matrix
+        self.invalidate()
 
     def reset_view(self):
-        self.model_matr = np.eye(4)
-        self.scale = 100.0
+        self._sph.rotation_matrix = np.eye(3)
+        self.scale = config.DEFAULT_SCALE
+
+    @property
+    def scale(self):
+        """Return the scalefactor from kpc to viewport coordinates. Viewport will therefore be 2*scale wide."""
+        return self._sph.scale
+    @scale.setter
+    def scale(self, value):
+        self._sph.scale = value
         self.invalidate()
 
-    def setup_final_render_positions(self, width, height):
-        maxdim = max(width, height)
+    @staticmethod
+    def _y_rotation_matrix(angle):
+        return np.array([[1, 0, 0],
+                         [0, np.cos(angle), -np.sin(angle)],
+                         [0, np.sin(angle), np.cos(angle)]])
 
-        self.logMapper['texturePortion'] = [2. / 3 * width / maxdim, height / maxdim]
-        self.logMapper['textureOffset'] = [1. / 3 * (1. - width / maxdim), (1. - height / maxdim) / 2]
+    @staticmethod
+    def _x_rotation_matrix(angle):
+        return np.array([[np.cos(angle), 0, np.sin(angle)],
+                         [0, 1, 0],
+                         [-np.sin(angle), 0, np.cos(angle)]])
 
-        # to see whole result, including mipmap
-        # self.logMapper['texturePortion'] = [1.0, 1.0]
-        # self.logMapper['textureOffset'] = [0.0, 0.0]
-
-        cb_width = 2. * self.colorbar_aspect_ratio * height / width
-        self.colorbar_vertex_array = self.ctx.vertex_array(
-            self.textureRender,
-            [
-                (self.triangle_buffer(0, 1, 1, -1), '2f', 'from_position'),
-                (self.triangle_buffer(1.0 - cb_width, -1,
-                                      cb_width, 2), '2f', 'to_position')
-            ]
-        )
-
-        self._update_scalebar_label_vertex_array()
-
-    def triangle_buffer(self, x0, y0, w, h):
-        return self.ctx.buffer(np.array([
-            [x0, y0],
-            [x0 + w, y0],
-            [x0, y0 + h],
-            [x0, y0 + h],
-            [x0 + w, y0 + h],
-            [x0 + w, y0]
-        ], dtype=np.float32))
-    def _load_data(self):
-        f = pynbody.load(self.args['filename'])
-        f.physical_units()
+    def _check_whether_inactive(self):
+        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.999:
+            self._sph.downsample_factor = 1
+            self._last_lores_draw_time = np.inf
+            self._display_fullres_render_status = True
+            self.invalidate()
 
 
-        logger.info("Performing centering...")
-        if self.args['center'].startswith("halo-"):
-            halo_number = int(self.args['center'][5:])
-            h = f.halos()
-            pynbody.analysis.halo.center(h[halo_number])
-            f = f[pynbody.family.get_family(self.args['particle'])]
-        elif self.args['center']=='zoom':
-            f = f[pynbody.family.get_family(self.args['particle'])]
-            pynbody.analysis.halo.center(f[f['mass']<1.01*f['mass'].min()])
-        elif self.args['center']=='all':
-            pynbody.analysis.halo.center(f)
-            f = f[pynbody.family.get_family(self.args['particle'])]
-        elif self.args['center']=='none':
-            f = f[pynbody.family.get_family(self.args['particle'])]
+
+    def draw(self):
+
+        ce_label = "sph_render"
+        # labelling this is useful for understanding performance in macos instruments
+        if self._sph.downsample_factor>1:
+            ce_label += f"_ds{self._sph.downsample_factor:d}"
         else:
-            raise ValueError("Unknown centering type")
+            ce_label += "_fullres"
 
-        try:
-            logger.info("Looking for cached smoothing/density data...")
-            smooth = pickle.load(open('topsy-smooth.pkl', 'rb'))
-            if len(smooth)==len(f):
-                f['smooth'] = smooth
-            else:
-                raise ValueError("Incorrect number of particles in cached smoothing data")
-            logger.info("...success!")
+        command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+        self._sph.encode_render_pass(command_encoder)
 
-            rho = pickle.load(open('topsy-rho.pkl', 'rb'))
-            if len(rho)==len(f):
-                f['rho'] = rho
-            else:
-                raise ValueError("Incorrect number of particles in cached density data")
-        except:
-            logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(f['smooth'], open('topsy-smooth.pkl', 'wb'))
-            pickle.dump(f['rho'], open('topsy-rho.pkl', 'wb'))
+        with self._render_timer:
+            self.device.queue.submit([command_encoder.finish()])
 
-
-
-
-        # randomize order to avoid artifacts when downsampling number of particles on display
-        random_order = np.random.permutation(len(f))
-
-        return f['pos'].astype(np.float32)[random_order], \
-            f['smooth'].astype(np.float32)[random_order], \
-            f['mass'].astype(np.float32)[random_order]
-
-    def _load_data_into_buffers(self):
-        pos, smooth, mass = self._load_data()
-        self.points = self.ctx.buffer(pos)
-        self.smooth = self.ctx.buffer(smooth)
-        self.mass = self.ctx.buffer(mass)
-
-    def setup_kernel_texture(self, n_samples=128):
-        pynbody_sph_kernel = pynbody.sph.Kernel2D()
-        x, y = np.meshgrid(np.linspace(-2, 2, n_samples), np.linspace(-2, 2, n_samples))
-        distance = np.sqrt(x ** 2 + y ** 2)
-        kernel_im = np.array([pynbody_sph_kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
-
-        # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
-        # It should be normalized such that the integral over the kernel is 1/h^2. We have h=1 here, and the
-        # full width is 4h, so the width of a pixel is dx=4/n_samples. So we need to multiply by dx^2=(n_samples/4)^2.
-        # This results in a correction of a few percent, typically; not huge but not negligible either.
-        #
-        # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
-        kernel_im *= (n_samples/4)**2 / kernel_im.sum()
-
-        self.kernel_texture = self.ctx.texture((n_samples, n_samples), 1, kernel_im.astype(np.float32), dtype='f4')
-        self.kernel_texture.use(2)
-
-        # TODO - need to think about how the mass conservation works (or doesn't!) with the mipmap
-        # probably want to downsample manually in a mass-conserving way for each mipmap level
-        self.kernel_texture.build_mipmaps()
-
-        self.particleRenderer['kernel'] = 2
-
-
-    def render(self, time_now, frametime):
-
-
-        self.particleRenderer['model'].write(self.model_matr.astype(np.float32))
-
-        screenbuffer = self.ctx.fbo
-
-
-        if self.needs_render:
-            query = self.ctx.query(time=True)
-            with query:
-                self.render_buffer.use()
-                self.render_sph()
-                screenbuffer.use()
-
-            time_taken = float(query.elapsed)*1e-9
-
-            if time_taken>0.02 and self.downsample_factor==1:
-                self.downsample_factor = int(np.ceil(time_taken/0.02))
-                self.particleRenderer['downsampleFactor'] = self.downsample_factor
-                logger.info(f"Full res render took {time_taken} seconds; setting interaction downsampling factor to {self.downsample_factor}")
-
-            self.needs_render = False
-            self.last_render = time_now
-
-
-        else:
-            pass
-            #import time
-            #time.sleep(config.INACTIVITY_WAIT)
-
-        self.setup_final_render_positions(self.wnd.width, self.wnd.height)
-        self.display_render_buffer()
-        self.render_colorbar()
-        self.render_scalebar()
+        # in principle, we can often use the same command encoder for the drawing into the final
+        # buffer, but when vmin/vmax needs to be set, we need to render the image first.
+        # So we just always use a new command encoder for the final render. It is unclear whether
+        # this has any performance impact.
 
         if not self.vmin_vmax_is_set:
-            self.set_vmin_vmax()
+            logger.info("Setting vmin/vmax")
+            self._colormap.set_vmin_vmax()
+            self.vmin_vmax_is_set = True
+            self._colorbar.vmin = self._colormap.vmin
+            self._colorbar.vmax = self._colormap.vmax
+            self._colorbar.update()
 
-        if time_now-self.last_render>config.FULL_RESOLUTION_RENDER_AFTER and self.allow_autorender:
-            self.downsample_factor = 1
-            self.particleRenderer['downsampleFactor'] = 1
-            self.particleRenderer['smoothScale'] = 1.0
-            self.needs_render = True
-            self.allow_autorender = False
+        command_encoder = self.device.create_command_encoder(label="render_to_screen")
+        self._colormap.encode_render_pass(command_encoder)
+        self._colorbar.encode_render_pass(command_encoder)
+        self._scalebar.encode_render_pass(command_encoder)
 
+        if self.show_status:
+            self._update_and_display_status(command_encoder)
 
-    def setup_multires_viewport(self):
-        OpenGL.GL.glViewportIndexedf(0, 0, 0, self.render_resolution[0], self.render_resolution[1])
+        self.device.queue.submit([command_encoder.finish()])
 
-        for i in range(0, 5):
-            vp_corners = self._mrg.get_viewport_corners_for_level(i)
-            OpenGL.GL.glViewportIndexedf(i, vp_corners[0][0], vp_corners[0][1],
-                                         vp_corners[2][0] - vp_corners[0][0],
-                                         vp_corners[2][1] - vp_corners[0][1])
-            OpenGL.GL.glScissorIndexed(i, vp_corners[0][0], vp_corners[0][1],
-                                         vp_corners[2][0] - vp_corners[0][0],
-                                         vp_corners[2][1] - vp_corners[0][1])
-
-
-
-
-    def perform_multires_accumulation(self):
-        self.ctx.blend_func = moderngl.ONE, moderngl.ONE
-        self.accumulator_vertex_array.render(moderngl.TRIANGLES)
-
-    def render_colorbar(self):
-        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-        if hasattr(self, 'colorbar_texture'):
-            self.colorbar_texture.use(3)
-            self.colorbar_vertex_array.render(moderngl.TRIANGLES)
-
-    def render_scalebar(self):
-        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-        self.scalebar_vertex_array.render(moderngl.POINTS)
-        if hasattr(self, 'label_texture'):
-            self.label_texture.use(3)
-            self.scalebar_label_vertex_array.render(moderngl.TRIANGLES)
-
-    def set_vmin_vmax(self):
-        vals = np.log10(self.get_sph_result()).ravel()
-        vals = vals[np.isfinite(vals)]
-        if len(vals)>200:
-            self.vmin, self.vmax = np.percentile(vals, [1.0,99.9])
-        else:
-            logger.warning("Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
-            logger.warning("Press 'r' in the window to try again")
-            self.vmin, self.vmax = 0.0, 1.0
-        self.logMapper['vmin'] = self.vmin
-        self.logMapper['vmax'] = self.vmax
-        self.update_matplotlib_colorbar_texture()
-        self.vmin_vmax_is_set = True
+        if self._sph.downsample_factor>1:
+            self._last_lores_draw_time = time.time()
+            wgpu.gui.auto.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+        elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
+            # this will affect the NEXT frame, not this one!
+            self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
 
+    def _update_and_display_status(self, command_encoder):
+        now = time.time()
+        if now - self._last_status_update > 0.2:
+            self._last_status_update = now
+            self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
+            if self._sph.downsample_factor > 1:
+                self._status.text += f", downsample={self._sph.downsample_factor:d}"
+            if self._display_fullres_render_status:
+                self._status.text = f"Full-res render took {self._render_timer.last_duration:.2f} s"
+                self._display_fullres_render_status = False
+            self._status.update()
 
+        self._status.encode_render_pass(command_encoder)
 
-    def update_matplotlib_colorbar_texture(self):
-        """Use matplotlib to get a colorbar, including labels based on vmin/vmax, and return it as a texture"""
-        import matplotlib.pyplot as plt
-        import matplotlib.colors as colors
-        import matplotlib.cm as cmx
-
-        fig = plt.figure(figsize=(10*self.colorbar_aspect_ratio, 10), dpi=200,
-                         facecolor=(1.0,1.0,1.0,0.5))
-
-        cmap = matplotlib.colormaps[self.args['colormap']]
-        cNorm = colors.Normalize(vmin=self.vmin, vmax=self.vmax)
-        cb1 = matplotlib.colorbar.ColorbarBase(fig.add_axes([0.05, 0.05, 0.3, 0.9]),
-                                                  cmap=cmap,norm=cNorm, orientation='vertical')
-        cb1.set_label(self.colorbar_label)
-
-
-
-        fig.canvas.draw()
-
-
-        import PIL.Image
-        img = PIL.Image.frombytes('RGBA', fig.canvas.get_width_height(physical=True),
-                                  fig.canvas.buffer_rgba())
-        img.save("colorbar2.png")
-
-
-        texture = self.ctx.texture(fig.canvas.get_width_height(physical=True), 4,
-                                   fig.canvas.buffer_rgba(), dtype='f1')
-        self.colorbar_texture = texture
-        self.colorbar_texture.use(3)
-        self.colorbar_texture.filter = moderngl.LINEAR, moderngl.LINEAR
-
-        plt.savefig("colorbar.png")
-        plt.close(fig)
-
-
-    def display_render_buffer(self):
-        self.ctx.clear(1.0, 0.0, 0.0, 1.0)
-        # self.vertex_array.render(moderngl.POINTS)
-        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-        self.log_mapper_vertex_array.render(moderngl.TRIANGLES)
-
-    def render_sph(self):
-        self.setup_multires_viewport()
-        self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE
-        OpenGL.GL.glDisable(OpenGL.GL.GL_SCISSOR_TEST)
-        self.ctx.clear(0.0, 0.0, 0.0, 1.0)
-        OpenGL.GL.glEnable(OpenGL.GL.GL_SCISSOR_TEST)
-        self.vertex_array.render(moderngl.POINTS)
-        OpenGL.GL.glFinish() # seems needed e.g. on radeon pro vega, otherwise accumulation composites garbage
-        self.perform_multires_accumulation()
-
-    def get_sph_result(self):
-        mybuffer = np.empty(self.render_resolution, dtype=np.float32)
-        self.render_buffer.read_into(mybuffer, viewport=self.render_resolution,
-                                     components=1, dtype='f4')
-        return mybuffer[::-1]
+    def get_rendered_image(self) -> np.ndarray:
+        im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
+                                            {'bytes_per_row':4*self._render_resolution},
+                                            (self._render_resolution, self._render_resolution, 1))
+        im = np.frombuffer(im, dtype=np.float32).reshape((self._render_resolution, self._render_resolution))
+        return im
 
     def save(self):
-        mybuffer = self.get_sph_result()
+        logger.info("Saving to pdf")
+        mybuffer = self.get_rendered_image()
         import pylab as p
         fig = p.figure()
         p.clf()
         p.set_cmap(self.colormap_name)
         extent = np.array([-1., 1., -1., 1.])*self.scale
-        p.imshow(np.log10(mybuffer), vmin=self.vmin,vmax=self.vmax, extent=extent)
+        p.imshow(np.log10(mybuffer), vmin=self._colormap.vmin, vmax=self._colormap.vmax, extent=extent)
         p.xlabel("$x$/kpc")
         p.colorbar().set_label(self.colorbar_label)
         p.savefig("output.pdf")
         p.close(fig)
 
-        # alternatively, save the framebuffer directly:
-        # import PIL.Image
-        # img = PIL.Image.frombytes('RGB', self.ctx.fbo.size,
-        #                           self.ctx.fbo.read(), 'raw', 'RGB', 0, -1)
-        # img.save("output2.png")
-
-
-    def mouse_drag_event(self, x, y, dx, dy):
-        dx_rotation_matrix = np.array(self._x_rotation_matrix(dx))
-        dy_rotation_matrix = np.array(self._y_rotation_matrix(dy))
-        self.model_matr = self.model_matr @ dx_rotation_matrix @ dy_rotation_matrix
-        super().mouse_drag_event(x, y, dx, dy)
-        self.invalidate()
-
-    def _y_rotation_matrix(self, angle):
-        return np.array([[1, 0, 0, 0],
-                         [0, np.cos(angle * 0.01), -np.sin(angle * 0.01), 0],
-                         [0, np.sin(angle * 0.01), np.cos(angle * 0.01), 0],
-                         [0, 0, 0, 1]])
-
-    def _x_rotation_matrix(self, angle):
-        return np.array([[np.cos(angle * 0.01), 0, np.sin(angle * 0.01), 0],
-                         [0, 1, 0, 0],
-                         [-np.sin(angle * 0.01), 0, np.cos(angle * 0.01), 0],
-                         [0, 0, 0, 1]])
-
-    def mouse_scroll_event(self, x_offset: float, y_offset: float):
-        self.scale*=np.exp(y_offset*0.05)
-        self.particleRenderer['scale'] = self.scale
-        self.update_scalebar_length()
-        self.invalidate()
-
-    def key_event(self, key, action, modifiers):
-        if chr(key)=="r":
-            self.set_vmin_vmax()
-        if chr(key)=="s":
-            self.save()
-        if chr(key)=="h":
-            self.reset_view()
-
-    def invalidate(self):
-        self.needs_render = True
-        self.allow_autorender = True
-
-
-
-
+    def run(self):
+        wgpu.gui.auto.run()
