@@ -1,14 +1,15 @@
 """topsy - An astrophysics simulation visualization package based on OpenGL, using pynbody for reading data"""
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 import logging
 import sys
 import argparse
+import matplotlib
 
-from . import config, visualizer
+from . import config, visualizer_wgpu, loader
 
-
+matplotlib.use("Agg")
 
 
 def parse_args():
@@ -27,15 +28,7 @@ def parse_args():
     argparser.add_argument("--center", "-c", help="Specify the centering method: 'halo-<N>', 'all', 'zoom' or 'none'",
                            default="halo-1", type=str)
 
-    args = argparser.parse_args()
-    sys.argv = sys.argv[:1] # to prevent confusing moderngl-window
-
-    # the following is unbelievably ugly, but needed to workaround
-    # inflexibility in moderngl-window's instantiation of the visualizer
-    #
-    # in the longer term, we should use a different windowing framework
-    visualizer.Visualizer.args = vars(args)
-    print(visualizer.Visualizer.args)
+    return argparser.parse_args()
 
 def setup_logging():
     logger = logging.getLogger(__name__)
@@ -49,5 +42,8 @@ def setup_logging():
 
 def main():
     setup_logging()
-    parse_args()
-    visualizer.Visualizer.run()
+    args = parse_args()
+
+    vis = visualizer_wgpu.Visualizer(data_loader_class=loader.PynbodyDataLoader,
+                                     data_loader_args=(args.filename, args.center, args.particle))
+    vis.run()
