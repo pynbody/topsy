@@ -15,6 +15,7 @@ var<uniform> trans_params: TransformParams;
 struct VertexInput {
    @location(0) pos: vec4<f32>, // NB w is used for the smoothing length
    @location(1) mass: f32,
+   @location(2) quantity: f32,
    @builtin(vertex_index) vertexIndex: u32,
    @builtin(instance_index) instanceIndex: u32
 }
@@ -22,12 +23,13 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) pos: vec4<f32>,
     @location(0) texcoord: vec2<f32>,
-    @location(1) weight: f32
+    @location(1) weight: f32,
+    @location(2) quantity: f32
 }
 
 
 struct FragmentOutput {
-    @location(0) color: vec4<f32>
+    @location(0) density: vec2<f32>
 }
 
 
@@ -73,7 +75,7 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.pos += vec4<f32>(clipspace_size*posOffset[input.vertexIndex],0.0,0.0);
     output.texcoord = texCoords[input.vertexIndex];
     output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);
-
+    output.quantity = input.quantity;
     return output;
 }
 
@@ -89,6 +91,6 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
 
     var value = input.weight*textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
 
-    output.color = vec4<f32>(value, value, value, 1.0);
+    output.density = vec2<f32>(value, value*input.quantity);
     return output;
 }

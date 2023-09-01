@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import numpy as np
+import re
 import wgpu
 import matplotlib
 
@@ -21,20 +22,35 @@ logger.setLevel(logging.INFO)
 
 class Colormap:
 
-    def __init__(self, visualizer: Visualizer):
+    def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._visualizer = visualizer
         self._device = visualizer.device
         self._colormap_name = visualizer.colormap_name
         self._input_texture = visualizer.render_texture
         self._output_format = visualizer.canvas_format
+        self._weighted_average = weighted_average
 
         self.vmin, self.vmax = 0,1
+        self.log_scale = True
+        # all three of these will be reset by set_vmin_vmax
 
         self._setup_texture()
         self._setup_shader_module()
         self._setup_render_pipeline()
     def _setup_shader_module(self):
-        self._shader = self._device.create_shader_module(code=load_shader("colormap.wgsl"), label="colormap")
+        shader_code = load_shader("colormap.wgsl")
+        # hack because at present we can't use const values in the shader to compile
+        mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
+        active_flags = [mode]
+
+        if self.log_scale:
+            active_flags.append("LOG_SCALE")
+
+        for f in active_flags:
+            shader_code = re.sub(f"^.*\[\[{f}]](.*)$", r"\1", shader_code, flags=re.MULTILINE)
+        shader_code = re.sub(r"^.*\[\[[A-Z_]+]].*$", "", shader_code, flags=re.MULTILINE)
+
+        self._shader = self._device.create_shader_module(code=shader_code, label="colormap")
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
         cmap = matplotlib.colormaps[self._colormap_name]
@@ -198,7 +214,21 @@ class Colormap:
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
-        vals = np.log10(self._visualizer.get_rendered_image()).ravel()
+        vals = self._visualizer.get_rendered_image().ravel()
+
+        previous_log_scale = self.log_scale
+        if (vals<0).any():
+            self.log_scale = False
+        else:
+            self.log_scale = True
+
+        if previous_log_scale != self.log_scale:
+            self._setup_shader_module()
+            self._setup_render_pipeline()
+
+        if self.log_scale:
+            vals = np.log10(vals)
+
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
             self.vmin, self.vmax = np.percentile(vals, [1.0, 99.9])

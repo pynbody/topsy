@@ -53,15 +53,24 @@ var colormap_sampler: sampler;
 var<uniform> colormap_params: ColormapParams;
 
 
-
 @fragment
 fn fragment_main(input: VertexOutput) -> FragmentOutput {
     var LN_10 = 2.30258509;
 
     var output: FragmentOutput;
 
-    var value = textureSample(image_texture, image_sampler, input.texcoord).r;
-    value = log(value)/LN_10; // log10
+    var values = textureSample(image_texture, image_sampler, input.texcoord);
+
+    var value : f32;
+
+    // Note the following lines are selected by python before compile time
+    // ultimately, this should be possible within wgsl itself by using a const, but this doesn't
+    // seem to be supported at present
+
+    [[WEIGHTED_MEAN]] value = values.g/values.r;
+    [[DENSITY]] value = values.r;
+    [[LOG_SCALE]] value = log(value)/LN_10;
+
     value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
     output.color = textureSample(colormap_texture, colormap_sampler, value);
 

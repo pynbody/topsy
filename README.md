@@ -1,10 +1,11 @@
 topsy
-===========
+=====
 
 This package visualises simulations, and is an add-on to the [pynbody](https://github.com/pynbody/pynbody) analysis package.
 Its name nods to the [TIPSY](https://github.com/N-BodyShop/tipsy) project.
+It is built using [wgpu](https://wgpu.rs), which is a future-facing GPU standard (with thanks to the [python wgpu bindings](https://wgpu-py.readthedocs.io/en/stable/guide.html)).
 
-At the moment, it's a bit of a toy project, but it already works quite well with zoom 
+At the moment, `topsy` is a bit of a toy project, but it already works quite well with zoom 
 (or low resolution) simulations. The future development path will depend on the level
 of interest from the community.
 
@@ -83,7 +84,9 @@ tell it what to center on using the `-c` flag, to which valid arguments are:
 
 By default, it will show you dark matter particles. To change this pass `-p gas` to show gas particles or `-p star` for stars.
 
-By default, it uses matplotlib's `twilight_shifted` colormap. To change this pass, for example, `-m viridis`, or the name
+If your particles have other quantities defined on them (such as `temp` for gas particles), you can view the density-weighted average quantity by passing `-q temp`. 
+
+By default, topsy uses matplotlib's `twilight_shifted` colormap. To change this pass, for example, `-m viridis`, or the name
 of any other [matplotlib colormap](https://matplotlib.org/stable/tutorials/colors/colormaps.html#sequential).
 
 Controls in the main window
@@ -98,3 +101,28 @@ python to get this to work). Then you can use the following controls:
 * To rescale the colours to an appropriate range for the current view, press `r`(ange)
 * To return the view to the original orientation and zoom, press `h`(ome)
 * To save a snapshot of the current image as a pdf press `s`(ave)
+
+Using from jupyter
+------------------
+
+Thanks to [jupyter-rfb](https://jupyter-rfb.readthedocs.io/en/stable/), it is possible to use `topsy` within a jupyter notebook. This requires a little more
+knowledge than the command line version, but is still fairly straight-forward if
+you are familiar with `pynbody`. To open a topsy view within your jupyter notebook, 
+try
+
+```python
+import pynbody
+import topsy 
+
+f = pynbody.load("/path/to/file")
+f.physical_units()
+h = f.halos()
+pynbody.analysis.halo.center(h[1])
+
+vis = topsy.topsy(f.dm)
+vis.canvas
+```
+
+This loads your data into `f`, performs some centering, creates the `topsy` viewer and then the final line (`vis.canvas`) instructs `jupyter` to bring up the interactive widget. 
+
+Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Additionally, you can manipulate things on the fly. For example, you can type `vis.quantity_name = 'temp'` to immediately switch to viewing temperature (compare with the `-q` flag above). 

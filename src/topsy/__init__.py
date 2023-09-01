@@ -6,6 +6,8 @@ import logging
 import sys
 import argparse
 import matplotlib
+import pynbody
+import wgpu.gui.jupyter
 
 from . import config, visualizer, loader
 
@@ -27,6 +29,8 @@ def parse_args():
                             default="dm", type=str)
     argparser.add_argument("--center", "-c", help="Specify the centering method: 'halo-<N>', 'all', 'zoom' or 'none'",
                            default="halo-1", type=str)
+    argparser.add_argument("--quantity", "-q", help="Specify a quantity to render instead of density",
+                           default=None, type=str)
 
     return argparser.parse_args()
 
@@ -45,5 +49,16 @@ def main():
     args = parse_args()
 
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
-                                     data_loader_args=(args.filename, args.center, args.particle))
+                                data_loader_args=(args.filename, args.center,
+                                                  args.particle))
+    vis.quantity_name = args.quantity
     vis.run()
+
+def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None):
+    vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
+                                data_loader_args=(snapshot,))
+    vis.quantity_name = quantity
+    if isinstance(vis.canvas, wgpu.gui.jupyter.JupyterWgpuCanvas):
+        return vis
+    else:
+        vis.run()

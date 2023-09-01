@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from .visualizer import Visualizer
 
 class SPH:
+    render_format = wgpu.TextureFormat.r32float
+
     def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture):
         self._visualizer = visualizer
         self._render_texture = render_texture
@@ -119,6 +121,17 @@ class SPH:
                                     "shader_location": 1,
                                 }
                             ]
+                        },
+                        {
+                            "array_stride": 4,
+                            "step_mode": wgpu.VertexStepMode.instance,
+                            "attributes": [
+                                {
+                                    "format": wgpu.VertexFormat.float32,
+                                    "offset": 0,
+                                    "shader_location": 2,
+                                }
+                            ]
                         }
 
                     ]
@@ -133,7 +146,7 @@ class SPH:
                     "entry_point": "fragment_main",
                     "targets": [
                         {
-                            "format": wgpu.TextureFormat.r32float,
+                            "format": wgpu.TextureFormat.rg32float,
                             "blend": {
                                 "color": {
                                     "src_factor": wgpu.BlendFactor.one,
@@ -215,6 +228,8 @@ class SPH:
         sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer(),
                                           offset=start_particles*16)
         sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
+                                          offset=start_particles*4)
+        sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer(),
                                           offset=start_particles*4)
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
         sph_render_pass.draw(6, num_particles_to_render, 0, 0)

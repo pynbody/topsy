@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 class AbstractDataLoader(ABC):
     def __init__(self, device: wgpu.GPUDevice):
         self._device = device
+        self.quantity_name = None
+        self._quantity_buffer_is_for_name = None
     @abstractmethod
     def __len__(self):
         pass
@@ -25,6 +27,10 @@ class AbstractDataLoader(ABC):
 
     @abstractmethod
     def get_mass(self):
+        pass
+
+    @abstractmethod
+    def get_named_quantity(self, name):
         pass
 
     def get_pos_smooth(self):
@@ -51,23 +57,69 @@ class AbstractDataLoader(ABC):
                 usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
         return self._mass_buffer
 
+    def get_quantity_buffer(self):
+        if self.quantity_name is None:
+            return self.get_mass_buffer()
+        elif self._quantity_buffer_is_for_name != self.quantity_name:
+            logger.info(f"Creating {self.quantity_name} buffer")
+            data = self.get_named_quantity(self.quantity_name)
+            self._named_quantity_buffer = self._device.create_buffer_with_data(
+                data=data,
+                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
+            self._quantity_buffer_is_for_name = self.quantity_name
+        return self._named_quantity_buffer
 
-class PynbodyDataLoader(AbstractDataLoader):
-    def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str):
+
+class PynbodyDataInMemory(AbstractDataLoader):
+    """Base class for data loaders that use pynbody."""
+
+    def __init__(self, device: wgpu.GPUDevice, snapshot: pynbody.snapshot.SimSnap):
         super().__init__(device)
 
-        logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
-        self.snapshot = pynbody.load(filename)
-        self.snapshot.physical_units()
-        self.filename = filename
-
-        self.snapshot = self.snapshot[pynbody.family.get_family(particle)]
-
-        self._perform_centering(center)
-        self._perform_smoothing()
+        self.snapshot = snapshot
 
         # randomize order to avoid artifacts when downsampling number of particles on display
         self._random_order = np.random.permutation(len(self.snapshot))
+
+    def get_positions(self):
+        return self.snapshot['pos'].astype(np.float32)[self._random_order]
+
+    def get_smooth(self):
+        return self.snapshot['smooth'].astype(np.float32)[self._random_order]
+
+    def get_mass(self):
+        return self.snapshot['mass'].astype(np.float32)[self._random_order]
+
+    def get_named_quantity(self, name):
+        return self.snapshot[name].astype(np.float32)[self._random_order]
+
+    def get_quantity_label(self):
+        if self.quantity_name is None:
+            return r"density / $M_{\odot} / \mathrm{kpc}^2$"
+        else:
+            lunit = self.snapshot[self.quantity_name].units.latex()
+            if lunit != "":
+                lunit = "$/" + lunit + "$"
+            return self.quantity_name + lunit
+
+    def __len__(self):
+        return len(self.snapshot)
+
+class PynbodyDataLoader(PynbodyDataInMemory):
+    """Literal data loader for pynbody (starts from just a filename)"""
+    def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str):
+
+        logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
+        snapshot = pynbody.load(filename)
+        snapshot.physical_units()
+        self.filename = filename
+
+        snapshot = snapshot[pynbody.family.get_family(particle)]
+
+        super().__init__(device, snapshot)
+
+        self._perform_centering(center)
+        self._perform_smoothing()
 
     def _perform_centering(self, center):
         logger.info("Performing centering...")
@@ -106,17 +158,7 @@ class PynbodyDataLoader(AbstractDataLoader):
             pickle.dump(self.snapshot['smooth'], open(self.filename+'-topsy-smooth.pkl', 'wb'))
             pickle.dump(self.snapshot['rho'], open(self.filename+'-topsy-rho.pkl', 'wb'))
 
-    def get_positions(self):
-        return self.snapshot['pos'].astype(np.float32)[self._random_order]
 
-    def get_smooth(self):
-        return self.snapshot['smooth'].astype(np.float32)[self._random_order]
-
-    def get_mass(self):
-        return self.snapshot['mass'].astype(np.float32)[self._random_order]
-
-    def __len__(self):
-        return len(self.snapshot)
 
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = int(5e6)):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import wgpu.gui.jupyter
 
 from wgpu.gui.auto import WgpuCanvas
 
@@ -44,6 +45,12 @@ class VisualizerCanvas(WgpuCanvas):
             self._visualizer.reset_view()
 
     def mouse_wheel(self, delta_x, delta_y):
+        if isinstance(self, wgpu.gui.jupyter.JupyterWgpuCanvas):
+            # scroll events are much smaller from the web browser, for
+            # some reason, compared with native windowing
+            delta_y *= 10
+            delta_x *= 10
+
         self._visualizer.scale*=np.exp(delta_y/1000)
 
     def resize(self, width, height, pixel_ratio=1):
