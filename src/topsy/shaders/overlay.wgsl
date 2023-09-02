@@ -1,6 +1,8 @@
 struct OverlayParams {
-    origin: vec2<f32>,
-    extent: vec2<f32>
+    clipspace_origin: vec2<f32>,
+    clipspace_extent: vec2<f32>,
+    texturespace_origin: vec2<f32>,
+    texturespace_extent: vec2<f32>,
 };
 
 @group(0) @binding(0)
@@ -14,7 +16,7 @@ struct VertexOutput {
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
-    var texc = array<vec2<f32>, 4>(
+    var offsets = array<vec2<f32>, 4>(
             vec2(0.0, 0.0),
             vec2(0.0, 1.0),
             vec2(1.0, 0.0),
@@ -23,13 +25,12 @@ fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
 
     var output: VertexOutput;
 
-    output.texcoord = texc[vertexIndex];
-
-    var posOffset = output.texcoord;
+    var posOffset = offsets[vertexIndex];
     posOffset.y = 1.0 - posOffset.y;
-    posOffset *= overlay_params.extent;
+    posOffset *= overlay_params.clipspace_extent;
 
-    output.pos = vec4<f32>(overlay_params.origin + posOffset, 0.0, 1.0);
+    output.pos = vec4<f32>(overlay_params.clipspace_origin + posOffset, 0.0, 1.0);
+    output.texcoord = overlay_params.texturespace_origin + offsets[vertexIndex]*overlay_params.texturespace_extent;
 
     return output;
 }

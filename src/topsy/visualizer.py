@@ -185,7 +185,7 @@ class Visualizer:
 
     def _update_and_display_status(self, command_encoder):
         now = time.time()
-        if now - self._last_status_update > 0.2:
+        if now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
             self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
             if self._sph.downsample_factor > 1:

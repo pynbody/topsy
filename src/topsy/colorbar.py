@@ -7,14 +7,16 @@ from .overlay import Overlay
 
 
 class ColorbarOverlay(Overlay):
-    def __init__(self, visualizer, vmin, vmax, colormap, label, *, dpi=200, **kwargs):
-        self.dpi = dpi
+    def __init__(self, visualizer, vmin, vmax, colormap, label, *, dpi_logical=72, **kwargs):
+        self.dpi_logical = dpi_logical
         self.kwargs = kwargs
-        self._aspect_ratio = 0.15
+        self._aspect_ratio = 0.2
         self.vmin = vmin
         self.vmax = vmax
         self.colormap = colormap
         self.label = label
+        self._last_width = None
+        self._last_height = None
 
         super().__init__(visualizer)
 
@@ -23,9 +25,18 @@ class ColorbarOverlay(Overlay):
         height = 2.0
         width = 2.0*pixel_height*im.shape[1]/im.shape[0]/pixel_width
         x,y = 1.0-width,-1.0
+        if self._last_width!=pixel_width or self._last_height!=pixel_height:
+            # contents is the wrong size
+            self.update()
+        self._last_width = pixel_width
+        self._last_height = pixel_height
         return x, y, width, height
     def render_contents(self):
-        fig = plt.figure(figsize=(10 * self._aspect_ratio, 10), dpi=200,
+        dpi_physical = self.dpi_logical*self._visualizer.canvas.pixel_ratio
+
+        fig = plt.figure(figsize=(self._visualizer.canvas.height_physical * self._aspect_ratio/dpi_physical,
+                                  self._visualizer.canvas.height_physical/dpi_physical),
+                         dpi=dpi_physical,
                          facecolor=(1.0, 1.0, 1.0, 0.5))
 
         cmap = matplotlib.colormaps[self.colormap]

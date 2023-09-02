@@ -12,9 +12,14 @@ if TYPE_CHECKING:
 class VisualizerCanvas(WgpuCanvas):
     def __init__(self, *args, **kwargs):
         self._visualizer : Visualizer = kwargs.pop("visualizer")
-        super().__init__(*args, **kwargs)
+
         self._last_x = 0
         self._last_y = 0
+        # The below are dummy values that will be updated by the initial resize event
+        self.width_physical, self.height_physical = 640,480
+        self.pixel_ratio = 1
+
+        super().__init__(*args, **kwargs)
 
     def handle_event(self, event):
         if event['event_type']=='pointer_move':
@@ -54,4 +59,6 @@ class VisualizerCanvas(WgpuCanvas):
         self._visualizer.scale*=np.exp(delta_y/1000)
 
     def resize(self, width, height, pixel_ratio=1):
-        pass
+        self.width_physical = width*pixel_ratio
+        self.height_physical = height*pixel_ratio
+        self.pixel_ratio = pixel_ratio

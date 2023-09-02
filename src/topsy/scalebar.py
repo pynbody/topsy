@@ -42,6 +42,16 @@ class ScalebarOverlay:
     def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder):
         physical_scalebar_length = self._recommend_physical_scalebar_length()
         self._bar.length = physical_scalebar_length / self._visualizer.scale
+        # note that the visualizer scale refers to a square rendering target
+        # however only part of this is shown in the final window if the window
+        # aspect ratio isn't 1:1. So we now need to correct for this effect.
+        # The full x extent is shown if the width is greater than the height, so
+        # no correction is needed then. If the height is greater than the width,
+        # then the x extent is scaled by the ratio of the height to the width.
+
+        if self._visualizer.canvas.width_physical < self._visualizer.canvas.height_physical:
+            self._bar.length *= self._visualizer.canvas.height_physical / self._visualizer.canvas.width_physical
+
         self._update_scalebar_label(physical_scalebar_length)
 
         self._label.encode_render_pass(command_encoder)

@@ -87,13 +87,18 @@ class Overlay(metaclass=ABCMeta):
     def _setup_params_buffer(self):
         self._overlay_params_buffer = self._device.create_buffer(
             label="overlay_params_buffer",
-            size=4*4,
+            size=4*8,
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
         )
 
+    def get_texturespace_coordinates(self, width, height) -> tuple[float,float,float,float]:
+        return (0.0,0.0,1.0,1.0)
+
     def _update_params_buffer(self, width, height):
         x, y, w, h = self.get_clipspace_coordinates(width, height)
-        self._device.queue.write_buffer(self._overlay_params_buffer, 0, np.array([x,y,w,h], dtype=np.float32).tobytes())
+        x_t, y_t, w_t, h_t = self.get_texturespace_coordinates(width, height)
+        self._device.queue.write_buffer(self._overlay_params_buffer, 0,
+                                        np.array([x,y,w,h,x_t,y_t,w_t,h_t], dtype=np.float32).tobytes())
     def _setup_render_pipeline(self):
 
 
@@ -138,7 +143,7 @@ class Overlay(metaclass=ABCMeta):
                     "resource": {
                         "buffer": self._overlay_params_buffer,
                         "offset": 0,
-                        "size": 4*4,
+                        "size": 4*8,
                     },
                 },
                 {
@@ -222,6 +227,10 @@ class Overlay(metaclass=ABCMeta):
         if self._contents is None:
             self._contents = self.render_contents()
         return self._contents
+
+    def invalidate_contents(self):
+        """Mark the contents as invalid, needing a re-render"""
+        self._contents = None
     @abstractmethod
     def render_contents(self) -> np.ndarray:
         """Must return a 2D image with RGBA channels for display."""

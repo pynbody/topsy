@@ -81,7 +81,7 @@ class Colormap:
         )
 
     def _setup_render_pipeline(self):
-        self._vmin_vmax_buffer = self._device.create_buffer(size =4 * 2,
+        self._parameter_buffer = self._device.create_buffer(size =4 * 3,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -112,7 +112,7 @@ class Colormap:
                     },
                     {
                         "binding": 4,
-                        "visibility": wgpu.ShaderStage.FRAGMENT,
+                        "visibility": wgpu.ShaderStage.FRAGMENT | wgpu.ShaderStage.VERTEX,
                         "buffer": {"type": wgpu.BufferBindingType.uniform}
                     }
                 ]
@@ -139,9 +139,9 @@ class Colormap:
                      "resource": self._input_interpolation,
                      },
                     {"binding": 4,
-                        "resource": {"buffer": self._vmin_vmax_buffer,
+                        "resource": {"buffer": self._parameter_buffer,
                                      "offset": 0,
-                                     "size": self._vmin_vmax_buffer.size}
+                                     "size": self._parameter_buffer.size}
                      }
                 ]
             )
@@ -192,6 +192,8 @@ class Colormap:
 
     def encode_render_pass(self, command_encoder):
         display_texture = self._visualizer.context.get_current_texture()
+
+        self._update_parameter_buffer(display_texture.size[0], display_texture.size[1])
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
@@ -238,13 +240,17 @@ class Colormap:
             logger.warning("Press 'r' in the window to try again")
             self.vmin, self.vmax = 0.0, 1.0
 
-        self._update_vmin_vmax_buffer()
 
+    def _update_parameter_buffer(self, width, height):
+        parameter_dtype = [("vmin", np.float32, (1,)),
+                           ("vmax", np.float32, (1,)),
+                           ("window_aspect_ratio", np.float32, (1,))]
 
-    def _update_vmin_vmax_buffer(self):
-        vmin_vmax_dtype = [("vmin", np.float32, (1,)),
-                           ("vmax", np.float32, (1,))]
-        vmin_vmax = np.zeros((), dtype=vmin_vmax_dtype)
-        vmin_vmax["vmin"] = self.vmin
-        vmin_vmax["vmax"] = self.vmax
-        self._device.queue.write_buffer(self._vmin_vmax_buffer, 0, vmin_vmax)
+        parameters = np.zeros((), dtype=parameter_dtype)
+        parameters["vmin"] = self.vmin
+        parameters["vmax"] = self.vmax
+
+        self._visualizer.context.get_current_texture()
+
+        parameters["window_aspect_ratio"] = float(width)/height
+        self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)

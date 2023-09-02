@@ -1,6 +1,7 @@
 struct ColormapParams {
     vmin: f32,
-    vmax: f32
+    vmax: f32,
+    window_aspect_ratio: f32
 };
 
 struct VertexOutput {
@@ -12,30 +13,6 @@ struct FragmentOutput {
     @location(0) color: vec4<f32>
 }
 
-
-@vertex
-fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
-    var pos = array<vec2<f32>, 4>(
-            vec2(-1.0, -1.0),
-            vec2(-1.0, 1.0),
-            vec2(1.0, -1.0),
-            vec2(1.0, 1.0)
-          );
-
-    var texc = array<vec2<f32>, 4>(
-            vec2(0.0, 1.0),
-            vec2(0.0, 0.0),
-            vec2(1.0, 1.0),
-            vec2(1.0, 0.0)
-          );
-
-    var output: VertexOutput;
-
-    output.pos = vec4<f32>(pos[vertexIndex], 0.0, 1.0);
-    output.texcoord = texc[vertexIndex];
-
-    return output;
-}
 
 @group(0) @binding(0)
 var image_texture: texture_2d<f32>;
@@ -51,6 +28,41 @@ var colormap_sampler: sampler;
 
 @group(0) @binding(4)
 var<uniform> colormap_params: ColormapParams;
+
+
+@vertex
+fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
+    var pos = array<vec2<f32>, 4>(
+            vec2(-1.0, -1.0),
+            vec2(-1.0, 1.0),
+            vec2(1.0, -1.0),
+            vec2(1.0, 1.0)
+          );
+
+     if(colormap_params.window_aspect_ratio>1.0) {
+        for(var i = 0u; i<4u; i=i+1u) {
+            pos[i].y = pos[i].y*colormap_params.window_aspect_ratio;
+        }
+     } else {
+         for(var i = 0u; i<4u; i=i+1u) {
+                pos[i].x = pos[i].x/colormap_params.window_aspect_ratio;
+          }
+     }
+
+    var texc = array<vec2<f32>, 4>(
+            vec2(0.0, 1.0),
+            vec2(0.0, 0.0),
+            vec2(1.0, 1.0),
+            vec2(1.0, 0.0)
+          );
+
+    var output: VertexOutput;
+
+    output.pos = vec4<f32>(pos[vertexIndex], 0.0, 1.0);
+    output.texcoord = texc[vertexIndex];
+
+    return output;
+}
 
 
 @fragment
