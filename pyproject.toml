@@ -24,6 +24,7 @@ dependencies = [
     "pillow >=9.5.0", # 9.5.0 needed for Image.frombytes accepting memoryview
     "wgpu >= 0.9.4",
     "jupyter_rfb >=0.4.1",
+    "glfw >= 2.6.0" # windowing
 ]
 
 
