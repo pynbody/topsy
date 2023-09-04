@@ -5,7 +5,8 @@ struct TransformParams {
     clipspace_size_max: f32,
     downsample_factor: u32,
     downsample_offset: u32,
-    mass_scale: f32
+    mass_scale: f32,
+    boxsize_by_2_clipspace: f32
 };
 
 @group(0) @binding(0)
@@ -32,6 +33,22 @@ struct FragmentOutput {
     @location(0) density: vec2<f32>
 }
 
+fn wrap(x: f32, boxsize_by_2: f32) -> f32 {
+    if(x<-boxsize_by_2) {
+        return x+boxsize_by_2*2.0;
+    } else if(x>boxsize_by_2) {
+        return x-boxsize_by_2*2.0;
+    } else {
+        return x;
+    }
+}
+
+fn wrap_vec4(v: vec4<f32>, boxsize_by_2: f32) -> vec4<f32> {
+    return vec4<f32>(wrap(v.x, boxsize_by_2),
+                     wrap(v.y, boxsize_by_2),
+                     v.z,
+                     v.w);
+}
 
 @vertex
 fn vertex_main(input: VertexInput) -> VertexOutput {
@@ -68,10 +85,12 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
         return output;
     }
 
+    var boxsize : f32=25000.0;
     // perform transformation
     output.pos = input.pos;
     output.pos.w = 1.0;
-    output.pos = (trans_params.transform * output.pos);
+    [[WRAPPING]]output.pos = wrap_vec4((trans_params.transform * output.pos),trans_params.boxsize_by_2_clipspace);
+    [[NO_WRAPPING]]output.pos = (trans_params.transform * output.pos);
     output.pos += vec4<f32>(clipspace_size*posOffset[input.vertexIndex],0.0,0.0);
     output.texcoord = texCoords[input.vertexIndex];
     output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);

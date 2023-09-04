@@ -20,6 +20,8 @@ class SPHAccumulationOverlay(overlay.Overlay):
                  )
     def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture, target_texture: wgpu.GPUTexture):
         self._texture = source_texture
+        self.num_repetitions = 0
+        self.panel_scale = 1.0
         super().__init__(visualizer, target_texture)
 
 
@@ -29,6 +31,13 @@ class SPHAccumulationOverlay(overlay.Overlay):
     def get_clipspace_coordinates(self, width, height) -> tuple[float, float, float, float]:
         return -1.0, -1.0, 2.0, 2.0
 
+    def get_instance_offsets(self):
+        offsets = []
+        for xoff in range(-self.num_repetitions, self.num_repetitions + 1):
+            for yoff in range(-self.num_repetitions, self.num_repetitions + 1):
+                offsets.append([xoff*self.panel_scale,yoff*self.panel_scale])
+
+        return np.array(offsets, dtype=np.float32)
     def render_contents(self) -> np.ndarray:
         # must be implemented, but should never be called because texture is provided externally
         raise RuntimeError("SPHAccumulationOverlay.render_contents() should never be called")

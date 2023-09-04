@@ -69,6 +69,9 @@ class AbstractDataLoader(ABC):
             self._quantity_buffer_is_for_name = self.quantity_name
         return self._named_quantity_buffer
 
+    def get_periodicity_scale(self):
+        return np.inf
+
 
 class PynbodyDataInMemory(AbstractDataLoader):
     """Base class for data loaders that use pynbody."""
@@ -104,6 +107,9 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def __len__(self):
         return len(self.snapshot)
+
+    def get_periodicity_scale(self):
+        return float(self.snapshot.properties['boxsize'].in_units("kpc"))
 
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""

@@ -4,7 +4,7 @@ import numpy as np
 import wgpu
 import pynbody
 
-from .util import load_shader
+from .util import load_shader, preprocess_shader
 from . import config
 
 from typing import TYPE_CHECKING
@@ -14,10 +14,12 @@ if TYPE_CHECKING:
 class SPH:
     render_format = wgpu.TextureFormat.r32float
 
-    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture):
+    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture,
+                 wrapping = False):
         self._visualizer = visualizer
         self._render_texture = render_texture
         self._device = visualizer.device
+        self._wrapping = wrapping
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -33,7 +35,10 @@ class SPH:
 
 
     def _setup_shader_module(self):
-        self._shader = self._device.create_shader_module(code=load_shader("sph.wgsl"), label="sph")
+        wrap_flag = "WRAPPING" if self._wrapping else "NO_WRAPPING"
+        code = preprocess_shader(load_shader("sph.wgsl"), [wrap_flag])
+
+        self._shader = self._device.create_shader_module(code=code, label="sph")
 
     def _setup_transform_buffer(self):
         self._transform_buffer = self._device.create_buffer(
@@ -190,11 +195,14 @@ class SPH:
                                   ("downsample_factor", np.uint32, (1,)),
                                   ("downsample_offset", np.uint32, (1,)),
                                   ("mass_scale", np.float32, (1,)),
-                                  ("padding", np.int32, (2,))]
+                                  ("boxsize_by_2_clipspace", np.float32, (1,)),
+                                  ("padding", np.int32, (1,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         transform_params["mass_scale"] = self._get_mass_scale()
+        transform_params["boxsize_by_2_clipspace"] = 0.5 * \
+                                                     self._visualizer.periodicity_scale / self.scale
 
         resolution = self._render_texture.width
         assert resolution == self._render_texture.height

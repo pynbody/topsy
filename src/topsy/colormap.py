@@ -8,7 +8,7 @@ import matplotlib
 
 from . import config
 
-from .util import load_shader
+from .util import load_shader, preprocess_shader
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -46,11 +46,11 @@ class Colormap:
         if self.log_scale:
             active_flags.append("LOG_SCALE")
 
-        for f in active_flags:
-            shader_code = re.sub(f"^.*\[\[{f}]](.*)$", r"\1", shader_code, flags=re.MULTILINE)
-        shader_code = re.sub(r"^.*\[\[[A-Z_]+]].*$", "", shader_code, flags=re.MULTILINE)
+        shader_code = preprocess_shader(shader_code, active_flags)
 
         self._shader = self._device.create_shader_module(code=shader_code, label="colormap")
+
+
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
         cmap = matplotlib.colormaps[self._colormap_name]

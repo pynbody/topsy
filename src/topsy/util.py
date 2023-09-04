@@ -1,14 +1,29 @@
 import numpy as np
 import time
 import wgpu
-
+import re
 
 def load_shader(name):
     from importlib import resources
     with open(resources.files("topsy.shaders") / name, "r") as f:
         return f.read()
 
+def preprocess_shader(shader_code, active_flags):
+    """A hacky preprocessor for WGSL shaders.
+
+    Any line in shader_code containing [[FLAG]] will be removed if FLAG is not in active_flags.
+    Otherwise, the string [[FLAG]] will be removed, leaving just valid syntax.
+
+    This is needed because we can't use
+    const values in the shader yet, so we need to use something like #ifdefs instead.
+    In final version of webgpu doesn't look like this will be needed"""
+    for f in active_flags:
+        shader_code = re.sub(f"^.*\[\[{f}]](.*)$", r"\1", shader_code, flags=re.MULTILINE)
+    shader_code = re.sub(r"^.*\[\[[A-Z_]+]].*$", "", shader_code, flags=re.MULTILINE)
+    return shader_code
+
 class TimeGpuOperation:
+    """Context manager for timing GPU operations"""
     def __init__(self, device, n_frames_smooth=10):
         self.device = device
         self.n_frames_smooth = n_frames_smooth

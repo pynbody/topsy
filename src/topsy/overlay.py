@@ -31,6 +31,12 @@ class Overlay(metaclass=ABCMeta):
         else:
             self._target_canvas_format = target_texture.format
 
+        self._offset_buffer = self._device.create_buffer(
+            label="overlay_offset_buffer",
+            size=4*2*32,
+            usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.COPY_DST
+        )
+
         self._setup_shader_module()
         self._setup_texture()
         self._setup_sampler()
@@ -168,7 +174,17 @@ class Overlay(metaclass=ABCMeta):
             vertex={
                 "module": self._shader,
                 "entry_point": "vertex_main",
-                "buffers": []
+                "buffers": [{
+                            "array_stride": 8,
+                            "step_mode": wgpu.VertexStepMode.instance,
+                            "attributes": [
+                                {
+                                    "format": wgpu.VertexFormat.float32x2,
+                                    "offset": 0,
+                                    "shader_location": 0,
+                                }
+                            ]
+                           },]
             },
             primitive={
                 "topology": wgpu.PrimitiveTopology.triangle_strip,
@@ -191,7 +207,9 @@ class Overlay(metaclass=ABCMeta):
             }
         )
 
-    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder):
+    def get_instance_offsets(self):
+        return np.array([[0.0,0.0]], dtype=np.float32)
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, clear=False):
         targ_tex: wgpu.GPUTextureView
         if self._target_texture is None:
             targ_tex = self._visualizer.context.get_current_texture()
@@ -204,15 +222,19 @@ class Overlay(metaclass=ABCMeta):
                 "view": targ_tex,
                 "resolve_target": None,
                 "clear_value": (0.0, 0.0, 0.0, 1.0),
-                "load_op": wgpu.LoadOp.load,
+                "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
                 "store_op": wgpu.StoreOp.store,
             }],
         )
 
+        instance_offsets = self.get_instance_offsets()
+        assert len(instance_offsets)<=self._offset_buffer.size//4//2, "Too many instances for offset buffer"
+        self._device.queue.write_buffer(self._offset_buffer, 0, instance_offsets.tobytes())
 
         render_pass.set_pipeline(self._render_pipeline)
+        render_pass.set_vertex_buffer(0, self._offset_buffer)
         render_pass.set_bind_group(0, self._bind_group, [], 0, 99999)
-        render_pass.draw(4, 1, 0, 0)
+        render_pass.draw(4, len(instance_offsets), 0, 0)
         render_pass.end()
 
     @abstractmethod

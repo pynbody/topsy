@@ -9,7 +9,7 @@ import wgpu.backends.rs # noqa: F401, Select Rust backend
 from . import config
 from . import canvas
 from . import colormap
-from . import multiresolution_sph, sph
+from . import multiresolution_sph, sph, periodic_sph
 from . import colorbar
 from . import text
 from . import scalebar
@@ -56,8 +56,10 @@ class Visualizer:
 
         self.data_loader = data_loader_class(self.device, *data_loader_args)
 
+        self.periodicity_scale = self.data_loader.get_periodicity_scale()
+
         self._colormap = colormap.Colormap(self, weighted_average = False)
-        self._sph = sph.SPH(self, self.render_texture)
+        self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
         #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
         self._last_status_update = 0.0
