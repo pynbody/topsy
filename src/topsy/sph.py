@@ -32,6 +32,7 @@ class SPH:
         self.downsample_factor = 1 # number of particles to increment
         self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
+        self.centre_offset = np.zeros(3)
 
 
     def _setup_shader_module(self):
@@ -173,22 +174,27 @@ class SPH:
         return getattr(self, "mass_scale", np.float32(self.downsample_factor))
 
     def _update_transform_buffer(self):
+        model_displace = np.array([[1.0, 0, 0, self.centre_offset[0]],
+                                   [0, 1.0, 0, self.centre_offset[1]],
+                                   [0, 0, 1.0, self.centre_offset[2]],
+                                   [0, 0, 0.0, 1.0]])
+
         # self._transform is the transformation around the origin (fine for opengl)
         # but in webgpu, the clip space in the z direction is [0,1]
         # so we need a matrix that brings z=0. to z=0.5 and squishes the z direction
         # so that the clipping is the same in all dimensions
-        displace = np.array([[1.0, 0, 0, 0.0],
+        clipcoord_displace = np.array([[1.0, 0, 0, 0.0],
                              [0, 1.0, 0, 0.0],
                              [0, 0, 0.5, 0.5],
                              [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
 
         transform[:3,:3] = self.rotation_matrix
-        scaled_transform = transform / self.scale
+        rotation_and_scaling = transform / self.scale
 
-        scaled_transform[3, 3] = 1.0  # w should be unchanged after transform
+        rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
 
-        scaled_displaced_transform = (displace @ scaled_transform).T
+        scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
         transform_params_dtype = [("transform", np.float32, (4, 4)),
                                   ("scale_factor", np.float32, (1,)),
                                   ("min_max_size", np.float32, (2,)),

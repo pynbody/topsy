@@ -15,6 +15,7 @@ from . import text
 from . import scalebar
 from . import loader
 from . import util
+from . import line
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -71,6 +72,14 @@ class Visualizer:
         self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, "TODO")
         self._scalebar = scalebar.ScalebarOverlay(self)
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
+        self._crosshairs = line.Line(self,
+                                     [(-1, 0,0,0), (1, 0,0,0),
+                                      (200,200,0,0),
+                                      (0, 1, 0, 0), (0, -1, 0, 0)],
+                                     (1, 1, 1, 0.3) # color
+                                     , 0.01)
+
+        self.crosshairs_visible = False
         self._display_fullres_render_status = False # when True, customises info text to refer to full-res render
 
         self._render_timer = util.TimeGpuOperation(self.device)
@@ -90,9 +99,14 @@ class Visualizer:
         self._sph.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self._sph.rotation_matrix
         self.invalidate()
 
+    @property
+    def rotation_matrix(self):
+        return self._sph.rotation_matrix
+
     def reset_view(self):
         self._sph.rotation_matrix = np.eye(3)
         self.scale = config.DEFAULT_SCALE
+        self._sph.position_offset = np.zeros(3)
 
     @property
     def scale(self):
@@ -175,6 +189,8 @@ class Visualizer:
         self._colormap.encode_render_pass(command_encoder)
         self._colorbar.encode_render_pass(command_encoder)
         self._scalebar.encode_render_pass(command_encoder)
+        if self.crosshairs_visible:
+            self._crosshairs.encode_render_pass(command_encoder)
 
         if self.show_status:
             self._update_and_display_status(command_encoder)
@@ -189,9 +205,19 @@ class Visualizer:
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
 
+    def display_status(self, text, timeout=0.5):
+        self._override_status_text = text
+        self._override_status_text_until = time.time()+timeout
+
     def _update_and_display_status(self, command_encoder):
         now = time.time()
-        if now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
+        if hasattr(self, "_override_status_text_until") and now<self._override_status_text_until:
+            if self._status.text!=self._override_status_text and now-self._last_status_update>config.STATUS_LINE_UPDATE_INTERVAL_RAPID:
+                self._status.text = self._override_status_text
+                self._last_status_update = now
+                self._status.update()
+
+        elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
             self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
             if self._sph.downsample_factor > 1:

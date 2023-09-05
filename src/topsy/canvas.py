@@ -24,7 +24,10 @@ class VisualizerCanvas(WgpuCanvas):
     def handle_event(self, event):
         if event['event_type']=='pointer_move':
             if len(event['buttons'])>0:
-                self.drag(event['x']-self._last_x, event['y']-self._last_y)
+                if len(event['modifiers'])==0:
+                    self.drag(event['x']-self._last_x, event['y']-self._last_y)
+                else:
+                    self.shift_drag(event['x']-self._last_x, event['y']-self._last_y)
             self._last_x = event['x']
             self._last_y = event['y']
         elif event['event_type']=='wheel':
@@ -33,12 +36,29 @@ class VisualizerCanvas(WgpuCanvas):
             self.key_up(event['key'])
         elif event['event_type']=='resize':
             self.resize(event['width'], event['height'], event['pixel_ratio'])
+        elif event['event_type']=='double_click':
+            self.double_click(event['x'], event['y'])
+        elif event['event_type']=='pointer_up':
+            self.release_drag()
         else:
             pass
         super().handle_event(event)
 
     def drag(self, dx, dy):
         self._visualizer.rotate(dx, dy)
+
+    def shift_drag(self, dx, dy):
+        biggest_dimension = max(self.width_physical, self.height_physical)
+
+        displacement = 2.*self.pixel_ratio*np.array([dx, -dy, 0], dtype=np.float32) / biggest_dimension * self._visualizer.scale
+
+        self._visualizer._sph.centre_offset += self._visualizer.rotation_matrix.T @ displacement
+
+        self._visualizer.display_status("centre = [{:.2f}, {:.2f}, {:.2f}]".format(*self._visualizer._sph.centre_offset))
+
+        self._visualizer.crosshairs_visible = True
+
+        self._visualizer.invalidate()
 
     def key_up(self, key):
         if key=='s':
@@ -57,6 +77,12 @@ class VisualizerCanvas(WgpuCanvas):
             delta_x *= 10
 
         self._visualizer.scale*=np.exp(delta_y/1000)
+
+    def release_drag(self):
+        if self._visualizer.crosshairs_visible:
+            self._visualizer.crosshairs_visible = False
+            self._visualizer.invalidate()
+
 
     def resize(self, width, height, pixel_ratio=1):
         self.width_physical = width*pixel_ratio
