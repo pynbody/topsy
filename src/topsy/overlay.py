@@ -16,6 +16,8 @@ class Overlay(metaclass=ABCMeta):
                     wgpu.BlendFactor.one_minus_src_alpha,
                     wgpu.BlendOperation.add,
                  )
+
+    MAX_INSTANCES = 128
     def __init__(self, visualizer: Visualizer, target_texture: wgpu.GPUTexture | None = None):
         """Setup the overlay.
 
@@ -31,9 +33,17 @@ class Overlay(metaclass=ABCMeta):
         else:
             self._target_canvas_format = target_texture.format
 
+        # The following are present to allow multiple copies of the same overlay to be
+        # rendered. This is used by the periodic_sph module. By default, there is just
+        # one copy with weight 1.0.
         self._offset_buffer = self._device.create_buffer(
             label="overlay_offset_buffer",
-            size=4*2*32,
+            size=4*2*self.MAX_INSTANCES,
+            usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.COPY_DST
+        )
+        self._weight_buffer = self._device.create_buffer(
+            label="overlay_weight_buffer",
+            size=4 * self.MAX_INSTANCES,
             usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.COPY_DST
         )
 
@@ -184,7 +194,19 @@ class Overlay(metaclass=ABCMeta):
                                     "shader_location": 0,
                                 }
                             ]
-                           },]
+                           },
+                            {
+                                "array_stride": 4,
+                                "step_mode": wgpu.VertexStepMode.instance,
+                                "attributes": [
+                                    {
+                                        "format": wgpu.VertexFormat.float32,
+                                        "offset": 0,
+                                        "shader_location": 1,
+                                    }
+                                ]
+                            }
+                ]
             },
             primitive={
                 "topology": wgpu.PrimitiveTopology.triangle_strip,
@@ -207,8 +229,8 @@ class Overlay(metaclass=ABCMeta):
             }
         )
 
-    def get_instance_offsets(self):
-        return np.array([[0.0,0.0]], dtype=np.float32)
+    def get_instance_offsets_and_weights(self):
+        return np.array([[0.0,0.0]], dtype=np.float32), np.ones(1, dtype=np.float32)
     def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, clear=False):
         targ_tex: wgpu.GPUTextureView
         if self._target_texture is None:
@@ -227,12 +249,14 @@ class Overlay(metaclass=ABCMeta):
             }],
         )
 
-        instance_offsets = self.get_instance_offsets()
+        instance_offsets, instance_weights = self.get_instance_offsets_and_weights()
         assert len(instance_offsets)<=self._offset_buffer.size//4//2, "Too many instances for offset buffer"
         self._device.queue.write_buffer(self._offset_buffer, 0, instance_offsets.tobytes())
+        self._device.queue.write_buffer(self._weight_buffer, 0, instance_weights.tobytes())
 
         render_pass.set_pipeline(self._render_pipeline)
         render_pass.set_vertex_buffer(0, self._offset_buffer)
+        render_pass.set_vertex_buffer(1, self._weight_buffer)
         render_pass.set_bind_group(0, self._bind_group, [], 0, 99999)
         render_pass.draw(4, len(instance_offsets), 0, 0)
         render_pass.end()

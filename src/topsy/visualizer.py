@@ -25,7 +25,8 @@ class Visualizer:
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
 
     show_status = True
-    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = ()):
+    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
+                 *, periodic_tiling = False):
 
 
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
@@ -59,7 +60,10 @@ class Visualizer:
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
         self._colormap = colormap.Colormap(self, weighted_average = False)
-        self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
+        if periodic_tiling:
+            self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
+        else:
+            self._sph = sph.SPH(self, self.render_texture)
         #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
         self._last_status_update = 0.0

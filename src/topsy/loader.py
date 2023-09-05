@@ -125,6 +125,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         super().__init__(device, snapshot)
 
         self._perform_centering(center)
+        snapshot.wrap()
         self._perform_smoothing()
 
     def _perform_centering(self, center):
@@ -132,7 +133,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         if center.startswith("halo-"):
             halo_number = int(center[5:])
             h = self.snapshot.ancestor.halos()
-            pynbody.analysis.halo.center(h[halo_number])
+            pynbody.analysis.halo.center(h[halo_number], vel=False)
 
         elif center == 'zoom':
             f_dm = self.snapshot.ancestor.dm

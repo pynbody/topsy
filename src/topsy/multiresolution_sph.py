@@ -31,7 +31,7 @@ class SPHAccumulationOverlay(overlay.Overlay):
     def get_clipspace_coordinates(self, width, height) -> tuple[float, float, float, float]:
         return -1.0, -1.0, 2.0, 2.0
 
-    def get_instance_offsets(self):
+    def get_instance_offsets_and_weights(self):
         offsets = []
         for xoff in range(-self.num_repetitions, self.num_repetitions + 1):
             for yoff in range(-self.num_repetitions, self.num_repetitions + 1):

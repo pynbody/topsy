@@ -31,6 +31,8 @@ def parse_args():
                            default="halo-1", type=str)
     argparser.add_argument("--quantity", "-q", help="Specify a quantity to render instead of density",
                            default=None, type=str)
+    argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
+                           default=False, action="store_true")
 
     return argparser.parse_args()
 
@@ -50,13 +52,15 @@ def main():
 
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
                                 data_loader_args=(args.filename, args.center,
-                                                  args.particle))
+                                                  args.particle),
+                                periodic_tiling=args.tile)
     vis.quantity_name = args.quantity
     vis.run()
 
-def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None):
+def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, tile : bool = False):
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
-                                data_loader_args=(snapshot,))
+                                data_loader_args=(snapshot,),
+                                periodic_tiling=tile)
     vis.quantity_name = quantity
     if isinstance(vis.canvas, wgpu.gui.jupyter.JupyterWgpuCanvas):
         return vis
