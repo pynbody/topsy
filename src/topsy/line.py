@@ -11,9 +11,19 @@ if TYPE_CHECKING:
 class Line:
     def __init__(self, visualizer: Visualizer, path, color, width):
         self._visualizer = visualizer
-        self._path = np.asarray(path, dtype=np.float32)
-        assert self._path.ndim == 2, "Path must be an array of points, each with 4 (xyzw) coordinates"
-        assert self._path.shape[1] == 4, "Path must be an array of points, each with 4 (xyzw) coordinates"
+
+        if path is not None:
+            path = np.asarray(path, dtype=np.float32)
+            assert path.ndim == 2, "Path must be an array of points, each with 4 (xyzw) coordinates"
+            assert path.shape[1] == 4, "Path must be an array of points, each with 4 (xyzw) coordinates"
+            self._line_starts = path[:-1]
+            self._line_ends = path[1:]
+        else:
+            assert hasattr(self, "_line_starts") and hasattr(self, "_line_ends"), \
+                "Either path must be provided, or _line_starts and _line_ends must be defined by a subclass"
+            assert len(self._line_starts) == len(self._line_ends), \
+                "Number of line starts must equal number of line ends"
+
         self._color = color
         self._width = width
         self._device = visualizer.device
@@ -29,17 +39,25 @@ class Line:
             label="line_shader_module"
         )
 
+
     def _setup_buffers(self):
-        self._vertex_buffer = self._visualizer.device.create_buffer_with_data(
+        self._vertex_buffer_starts = self._visualizer.device.create_buffer_with_data(
             usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.COPY_DST,
-            label="line_vertex_buffer",
-            data=self._path
+            label="line_vertex_buffer_start",
+            data=self._line_starts
+        )
+
+        self._vertex_buffer_ends = self._visualizer.device.create_buffer_with_data(
+            usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.COPY_DST,
+            label="line_vertex_buffer_start",
+            data=self._line_ends
         )
 
         _param_dtype = np.dtype([
             ("transform", np.float32, (4, 4)),
             ("color", np.float32, 4),
-            ("width", np.float32),
+            ("vp_size_pix", np.float32, 2),
+            ("width_pix", np.float32),
             ("padding", np.float32, 3)
         ])
 
@@ -52,7 +70,7 @@ class Line:
         self._params = np.zeros(1, dtype=_param_dtype)
         self._params["transform"] = np.eye(4)
         self._params["color"] = self._color
-        self._params["width"] = self._width
+        self._params["width_pix"] = self._width
 
     def _setup_render_pipeline(self):
         self._bind_group_layout = self._device.create_bind_group_layout(
@@ -112,7 +130,7 @@ class Line:
                         "attributes": [
                             {
                                 "format": wgpu.VertexFormat.float32x4,
-                                "offset": 4*4,
+                                "offset": 0,
                                 "shader_location": 1
                             }
                         ]
@@ -150,12 +168,14 @@ class Line:
 
 
     def encode_render_pass(self, command_encoder: wgpu.GPURenderPassEncoder):
-        self._device.queue.write_buffer(self._param_buffer, 0, self._params)
+        render_texture = self._visualizer.context.get_current_texture()
+        self._params["vp_size_pix"] = render_texture.size[:2]
 
+        self._device.queue.write_buffer(self._param_buffer, 0, self._params)
 
         render_pass = command_encoder.begin_render_pass(
             color_attachments=[{
-                "view": self._visualizer.context.get_current_texture(),
+                "view": render_texture,
                 "resolve_target": None,
                 "clear_value": (0.0, 0.0, 0.0, 1.0),
                 "load_op": wgpu.LoadOp.load,
@@ -164,7 +184,7 @@ class Line:
         )
         render_pass.set_pipeline(self._render_pipeline)
         render_pass.set_bind_group(0, self._bind_group, [], 0, 999999)
-        render_pass.set_vertex_buffer(0, self._vertex_buffer)
-        render_pass.set_vertex_buffer(1, self._vertex_buffer)
-        render_pass.draw(4, len(self._path)-1, 0, 0)
+        render_pass.set_vertex_buffer(0, self._vertex_buffer_starts)
+        render_pass.set_vertex_buffer(1, self._vertex_buffer_ends)
+        render_pass.draw(4, len(self._line_starts), 0, 0)
         render_pass.end()

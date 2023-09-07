@@ -32,7 +32,7 @@ class SPH:
         self.downsample_factor = 1 # number of particles to increment
         self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
-        self.centre_offset = np.zeros(3)
+        self.position_offset = np.zeros(3)
 
 
     def _setup_shader_module(self):
@@ -174,9 +174,9 @@ class SPH:
         return getattr(self, "mass_scale", np.float32(self.downsample_factor))
 
     def _update_transform_buffer(self):
-        model_displace = np.array([[1.0, 0, 0, self.centre_offset[0]],
-                                   [0, 1.0, 0, self.centre_offset[1]],
-                                   [0, 0, 1.0, self.centre_offset[2]],
+        model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
+                                   [0, 1.0, 0, self.position_offset[1]],
+                                   [0, 0, 1.0, self.position_offset[2]],
                                    [0, 0, 0.0, 1.0]])
 
         # self._transform is the transformation around the origin (fine for opengl)
@@ -217,6 +217,8 @@ class SPH:
         transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
         transform_params["downsample_factor"] = self.downsample_factor
         transform_params["downsample_offset"] = self.downsample_offset
+
+        self.last_transform_params = transform_params
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 

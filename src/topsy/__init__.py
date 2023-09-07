@@ -53,7 +53,8 @@ def main():
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
                                 data_loader_args=(args.filename, args.center,
                                                   args.particle),
-                                periodic_tiling=args.tile)
+                                periodic_tiling=args.tile,
+                                render_resolution=args.resolution)
     vis.quantity_name = args.quantity
     vis.run()
 

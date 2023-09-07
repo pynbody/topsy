@@ -1,4 +1,4 @@
-DEFAULT_RESOLUTION = 500
+DEFAULT_RESOLUTION = 1024
 DEFAULT_COLORMAP = 'twilight_shifted'
 
 DEFAULT_SCALE = 200.0 # viewport width in kpc

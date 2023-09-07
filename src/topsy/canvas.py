@@ -51,14 +51,12 @@ class VisualizerCanvas(WgpuCanvas):
         biggest_dimension = max(self.width_physical, self.height_physical)
 
         displacement = 2.*self.pixel_ratio*np.array([dx, -dy, 0], dtype=np.float32) / biggest_dimension * self._visualizer.scale
+        self._visualizer.position_offset += self._visualizer.rotation_matrix.T @ displacement
 
-        self._visualizer._sph.centre_offset += self._visualizer.rotation_matrix.T @ displacement
-
-        self._visualizer.display_status("centre = [{:.2f}, {:.2f}, {:.2f}]".format(*self._visualizer._sph.centre_offset))
+        self._visualizer.display_status("centre = [{:.2f}, {:.2f}, {:.2f}]".format(*self._visualizer._sph.position_offset))
 
         self._visualizer.crosshairs_visible = True
 
-        self._visualizer.invalidate()
 
     def key_up(self, key):
         if key=='s':
