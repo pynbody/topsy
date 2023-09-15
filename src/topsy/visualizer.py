@@ -171,23 +171,19 @@ class VisualizerBase:
 
 
     def draw(self, reason):
-        ce_label = "sph_render"
-        # labelling this is useful for understanding performance in macos instruments
-        if self._sph.downsample_factor>1:
-            ce_label += f"_ds{self._sph.downsample_factor:d}"
-        else:
-            ce_label += "_fullres"
+        if reason!=DrawReason.PRESENTATION_CHANGE:
+            ce_label = "sph_render"
+            # labelling this is useful for understanding performance in macos instruments
+            if self._sph.downsample_factor>1:
+                ce_label += f"_ds{self._sph.downsample_factor:d}"
+            else:
+                ce_label += "_fullres"
 
-        command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-        self._sph.encode_render_pass(command_encoder)
+            command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+            self._sph.encode_render_pass(command_encoder)
 
-        with self._render_timer:
-            self.device.queue.submit([command_encoder.finish()])
-
-        # in principle, we can often use the same command encoder for the drawing into the final
-        # buffer, but when vmin/vmax needs to be set, we need to render the image first.
-        # So we just always use a new command encoder for the final render. It is unclear whether
-        # this has any performance impact.
+            with self._render_timer:
+                self.device.queue.submit([command_encoder.finish()])
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -315,8 +311,32 @@ class VisualizerBase:
         p.savefig(filename)
         p.close(fig)
 
-    def run(self):
-        wgpu.gui.qt.run()
+    def show(self, force=False):
+        from wgpu.gui import jupyter, qt
+        if isinstance(self.canvas, jupyter.WgpuCanvas):
+            return self.canvas
+        elif isinstance(self.canvas, qt.WgpuCanvas):
+            self.canvas.show()
+            event_loop_running = False
+            if not force:
+                try:
+                    __IPYTHON__
+                    import IPython.lib.guisupport
+                    event_loop_running = IPython.lib.guisupport.is_event_loop_running_qt4()
+                    if not event_loop_running:
+                        print("You appear to be running from inside ipython, but the gui event loop is not running.")
+                        print("Please run '%gui qt' in ipython before calling show().")
+                        print("Alternatively, if you do not want to continue interacting with ipython while the"
+                              "visualizer is running, you can call show(force=True) to force the gui to take"
+                              "precedence over the ipython command line.")
+                        return
+
+                except (ImportError, NameError):
+                    pass
+
+            if not event_loop_running:
+                qt.run()
+
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
     pass

@@ -69,6 +69,7 @@ def main():
         loader_class = loader.PynbodyDataLoader
         loader_args = (args.filename, args.center, args.particle)
 
+
     vis = visualizer.Visualizer(data_loader_class=loader_class,
                                 data_loader_args=loader_args,
                                 colormap_name=args.colormap,
@@ -76,14 +77,16 @@ def main():
                                 render_resolution=args.resolution)
 
     vis.quantity_name = args.quantity
-    vis.run()
+    vis.show()
 
 def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
                                 data_loader_args=(snapshot,),
                                 **kwargs)
     vis.quantity_name = quantity
-    if isinstance(vis.canvas, wgpu.gui.jupyter.JupyterWgpuCanvas):
-        return vis
-    else:
-        vis.run()
+    return vis
+
+def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT):
+    vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
+                                data_loader_args=(nparticle,))
+    return vis

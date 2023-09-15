@@ -4,6 +4,7 @@ import numpy as np
 import wgpu.gui.jupyter
 
 from wgpu.gui.qt import WgpuCanvas
+from .drawreason import DrawReason
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class VisualizerCanvas(WgpuCanvas):
         elif event['event_type']=='key_up':
             self.key_up(event['key'])
         elif event['event_type']=='resize':
-            self.resize(event['width'], event['height'], event['pixel_ratio'])
+            self.resize_complete(event['width'], event['height'], event['pixel_ratio'])
         elif event['event_type']=='double_click':
             self.double_click(event['x'], event['y'])
         elif event['event_type']=='pointer_up':
@@ -82,7 +83,10 @@ class VisualizerCanvas(WgpuCanvas):
             self._visualizer.invalidate()
 
 
-    def resize(self, width, height, pixel_ratio=1):
+    def resize(self, *args):
+        # putting this here as a reminder that the resize method must be passed to the base class
+        super().resize(*args)
+    def resize_complete(self, width, height, pixel_ratio=1):
         if width==0.0 or height==0.0:
             return
             # qt seems to make a call with zero, which then leads to textures being initialized
@@ -91,3 +95,17 @@ class VisualizerCanvas(WgpuCanvas):
         self.width_physical = width*pixel_ratio
         self.height_physical = height*pixel_ratio
         self.pixel_ratio = pixel_ratio
+
+    def request_draw(self, function, *args, **kwargs):
+
+        # As a side effect, wgpu gui layer stores our function call, to enable it to be
+        # repainted later. But we want to distinguish such repaints and handle them
+        # differently, so we need to replace the function with our own
+        def function_wrapper():
+            function()
+            self._subwidget.draw_frame = lambda: self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
+
+        super().request_draw(function_wrapper,*args, **kwargs)
+
+
+
