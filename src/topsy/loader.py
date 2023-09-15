@@ -4,6 +4,7 @@ import logging
 import pynbody
 import pickle 
 
+from . import config
 # ABC support:
 from abc import ABC, abstractmethod
 
@@ -31,6 +32,10 @@ class AbstractDataLoader(ABC):
 
     @abstractmethod
     def get_named_quantity(self, name):
+        pass
+
+    @abstractmethod
+    def get_quantity_label(self):
         pass
 
     def get_pos_smooth(self):
@@ -168,15 +173,11 @@ class PynbodyDataLoader(PynbodyDataInMemory):
 
 
 class TestDataLoader(AbstractDataLoader):
-    def __init__(self, device: wgpu.GPUDevice, n_particles: int = int(5e6)):
+    def __init__(self, device: wgpu.GPUDevice, n_particles: int = config.TEST_DATA_NUM_PARTICLES_DEFAULT):
         self._n_particles = n_particles
-        self._gmm_weights = [0.5, 0.25, 0.25] # should sum to 1
-        self._gmm_means = np.array([[0.0, 0.0, 0.0],[0.0, 0.0, 0.0],[0.6,0.0,0.0]])
-        self._gmm_std = np.array([[0.2, 0.2, 0.2], [0.4, 0.02, 0.4], [0.1, 0.1, 0.1]])
-
-        self._gmm_weights = [1.0]
-        self._gmm_means = np.array([[0.0, 0.0, 0.0]])
-        self._gmm_std = np.array([[0.2, 0.2, 0.2]])
+        self._gmm_weights = [0.5, 0.4, 0.1] # should sum to 1
+        self._gmm_means = np.array([[0.0, 0.0, 0.0],[0.0, 0.0, 0.0],[6.0,10.0,0.0]])
+        self._gmm_std = np.array([[20.0, 20.0, 20.0], [4.0, 0.2, 4.0], [2.0,2.0,3.0]])
 
         self._gmm_pos = self._generate_samples()
         self._gmm_den = self._evaluate_density(self._gmm_pos)
@@ -188,13 +189,13 @@ class TestDataLoader(AbstractDataLoader):
         # simple gaussian mixture model, density of particles per unit volume
         den = np.zeros(len(pos))
         for i in range(len(self._gmm_weights)):
-            den += self._gmm_weights[i] * np.exp(-np.sum((pos - self._gmm_means[i])**2, axis=1)) \
+            den += self._gmm_weights[i] * np.exp(-np.sum((pos - self._gmm_means[i])**2/self._gmm_std[i]**2, axis=1)) \
                                                  / ((2 * np.pi)**1.5 * np.prod(self._gmm_std[i]))
         return den*self._n_particles
 
     def _generate_samples(self):
         # simple gaussian mixture model
-        pos = np.empty((self._n_particles, 3))
+        pos = np.empty((self._n_particles, 3), dtype=np.float32)
         offset = 0
         for i in range(len(self._gmm_weights)):
             cpt_len = int(self._n_particles*self._gmm_weights[i])
@@ -202,15 +203,28 @@ class TestDataLoader(AbstractDataLoader):
                 np.random.normal(size=(cpt_len, 3), scale=1.0).astype(np.float32) * self._gmm_std[np.newaxis,i,:] + self._gmm_means[i]
             offset += cpt_len
         assert offset == self._n_particles
-        return pos
+        return np.random.permutation(pos)
 
     def get_positions(self):
 
         return self._gmm_pos
 
     def get_smooth(self):
-        return 10./self._gmm_den**0.333333
-        #return np.random.uniform(0.01, 0.05, size=(self._n_particles)).astype(np.float32)
+        sm = 2.0/self._gmm_den**0.333333
+        return sm
 
     def get_mass(self):
         return np.random.uniform(0.01, 1.0, size=(self._n_particles)).astype(np.float32)*1e-8
+
+    def get_named_quantity(self, name):
+        if name=="temp":
+            return np.sin(self._gmm_pos[:,0])*np.cos(self._gmm_pos[:,1])*np.cos(self._gmm_pos[:,2])
+        else:
+            raise KeyError("Unknown quantity name")
+
+    def get_quantity_label(self):
+        if self.quantity_name is None:
+            return r"density / $M_{\odot} / \mathrm{kpc}^2$"
+        else:
+            return "test quantity"
+

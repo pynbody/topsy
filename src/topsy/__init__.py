@@ -37,6 +37,7 @@ def parse_args():
     return argparser.parse_args()
 
 def setup_logging():
+    global logger
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -50,9 +51,20 @@ def main():
     setup_logging()
     args = parse_args()
 
-    vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
-                                data_loader_args=(args.filename, args.center,
-                                                  args.particle),
+    if "test://" in args.filename:
+        loader_class = loader.TestDataLoader
+        try:
+            n_part = int(float(args.filename[7:])) # going through float allows scientific notation
+        except ValueError:
+            n_part = config.TEST_DATA_NUM_PARTICLES_DEFAULT
+        logger.info(f"Using test data with {n_part} particles")
+        loader_args = (n_part,)
+    else:
+        loader_class = loader.PynbodyDataLoader
+        loader_args = (args.filename, args.center, args.particle)
+
+    vis = visualizer.Visualizer(data_loader_class=loader_class,
+                                data_loader_args=loader_args,
                                 periodic_tiling=args.tile,
                                 render_resolution=args.resolution)
     vis.quantity_name = args.quantity

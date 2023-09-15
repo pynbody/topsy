@@ -234,6 +234,8 @@ class Colormap:
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
             self.vmin, self.vmax = np.percentile(vals, [1.0, 99.9])
+        elif len(vals)>2:
+            self.vmin, self.vmax = np.min(vals), np.max(vals)
         else:
             logger.warning(
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
