@@ -1,4 +1,4 @@
-"""topsy - An astrophysics simulation visualization package based on OpenGL, using pynbody for reading data"""
+"""topsy - An astrophysics simulation visualization package based on webgpu, using pynbody for reading data"""
 
 __version__ = "0.2.1"
 
