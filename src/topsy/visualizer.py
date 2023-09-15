@@ -213,7 +213,7 @@ class VisualizerBase:
 
         if self._sph.downsample_factor>1:
             self._last_lores_draw_time = time.time()
-            wgpu.gui.auto.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+            wgpu.gui.qt.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
         elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
             # this will affect the NEXT frame, not this one!
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
@@ -290,7 +290,7 @@ class VisualizerBase:
         p.close(fig)
 
     def run(self):
-        wgpu.gui.auto.run()
+        wgpu.gui.qt.run()
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
     pass

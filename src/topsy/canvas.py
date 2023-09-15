@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import wgpu.gui.jupyter
 
-from wgpu.gui.auto import WgpuCanvas
+from wgpu.gui.qt import WgpuCanvas
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -83,6 +83,11 @@ class VisualizerCanvas(WgpuCanvas):
 
 
     def resize(self, width, height, pixel_ratio=1):
+        if width==0.0 or height==0.0:
+            return
+            # qt seems to make a call with zero, which then leads to textures being initialized
+            # with zero size if we take it seriously
+
         self.width_physical = width*pixel_ratio
         self.height_physical = height*pixel_ratio
         self.pixel_ratio = pixel_ratio

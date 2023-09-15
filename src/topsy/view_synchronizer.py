@@ -38,6 +38,10 @@ class ViewSynchronizer:
         self._views.append(weakref.ref(view))
         view._view_synchronizer = self
 
+    def remove_view(self, view: Visualizer):
+        self._views.remove(weakref.ref(view))
+        del view._view_synchronizer
+
 class SynchronizationMixin:
     """Mixin class for Visualizer to allow it to synchronize with other views"""
     def draw(self):
@@ -59,3 +63,7 @@ class SynchronizationMixin:
             vs.add_view(self)
             vs.add_view(other)
 
+    def stop_synchronizing(self):
+        """Stop synchronizing this visualizer with any other"""
+        if hasattr(self, "_view_synchronizer"):
+            self._view_synchronizer.remove_view(self)

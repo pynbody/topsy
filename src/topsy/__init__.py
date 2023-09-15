@@ -7,6 +7,12 @@ import sys
 import argparse
 import matplotlib
 import pynbody
+
+
+import PySide6
+import wgpu.gui.qt
+import wgpu, wgpu.gui.auto
+
 import wgpu.gui.jupyter
 
 from . import config, visualizer, loader
