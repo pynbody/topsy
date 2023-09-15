@@ -94,9 +94,9 @@ class VisualizerBase:
             self.canvas.request_draw(self.draw)
             self._draw_pending = True
 
-    def rotate(self, dx, dy):
-        dx_rotation_matrix = self._x_rotation_matrix(dx*0.01)
-        dy_rotation_matrix = self._y_rotation_matrix(dy*0.01)
+    def rotate(self, x_angle, y_angle):
+        dx_rotation_matrix = self._x_rotation_matrix(x_angle)
+        dy_rotation_matrix = self._y_rotation_matrix(y_angle)
         self.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self.rotation_matrix
 
     @property
