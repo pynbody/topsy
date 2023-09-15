@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import weakref
 
+from .drawreason import DrawReason
+
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .visualizer import Visualizer
@@ -44,9 +46,9 @@ class ViewSynchronizer:
 
 class SynchronizationMixin:
     """Mixin class for Visualizer to allow it to synchronize with other views"""
-    def draw(self):
-        super().draw()
-        if hasattr(self, "_view_synchronizer"):
+    def draw(self, reason):
+        super().draw(reason)
+        if hasattr(self, "_view_synchronizer") and reason != DrawReason.REFINE:
             self._view_synchronizer.perpetuate_update(self)
 
     def synchronize_with(self, other: Visualizer):

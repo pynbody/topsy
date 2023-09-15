@@ -1,6 +1,6 @@
-"""topsy - An astrophysics simulation visualization package based on OpenGL, using pynbody for reading data"""
+"""topsy - An astrophysics simulation visualization package based on webgpu, using pynbody for reading data"""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 import logging
 import sys
@@ -71,15 +71,17 @@ def main():
 
     vis = visualizer.Visualizer(data_loader_class=loader_class,
                                 data_loader_args=loader_args,
+                                colormap_name=args.colormap,
                                 periodic_tiling=args.tile,
                                 render_resolution=args.resolution)
+
     vis.quantity_name = args.quantity
     vis.run()
 
-def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, tile : bool = False):
+def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
                                 data_loader_args=(snapshot,),
-                                periodic_tiling=tile)
+                                **kwargs)
     vis.quantity_name = quantity
     if isinstance(vis.canvas, wgpu.gui.jupyter.JupyterWgpuCanvas):
         return vis

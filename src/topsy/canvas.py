@@ -45,7 +45,7 @@ class VisualizerCanvas(WgpuCanvas):
         super().handle_event(event)
 
     def drag(self, dx, dy):
-        self._visualizer.rotate(dx, dy)
+        self._visualizer.rotate(dx*0.01, dy*0.01)
 
     def shift_drag(self, dx, dy):
         biggest_dimension = max(self.width_physical, self.height_physical)
