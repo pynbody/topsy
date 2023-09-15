@@ -18,19 +18,18 @@ from . import util
 from . import line
 from . import simcube
 from . import view_synchronizer
+from .drawreason import DrawReason
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
 class VisualizerBase:
-    colormap_name = config.DEFAULT_COLORMAP
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
-
     show_status = True
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
-                 *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False):
+                 *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
+                 colormap_name = config.DEFAULT_COLORMAP):
+        self.colormap_name = colormap_name
         self._draw_pending = False
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
@@ -67,7 +66,7 @@ class VisualizerBase:
 
         self._render_timer = util.TimeGpuOperation(self.device)
 
-        self.invalidate()
+        self.invalidate(DrawReason.INITIAL_UPDATE)
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.request_adapter(canvas=self.canvas,
@@ -89,9 +88,9 @@ class VisualizerBase:
             label="sph_render_texture",
         )
 
-    def invalidate(self):
+    def invalidate(self, reason=DrawReason.CHANGE):
         if not self._draw_pending:
-            self.canvas.request_draw(self.draw)
+            self.canvas.request_draw(lambda: self.draw(reason))
             self._draw_pending = True
 
     def rotate(self, x_angle, y_angle):
@@ -171,7 +170,7 @@ class VisualizerBase:
 
 
 
-    def draw(self):
+    def draw(self, reason):
         ce_label = "sph_render"
         # labelling this is useful for understanding performance in macos instruments
         if self._sph.downsample_factor>1:
