@@ -211,7 +211,7 @@ class Colormap:
         colormap_render_pass.end()
 
 
-    def set_vmin_vmax(self):
+    def autorange_vmin_vmax(self):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now

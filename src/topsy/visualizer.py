@@ -192,11 +192,10 @@ class VisualizerBase:
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
-            self._colormap.set_vmin_vmax()
+            self._colormap.autorange_vmin_vmax()
             self.vmin_vmax_is_set = True
-            self._colorbar.vmin = self._colormap.vmin
-            self._colorbar.vmax = self._colormap.vmax
-            self._colorbar.update()
+            self._refresh_colorbar()
+
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
         self._colormap.encode_render_pass(command_encoder)
@@ -219,6 +218,34 @@ class VisualizerBase:
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
         self._draw_pending = False
+
+    @property
+    def vmin(self):
+        return self._colormap.vmin
+
+    @property
+    def vmax(self):
+        return self._colormap.vmax
+
+    @vmin.setter
+    def vmin(self, value):
+        self._colormap.vmin = value
+        self.vmin_vmax_is_set = True
+        self._refresh_colorbar()
+        self.invalidate()
+
+    @vmax.setter
+    def vmax(self, value):
+        self._colormap.vmax = value
+        self.vmin_vmax_is_set = True
+        self._refresh_colorbar()
+        self.invalidate()
+
+    def _refresh_colorbar(self):
+        self._colorbar.vmin = self._colormap.vmin
+        self._colorbar.vmax = self._colormap.vmax
+        self._colorbar.update()
+
     def sph_clipspace_to_screen_clipspace_matrix(self):
         aspect_ratio = self.canvas.width_physical / self.canvas.height_physical
         if aspect_ratio>1:
