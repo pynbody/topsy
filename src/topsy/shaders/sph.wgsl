@@ -5,7 +5,8 @@ struct TransformParams {
     clipspace_size_max: f32,
     downsample_factor: u32,
     downsample_offset: u32,
-    mass_scale: f32
+    mass_scale: f32,
+    boxsize_by_2_clipspace: f32
 };
 
 @group(0) @binding(0)
@@ -31,7 +32,6 @@ struct VertexOutput {
 struct FragmentOutput {
     @location(0) density: vec2<f32>
 }
-
 
 @vertex
 fn vertex_main(input: VertexInput) -> VertexOutput {
@@ -68,6 +68,7 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
         return output;
     }
 
+    var boxsize : f32=25000.0;
     // perform transformation
     output.pos = input.pos;
     output.pos.w = 1.0;

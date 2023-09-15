@@ -9,42 +9,76 @@ import wgpu.backends.rs # noqa: F401, Select Rust backend
 from . import config
 from . import canvas
 from . import colormap
-from . import multiresolution_sph, sph
+from . import multiresolution_sph, sph, periodic_sph
 from . import colorbar
 from . import text
 from . import scalebar
 from . import loader
 from . import util
+from . import line
+from . import simcube
+from . import view_synchronizer
+from .drawreason import DrawReason
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-class Visualizer:
-    colormap_name = config.DEFAULT_COLORMAP
+class VisualizerBase:
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
-
     show_status = True
-    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = ()):
 
+    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
+                 *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
+                 colormap_name = config.DEFAULT_COLORMAP):
+        self.colormap_name = colormap_name
+        self._draw_pending = False
+        self._render_resolution = render_resolution
+        self.crosshairs_visible = False
+        self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
+        self.vmin_vmax_is_set = False
 
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
-        self.adapter: wgpu.GPUAdapter = wgpu.request_adapter(canvas=self.canvas, power_preference="high-performance")
+
+        self._setup_wgpu()
+
+        self.data_loader = data_loader_class(self.device, *data_loader_args)
+        self.periodicity_scale = self.data_loader.get_periodicity_scale()
+
+        self._colormap = colormap.Colormap(self, weighted_average = False)
+        if periodic_tiling:
+            self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
+        else:
+            self._sph = sph.SPH(self, self.render_texture)
+        #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
+
+        self._last_status_update = 0.0
+        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
+
+        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, "TODO")
+        self._scalebar = scalebar.ScalebarOverlay(self)
+
+        self._crosshairs = line.Line(self,
+                                     [(-1, 0,0,0), (1, 0,0,0),
+                                      (200,200,0,0),
+                                      (0, 1, 0, 0), (0, -1, 0, 0)],
+                                     (1, 1, 1, 0.3) # color
+                                     , 10.0)
+        self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
+
+        self._render_timer = util.TimeGpuOperation(self.device)
+
+        self.invalidate(DrawReason.INITIAL_UPDATE)
+
+    def _setup_wgpu(self):
+        self.adapter: wgpu.GPUAdapter = wgpu.request_adapter(canvas=self.canvas,
+                                                             power_preference="high-performance")
         self.device: wgpu.GPUDevice = self.adapter.request_device()
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
         self.canvas_format = self.context.get_preferred_format(self.adapter)
-
-        self._n_sph_channels = 1
-        self._recent_frame_times = []
         if self.canvas_format.endswith("-srgb"):
             # matplotlib colours aren't srgb. It might be better to convert
             # but for now, just stop the canvas being srgb
             self.canvas_format = self.canvas_format[:-5]
-
         self.context.configure(device=self.device, format=self.canvas_format)
-
-        self._render_resolution = 1024
-
         self.render_texture: wgpu.GPUTexture = self.device.create_texture(
             size=(self._render_resolution, self._render_resolution, 1),
             usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
@@ -54,39 +88,38 @@ class Visualizer:
             label="sph_render_texture",
         )
 
-        self.data_loader = data_loader_class(self.device, *data_loader_args)
+    def invalidate(self, reason=DrawReason.CHANGE):
+        if not self._draw_pending:
+            self.canvas.request_draw(lambda: self.draw(reason))
+            self._draw_pending = True
 
-        self._colormap = colormap.Colormap(self, weighted_average = False)
-        self._sph = sph.SPH(self, self.render_texture)
-        #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
+    def rotate(self, x_angle, y_angle):
+        dx_rotation_matrix = self._x_rotation_matrix(x_angle)
+        dy_rotation_matrix = self._y_rotation_matrix(y_angle)
+        self.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self.rotation_matrix
 
-        self._last_status_update = 0.0
+    @property
+    def rotation_matrix(self):
+        return self._sph.rotation_matrix
 
-        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, "TODO")
-        self._scalebar = scalebar.ScalebarOverlay(self)
-        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
-        self._display_fullres_render_status = False # when True, customises info text to refer to full-res render
-
-        self._render_timer = util.TimeGpuOperation(self.device)
-
-        self.vmin_vmax_is_set = False
-
+    @rotation_matrix.setter
+    def rotation_matrix(self, value):
+        self._sph.rotation_matrix = value
         self.invalidate()
 
+    @property
+    def position_offset(self):
+        return self._sph.position_offset
 
-
-    def invalidate(self):
-        self.canvas.request_draw(self.draw)
-
-    def rotate(self, dx, dy):
-        dx_rotation_matrix = self._x_rotation_matrix(dx*0.01)
-        dy_rotation_matrix = self._y_rotation_matrix(dy*0.01)
-        self._sph.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self._sph.rotation_matrix
+    @position_offset.setter
+    def position_offset(self, value):
+        self._sph.position_offset = value
         self.invalidate()
 
     def reset_view(self):
         self._sph.rotation_matrix = np.eye(3)
         self.scale = config.DEFAULT_SCALE
+        self._sph.position_offset = np.zeros(3)
 
     @property
     def scale(self):
@@ -137,8 +170,7 @@ class Visualizer:
 
 
 
-    def draw(self):
-
+    def draw(self, reason):
         ce_label = "sph_render"
         # labelling this is useful for understanding performance in macos instruments
         if self._sph.downsample_factor>1:
@@ -159,16 +191,18 @@ class Visualizer:
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
-            self._colormap.set_vmin_vmax()
+            self._colormap.autorange_vmin_vmax()
             self.vmin_vmax_is_set = True
-            self._colorbar.vmin = self._colormap.vmin
-            self._colorbar.vmax = self._colormap.vmax
-            self._colorbar.update()
+            self._refresh_colorbar()
+
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
         self._colormap.encode_render_pass(command_encoder)
         self._colorbar.encode_render_pass(command_encoder)
         self._scalebar.encode_render_pass(command_encoder)
+        if self.crosshairs_visible:
+            self._crosshairs.encode_render_pass(command_encoder)
+        self._cube.encode_render_pass(command_encoder)
 
         if self.show_status:
             self._update_and_display_status(command_encoder)
@@ -182,10 +216,64 @@ class Visualizer:
             # this will affect the NEXT frame, not this one!
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
+        self._draw_pending = False
+
+    @property
+    def vmin(self):
+        return self._colormap.vmin
+
+    @property
+    def vmax(self):
+        return self._colormap.vmax
+
+    @vmin.setter
+    def vmin(self, value):
+        self._colormap.vmin = value
+        self.vmin_vmax_is_set = True
+        self._refresh_colorbar()
+        self.invalidate()
+
+    @vmax.setter
+    def vmax(self, value):
+        self._colormap.vmax = value
+        self.vmin_vmax_is_set = True
+        self._refresh_colorbar()
+        self.invalidate()
+
+    def _refresh_colorbar(self):
+        self._colorbar.vmin = self._colormap.vmin
+        self._colorbar.vmax = self._colormap.vmax
+        self._colorbar.update()
+
+    def sph_clipspace_to_screen_clipspace_matrix(self):
+        aspect_ratio = self.canvas.width_physical / self.canvas.height_physical
+        if aspect_ratio>1:
+            y_squash = aspect_ratio
+            x_squash = 1.0
+        elif aspect_ratio<1:
+            y_squash = 1.0
+            x_squash = 1.0/aspect_ratio
+
+        matr = np.eye(4, dtype=np.float32)
+        matr[0,0] = x_squash
+        matr[1,1] = y_squash
+        return matr
+
+
+
+    def display_status(self, text, timeout=0.5):
+        self._override_status_text = text
+        self._override_status_text_until = time.time()+timeout
 
     def _update_and_display_status(self, command_encoder):
         now = time.time()
-        if now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
+        if hasattr(self, "_override_status_text_until") and now<self._override_status_text_until:
+            if self._status.text!=self._override_status_text and now-self._last_status_update>config.STATUS_LINE_UPDATE_INTERVAL_RAPID:
+                self._status.text = self._override_status_text
+                self._last_status_update = now
+                self._status.update()
+
+        elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
             self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
             if self._sph.downsample_factor > 1:
@@ -229,3 +317,6 @@ class Visualizer:
 
     def run(self):
         wgpu.gui.auto.run()
+
+class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
+    pass

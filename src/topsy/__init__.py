@@ -1,6 +1,6 @@
-"""topsy - An astrophysics simulation visualization package based on OpenGL, using pynbody for reading data"""
+"""topsy - An astrophysics simulation visualization package based on webgpu, using pynbody for reading data"""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 import logging
 import sys
@@ -31,10 +31,13 @@ def parse_args():
                            default="halo-1", type=str)
     argparser.add_argument("--quantity", "-q", help="Specify a quantity to render instead of density",
                            default=None, type=str)
+    argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
+                           default=False, action="store_true")
 
     return argparser.parse_args()
 
 def setup_logging():
+    global logger
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -48,15 +51,31 @@ def main():
     setup_logging()
     args = parse_args()
 
-    vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataLoader,
-                                data_loader_args=(args.filename, args.center,
-                                                  args.particle))
+    if "test://" in args.filename:
+        loader_class = loader.TestDataLoader
+        try:
+            n_part = int(float(args.filename[7:])) # going through float allows scientific notation
+        except ValueError:
+            n_part = config.TEST_DATA_NUM_PARTICLES_DEFAULT
+        logger.info(f"Using test data with {n_part} particles")
+        loader_args = (n_part,)
+    else:
+        loader_class = loader.PynbodyDataLoader
+        loader_args = (args.filename, args.center, args.particle)
+
+    vis = visualizer.Visualizer(data_loader_class=loader_class,
+                                data_loader_args=loader_args,
+                                colormap_name=args.colormap,
+                                periodic_tiling=args.tile,
+                                render_resolution=args.resolution)
+
     vis.quantity_name = args.quantity
     vis.run()
 
-def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None):
+def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
-                                data_loader_args=(snapshot,))
+                                data_loader_args=(snapshot,),
+                                **kwargs)
     vis.quantity_name = quantity
     if isinstance(vis.canvas, wgpu.gui.jupyter.JupyterWgpuCanvas):
         return vis

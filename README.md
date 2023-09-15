@@ -96,8 +96,9 @@ If everything works, a window will pop up with a beautiful rendering of your sim
 is in focus (for some reason on MacOS I sometimes have to switch to another application then back to 
 python to get this to work). Then you can use the following controls:
 
-* To spin around the centre, drag the mouse. 
-* To zoom in and out, use the mouse scroll wheel. 
+* To spin around the centre, drag the mouse.
+* To zoom in and out, use the mouse scroll wheel.
+* To move the centre, hold shift while dragging the mouse.
 * To rescale the colours to an appropriate range for the current view, press `r`(ange)
 * To return the view to the original orientation and zoom, press `h`(ome)
 * To save a snapshot of the current image as a pdf press `s`(ave)
