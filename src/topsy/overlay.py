@@ -18,7 +18,7 @@ class Overlay(metaclass=ABCMeta):
                  )
 
     MAX_INSTANCES = 128
-    def __init__(self, visualizer: Visualizer, target_texture: wgpu.GPUTexture | None = None):
+    def __init__(self, visualizer: Visualizer, target_canvas_format=None):
         """Setup the overlay.
 
         :param visualizer: The visualizer instance
@@ -27,11 +27,9 @@ class Overlay(metaclass=ABCMeta):
         self._visualizer = visualizer
         self._device = self._visualizer.device
         self._contents = None
-        self._target_texture = target_texture
-        if target_texture is None:
-            self._target_canvas_format = visualizer.canvas_format
-        else:
-            self._target_canvas_format = target_texture.format
+        if target_canvas_format is None:
+            target_canvas_format = self._visualizer.canvas_format
+        self._target_canvas_format = target_canvas_format
 
         # The following are present to allow multiple copies of the same overlay to be
         # rendered. This is used by the periodic_sph module. By default, there is just
@@ -231,17 +229,14 @@ class Overlay(metaclass=ABCMeta):
 
     def get_instance_offsets_and_weights(self):
         return np.array([[0.0,0.0]], dtype=np.float32), np.ones(1, dtype=np.float32)
-    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, clear=False):
-        targ_tex: wgpu.GPUTextureView
-        if self._target_texture is None:
-            targ_tex = self._visualizer.context.get_current_texture()
-        else:
-            targ_tex = self._target_texture.create_view()
-        self._update_params_buffer(targ_tex.size[0], targ_tex.size[1])
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder,
+                           target_texture_view: wgpu.GPUTextureView,
+                           clear=False):
+        self._update_params_buffer(target_texture_view.size[0], target_texture_view.size[1])
 
         render_pass = command_encoder.begin_render_pass(
             color_attachments=[{
-                "view": targ_tex,
+                "view": target_texture_view,
                 "resolve_target": None,
                 "clear_value": (0.0, 0.0, 0.0, 1.0),
                 "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,

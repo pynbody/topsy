@@ -39,7 +39,7 @@ class ScalebarOverlay:
         self._bar = BarOverlay(visualizer, x0=-0.9, y0=-0.9, height_pixels=10, color=(1, 1, 1, 1))
         self._visualizer = visualizer
 
-    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder):
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, target_texture_view: wgpu.GPUTextureView):
         physical_scalebar_length = self._recommend_physical_scalebar_length()
         self._bar.length = physical_scalebar_length / self._visualizer.scale
         # note that the visualizer scale refers to a square rendering target
@@ -54,8 +54,8 @@ class ScalebarOverlay:
 
         self._update_scalebar_label(physical_scalebar_length)
 
-        self._label.encode_render_pass(command_encoder)
-        self._bar.encode_render_pass(command_encoder)
+        self._label.encode_render_pass(command_encoder, target_texture_view)
+        self._bar.encode_render_pass(command_encoder, target_texture_view)
     def _get_scalebar_label_text(self, physical_scalebar_length_kpc):
         if physical_scalebar_length_kpc < 1:
             return f"{physical_scalebar_length_kpc * 1000:.0f} pc"

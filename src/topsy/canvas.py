@@ -92,8 +92,8 @@ class VisualizerCanvas(WgpuCanvas):
             # qt seems to make a call with zero, which then leads to textures being initialized
             # with zero size if we take it seriously
 
-        self.width_physical = width*pixel_ratio
-        self.height_physical = height*pixel_ratio
+        self.width_physical = int(width*pixel_ratio)
+        self.height_physical = int(height*pixel_ratio)
         self.pixel_ratio = pixel_ratio
 
     def request_draw(self, function, *args, **kwargs):

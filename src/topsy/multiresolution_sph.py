@@ -18,11 +18,11 @@ class SPHAccumulationOverlay(overlay.Overlay):
                     wgpu.BlendFactor.one,
                     wgpu.BlendOperation.add,
                  )
-    def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture, target_texture: wgpu.GPUTexture):
+    def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture):
         self._texture = source_texture
         self.num_repetitions = 0
         self.panel_scale = 1.0
-        super().__init__(visualizer, target_texture)
+        super().__init__(visualizer, source_texture.format)
 
 
     def _setup_texture(self):
@@ -63,7 +63,7 @@ class MultiresolutionSPH:
         self._renderers: list[sph.SPH] = [sph.SPH(visualizer, texture) for texture in self._textures]
 
 
-        self._accumulators = [SPHAccumulationOverlay(visualizer, self._textures[i], self._textures[0])
+        self._accumulators = [SPHAccumulationOverlay(visualizer, self._textures[i])
                               for i in range(len(self._textures)-1,0,-1)]
 
         layer_counts = {}
@@ -136,6 +136,6 @@ class MultiresolutionSPH:
             s.encode_render_pass(command_encoder)
 
         for a in self._accumulators:
-            a.encode_render_pass(command_encoder)
+            a.encode_render_pass(command_encoder, self._textures[0].create_view())
 
 

@@ -170,7 +170,10 @@ class VisualizerBase:
 
 
 
-    def draw(self, reason):
+    def draw(self, reason, target_texture_view=None):
+        if target_texture_view is None:
+            target_texture_view = self.context.get_current_texture() # weirdly returns a view, not a texture
+
         if reason!=DrawReason.PRESENTATION_CHANGE:
             ce_label = "sph_render"
             # labelling this is useful for understanding performance in macos instruments
@@ -193,15 +196,15 @@ class VisualizerBase:
 
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
-        self._colormap.encode_render_pass(command_encoder)
-        self._colorbar.encode_render_pass(command_encoder)
-        self._scalebar.encode_render_pass(command_encoder)
+        self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        self._colorbar.encode_render_pass(command_encoder, target_texture_view)
+        self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:
-            self._crosshairs.encode_render_pass(command_encoder)
-        self._cube.encode_render_pass(command_encoder)
+            self._crosshairs.encode_render_pass(command_encoder, target_texture_view)
+        self._cube.encode_render_pass(command_encoder, target_texture_view)
 
         if self.show_status:
-            self._update_and_display_status(command_encoder)
+            self._update_and_display_status(command_encoder, target_texture_view)
 
         self.device.queue.submit([command_encoder.finish()])
 
@@ -261,7 +264,7 @@ class VisualizerBase:
         self._override_status_text = text
         self._override_status_text_until = time.time()+timeout
 
-    def _update_and_display_status(self, command_encoder):
+    def _update_and_display_status(self, command_encoder, target_texture_view):
         now = time.time()
         if hasattr(self, "_override_status_text_until") and now<self._override_status_text_until:
             if self._status.text!=self._override_status_text and now-self._last_status_update>config.STATUS_LINE_UPDATE_INTERVAL_RAPID:
@@ -279,9 +282,9 @@ class VisualizerBase:
                 self._display_fullres_render_status = False
             self._status.update()
 
-        self._status.encode_render_pass(command_encoder)
+        self._status.encode_render_pass(command_encoder, target_texture_view)
 
-    def get_rendered_image(self) -> np.ndarray:
+    def get_sph_image(self) -> np.ndarray:
         im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
                                             {'bytes_per_row':8*self._render_resolution},
                                             (self._render_resolution, self._render_resolution, 1))
@@ -292,8 +295,9 @@ class VisualizerBase:
             im = np_im[:,:,0]
         return im
 
+
     def save(self, filename='output.pdf'):
-        image = self.get_rendered_image()
+        image = self.get_sph_image()
         import pylab as p
         fig = p.figure()
         p.clf()

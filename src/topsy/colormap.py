@@ -190,14 +190,12 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder):
-        display_texture = self._visualizer.context.get_current_texture()
-
-        self._update_parameter_buffer(display_texture.size[0], display_texture.size[1])
+    def encode_render_pass(self, command_encoder, target_texture_view):
+        self._update_parameter_buffer(target_texture_view.size[0], target_texture_view.size[1])
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
-                    "view": display_texture,
+                    "view": target_texture_view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 1.0),
                     "load_op": wgpu.LoadOp.load,
@@ -216,7 +214,7 @@ class Colormap:
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
-        vals = self._visualizer.get_rendered_image().ravel()
+        vals = self._visualizer.get_sph_image().ravel()
 
         previous_log_scale = self.log_scale
         if (vals<0).any():
