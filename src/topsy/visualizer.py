@@ -334,8 +334,8 @@ class VisualizerBase:
                       "visualizer is running, you can call show(force=True) to run the gui without access\r\n"
                       "to the ipython console until you close the visualizer window.\r\n\r\n"
                       )
-        else:
-            raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
+        #else:
+        #    raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
 
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
