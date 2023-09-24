@@ -94,9 +94,9 @@ class VisualizationRecorder:
             im_npy = im_npy[:, :, 2::-1]
             e = time.time()
             yield im_npy
-            self._visualizer.display_status(f"Rendering video frame {i+1} of {num_frames}")
-            self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
-            self._visualizer.context.present()
+            #self._visualizer.display_status(f"Rendering video frame {i+1} of {num_frames}")
+            #self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
+            #self._visualizer.context.present()
 
         self.playback = False
 

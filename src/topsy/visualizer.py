@@ -174,6 +174,9 @@ class VisualizerBase:
         if target_texture_view is None:
             target_texture_view = self.context.get_current_texture() # weirdly returns a view, not a texture
 
+        if reason == DrawReason.REFINE:
+            self._sph.downsample_factor = 1
+
         if reason!=DrawReason.PRESENTATION_CHANGE:
             ce_label = "sph_render"
             # labelling this is useful for understanding performance in macos instruments
@@ -210,7 +213,7 @@ class VisualizerBase:
 
         if self._sph.downsample_factor>1:
             self._last_lores_draw_time = time.time()
-            wgpu.gui.qt.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+            wgpu.gui.auto.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
         elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
             # this will affect the NEXT frame, not this one!
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
@@ -321,25 +324,20 @@ class VisualizerBase:
             return self.canvas
         elif isinstance(self.canvas, qt.WgpuCanvas):
             self.canvas.show()
-            event_loop_running = False
-            if not force:
-                try:
-                    __IPYTHON__
-                    import IPython.lib.guisupport
-                    event_loop_running = IPython.lib.guisupport.is_event_loop_running_qt4()
-                    if not event_loop_running:
-                        print("You appear to be running from inside ipython, but the gui event loop is not running.")
-                        print("Please run '%gui qt' in ipython before calling show().")
-                        print("Alternatively, if you do not want to continue interacting with ipython while the"
-                              "visualizer is running, you can call show(force=True) to force the gui to take"
-                              "precedence over the ipython command line.")
-                        return
-
-                except (ImportError, NameError):
-                    pass
-
-            if not event_loop_running:
+            if force or not util.is_inside_ipython():
                 qt.run()
+            elif not util.is_ipython_running_qt_event_loop():
+                # is_inside_ipython_console must be True; if it were False, the previous branch would have run
+                # instead.
+                print("\r\nYou appear to be running from inside ipython, but the gui event loop is not running.\r\n"
+                      "Please run %gui qt in ipython before calling show().\r\n"
+                      "\r\n"
+                      "Alternatively, if you do not want to continue interacting with ipython while the\r\n"
+                      "visualizer is running, you can call show(force=True) to run the gui without access\r\n"
+                      "to the ipython console until you close the visualizer window.\r\n\r\n"
+                      )
+        else:
+            raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
 
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):

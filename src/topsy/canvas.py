@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-import wgpu.gui.jupyter
+import wgpu.gui.jupyter, wgpu.gui.auto
 
 from wgpu.gui.qt import WgpuCanvas
 from .drawreason import DrawReason
