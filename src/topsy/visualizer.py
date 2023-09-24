@@ -30,7 +30,6 @@ class VisualizerBase:
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP):
         self.colormap_name = colormap_name
-        self._draw_pending = False
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
         self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
@@ -89,9 +88,8 @@ class VisualizerBase:
         )
 
     def invalidate(self, reason=DrawReason.CHANGE):
-        if not self._draw_pending:
-            self.canvas.request_draw(lambda: self.draw(reason))
-            self._draw_pending = True
+        # NB no need to check if we're already pending a draw - wgpu.gui does that for us
+        self.canvas.request_draw(lambda: self.draw(reason))
 
     def rotate(self, x_angle, y_angle):
         dx_rotation_matrix = self._x_rotation_matrix(x_angle)
@@ -213,12 +211,10 @@ class VisualizerBase:
 
         if self._sph.downsample_factor>1:
             self._last_lores_draw_time = time.time()
-            wgpu.gui.auto.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+            self.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
         elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
             # this will affect the NEXT frame, not this one!
             self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
-
-        self._draw_pending = False
 
     @property
     def vmin(self):
@@ -319,10 +315,12 @@ class VisualizerBase:
         p.close(fig)
 
     def show(self, force=False):
-        from wgpu.gui import jupyter, qt
+        from wgpu.gui import jupyter
         if isinstance(self.canvas, jupyter.WgpuCanvas):
             return self.canvas
-        elif isinstance(self.canvas, qt.WgpuCanvas):
+        else:
+            from wgpu.gui import qt # can only safely import this if we think we're running in a qt environment
+            assert isinstance(self.canvas, qt.WgpuCanvas)
             self.canvas.show()
             if force or not util.is_inside_ipython():
                 qt.run()

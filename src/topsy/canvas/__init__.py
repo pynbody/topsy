@@ -3,14 +3,17 @@ from __future__ import annotations
 import numpy as np
 import wgpu.gui.jupyter, wgpu.gui.auto
 
-from wgpu.gui.qt import WgpuCanvas
-from .drawreason import DrawReason
+from ..drawreason import DrawReason
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer import Visualizer
+    from ..visualizer import Visualizer
 
-class VisualizerCanvas(WgpuCanvas):
+
+from wgpu.gui.base import WgpuCanvasBase
+
+
+class VisualizerCanvasBase:
     def __init__(self, *args, **kwargs):
         self._visualizer : Visualizer = kwargs.pop("visualizer")
 
@@ -87,25 +90,34 @@ class VisualizerCanvas(WgpuCanvas):
         # putting this here as a reminder that the resize method must be passed to the base class
         super().resize(*args)
     def resize_complete(self, width, height, pixel_ratio=1):
-        if width==0.0 or height==0.0:
-            return
-            # qt seems to make a call with zero, which then leads to textures being initialized
-            # with zero size if we take it seriously
-
         self.width_physical = int(width*pixel_ratio)
         self.height_physical = int(height*pixel_ratio)
         self.pixel_ratio = pixel_ratio
 
-    def request_draw(self, function, *args, **kwargs):
+    def double_click(self, x, y):
+        pass
 
-        # As a side effect, wgpu gui layer stores our function call, to enable it to be
-        # repainted later. But we want to distinguish such repaints and handle them
-        # differently, so we need to replace the function with our own
-        def function_wrapper():
-            function()
-            self._subwidget.draw_frame = lambda: self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
-
-        super().request_draw(function_wrapper,*args, **kwargs)
+    @classmethod
+    def call_later(cls, delay, fn, *args):
+        raise NotImplementedError()
 
 
+
+
+
+# Now we are going to select a specific backend
+#
+# we don't use wgpu.gui.auto directly because it prefers the glfw backend over qt
+# whereas we want to use qt
+#
+# Note also that is_jupyter as implemented fails to distinguish correctly if we are
+# running inside a kernel that isn't attached to a notebook. There doesn't seem to
+# be any way to distinguish this, so we live with it for now.
+from wgpu.gui.auto import is_jupyter
+
+
+if is_jupyter():
+    from .jupyter import VisualizerCanvas
+else:
+    from .qt import VisualizerCanvas
 
