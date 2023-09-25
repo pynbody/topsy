@@ -60,6 +60,13 @@ class VisualizationRecorder:
     def _get_value_at_time(self, property, time):
         return self._interpolators[property](time)
 
+    @classmethod
+    def _progress_iterator(cls, ntot):
+        """Return an iterator that displays progress in an appropriate way
+
+        Overriden for the qt gui"""
+        return tqdm.tqdm(range(ntot), unit="frame")
+
     def _replay(self, fps=30.0, resolution=(1920, 1080)):
         if self._recording:
             self.stop()
@@ -79,7 +86,7 @@ class VisualizationRecorder:
         )
 
         num_frames = int(self._recording_ends_at * fps)
-        for i in tqdm.tqdm(range(num_frames), unit="frame"):
+        for i in self._progress_iterator(num_frames):
             t = i / fps
             for p in self._record_properties:
                 val = self._get_value_at_time(p, t)
