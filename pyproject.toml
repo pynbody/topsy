@@ -25,6 +25,7 @@ dependencies = [
     "wgpu >= 0.9.4",
     "jupyter_rfb >=0.4.1",
     "tqdm >=4.62.0",
+    "opencv-python >=4.8.0"
     "PySide6 >= 6.5.0" # windowing
 ]
 
