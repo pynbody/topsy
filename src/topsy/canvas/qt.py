@@ -56,7 +56,8 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
 
                     for i in range(ntot):
                         # updating the progress bar triggers a render in the main window, which
-                        # in turn is quite slow. So only update every second or so.
+                        # in turn is quite slow (because it can trigger software rendering
+                        # of resizable elements like the colorbar). So only update every second or so.
                         if time.time() - last_update > 1.0:
                             last_update = time.time()
                             progress_bar.setValue(i)
