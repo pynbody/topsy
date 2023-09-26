@@ -113,7 +113,6 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         # at this moment, the data loader hasn't been initialized yet, so we can't
         # use it to populate the menu. This needs a callback:
         def populate_quantity_menu():
-            logger.info(f"Quantities: {self._visualizer.data_loader.get_quantity_names()}")
             self._quantity_menu.addItems( self._visualizer.data_loader.get_quantity_names())
             self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
             self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
