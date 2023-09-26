@@ -99,7 +99,13 @@ class PynbodyDataInMemory(AbstractDataLoader):
         return self.snapshot['mass'].astype(np.float32)[self._random_order]
 
     def get_named_quantity(self, name):
-        return self.snapshot[name].astype(np.float32)[self._random_order]
+        qty =self.snapshot[name]
+        if len(qty.shape)==2:
+            qty = qty[:,0]
+        return qty.astype(np.float32)[self._random_order]
+
+    def get_quantity_names(self):
+        return self.snapshot.loadable_keys()
 
     def get_quantity_label(self):
         if self.quantity_name is None:
@@ -221,6 +227,9 @@ class TestDataLoader(AbstractDataLoader):
             return np.sin(self._gmm_pos[:,0])*np.cos(self._gmm_pos[:,1])*np.cos(self._gmm_pos[:,2])
         else:
             raise KeyError("Unknown quantity name")
+
+    def get_quantity_names(self):
+        return ["temp"]
 
     def get_quantity_label(self):
         if self.quantity_name is None:

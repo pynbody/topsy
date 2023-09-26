@@ -155,6 +155,14 @@ class VisualizerBase:
 
     @quantity_name.setter
     def quantity_name(self, value):
+
+        if value is not None:
+            # see if we can get it. Assume it'll be cached, so this won't waste time.
+            try:
+                self.data_loader.get_named_quantity(value)
+            except Exception as e:
+                raise ValueError(f"Unable to get quantity named '{value}'") from e
+
         self.data_loader.quantity_name = value
         self.vmin_vmax_is_set = False
         self._reinitialize_colormap_and_bar()
@@ -165,8 +173,14 @@ class VisualizerBase:
         self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
         self._colormap.vmin = vmin
         self._colormap.vmax = vmax
-        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
-                                                  r"$\log_{10}$ " + self.data_loader.get_quantity_label())
+
+        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name, self._get_colorbar_label())
+
+    def _get_colorbar_label(self):
+        label = self.data_loader.get_quantity_label()
+        if self._colormap.log_scale:
+            label = r"$\log_{10}$ " + label
+        return label
 
     @staticmethod
     def _y_rotation_matrix(angle):
@@ -181,7 +195,6 @@ class VisualizerBase:
                          [-np.sin(angle), 0, np.cos(angle)]])
 
     def _check_whether_inactive(self):
-        logger.info(f"_check_whether_inactive {time.time()-self._last_lores_draw_time, config.FULL_RESOLUTION_RENDER_AFTER}")
         if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.95:
             self._last_lores_draw_time = np.inf # prevent this from being called again
             self.invalidate(reason=DrawReason.REFINE)
@@ -274,6 +287,7 @@ class VisualizerBase:
     def _refresh_colorbar(self):
         self._colorbar.vmin = self._colormap.vmin
         self._colorbar.vmax = self._colormap.vmax
+        self._colorbar.label = self._get_colorbar_label()
         self._colorbar.update()
 
     def sph_clipspace_to_screen_clipspace_matrix(self):

@@ -27,6 +27,19 @@ def _get_icon(name):
     this_dir = os.path.dirname(os.path.abspath(__file__))
     return QtGui.QIcon(os.path.join(this_dir, "icons", name))
 
+
+class MyLineEdit(QtWidgets.QLineEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._timer = QtCore.QTimer()
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.selectAll)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self._timer.start(0)
+
+
 class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
 
     def __init__(self, visualizer: Visualizer, parent_widget: QtWidgets.QWidget):
@@ -60,6 +73,7 @@ class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
         del progress_bar
 
 class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
+    _default_quantity_name = "Projected density"
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.hide()
@@ -88,10 +102,32 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
         self._colormap_menu.currentTextChanged.connect(self._colormap_menu_changed_action)
 
+        self._quantity_menu = QtWidgets.QComboBox()
+        self._quantity_menu.addItem(self._default_quantity_name)
+        self._quantity_menu.setEditable(True)
+
+
+
+        self._quantity_menu.setLineEdit(MyLineEdit())
+
+        # at this moment, the data loader hasn't been initialized yet, so we can't
+        # use it to populate the menu. This needs a callback:
+        def populate_quantity_menu():
+            logger.info(f"Quantities: {self._visualizer.data_loader.get_quantity_names()}")
+            self._quantity_menu.addItems( self._visualizer.data_loader.get_quantity_names())
+            self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
+            self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
+            self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
+            self._quantity_menu.adjustSize()
+
+        self.call_later(0, populate_quantity_menu)
+
+
         self._toolbar.addAction(self._record_action)
         self._toolbar.addAction(self._save_action)
         self._toolbar.addSeparator()
         self._toolbar.addWidget(self._colormap_menu)
+        self._toolbar.addWidget(self._quantity_menu)
         self._recorder = None
 
 
@@ -113,6 +149,23 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
     def _colormap_menu_changed_action(self):
         logger.info("Colormap changed to %s", self._colormap_menu.currentText())
         self._visualizer.colormap_name = self._colormap_menu.currentText()
+
+    def _quantity_menu_changed_action(self):
+        logger.info("Quantity changed to %s", self._quantity_menu.currentText())
+        if self._quantity_menu.currentText() == self._default_quantity_name:
+            self._visualizer.quantity_name = None
+        else:
+            try:
+                self._visualizer.quantity_name = self._quantity_menu.currentText()
+            except ValueError as e:
+                message = QtWidgets.QMessageBox(self)
+                message.setWindowTitle("Invalid quantity")
+                message.setText(str(e))
+                message.setIcon(QtWidgets.QMessageBox.Icon.Critical)
+                message.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+                self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
+                message.exec()
+
 
     def on_click_record(self):
 
