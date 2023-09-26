@@ -49,7 +49,8 @@ class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
                 last_update = time.time()
                 progress_bar.setValue(i)
 
-                loop.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
+                with self._visualizer.prevent_sph_rendering():
+                    loop.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
 
                 if progress_bar.wasCanceled():
                     break

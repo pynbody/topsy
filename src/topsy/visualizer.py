@@ -6,6 +6,8 @@ import time
 import wgpu
 import wgpu.backends.rs # noqa: F401, Select Rust backend
 
+from contextlib import contextmanager
+
 from . import config
 from . import canvas
 from . import colormap
@@ -33,6 +35,7 @@ class VisualizerBase:
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
         self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
+        self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
 
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
@@ -182,7 +185,13 @@ class VisualizerBase:
             self._display_fullres_render_status = True
             self.invalidate()
 
-
+    @contextmanager
+    def prevent_sph_rendering(self):
+        self._prevent_sph_rendering = True
+        try:
+            yield
+        finally:
+            self._prevent_sph_rendering = False
 
     def draw(self, reason, target_texture_view=None):
         if target_texture_view is None:
@@ -191,7 +200,7 @@ class VisualizerBase:
         if reason == DrawReason.REFINE:
             self._sph.downsample_factor = 1
 
-        if reason!=DrawReason.PRESENTATION_CHANGE:
+        if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
             ce_label = "sph_render"
             # labelling this is useful for understanding performance in macos instruments
             if self._sph.downsample_factor>1:
