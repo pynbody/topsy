@@ -29,7 +29,7 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP):
-        self.colormap_name = colormap_name
+        self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
         self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
@@ -106,6 +106,16 @@ class VisualizerBase:
         self.invalidate()
 
     @property
+    def colormap_name(self):
+        return self._colormap_name
+
+    @colormap_name.setter
+    def colormap_name(self, value):
+        self._colormap_name = value
+        self._reinitialize_colormap_and_bar()
+        self.invalidate(reason=DrawReason.PRESENTATION_CHANGE)
+
+    @property
     def position_offset(self):
         return self._sph.position_offset
 
@@ -142,10 +152,16 @@ class VisualizerBase:
     def quantity_name(self, value):
         self.data_loader.quantity_name = value
         self.vmin_vmax_is_set = False
-        self._colormap = colormap.Colormap(self, weighted_average = value is not None)
-        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name,
-                                                  r"$\log_{10}$ "+self.data_loader.get_quantity_label())
+        self._reinitialize_colormap_and_bar()
         self.invalidate()
+
+    def _reinitialize_colormap_and_bar(self):
+        vmin, vmax = self.vmin, self.vmax
+        self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+        self._colormap.vmin = vmin
+        self._colormap.vmax = vmax
+        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
+                                                  r"$\log_{10}$ " + self.data_loader.get_quantity_label())
 
     @staticmethod
     def _y_rotation_matrix(angle):
@@ -251,6 +267,9 @@ class VisualizerBase:
         elif aspect_ratio<1:
             y_squash = 1.0
             x_squash = 1.0/aspect_ratio
+        else:
+            x_squash = 1.0
+            y_squash = 1.0
 
         matr = np.eye(4, dtype=np.float32)
         matr[0,0] = x_squash
@@ -310,7 +329,7 @@ class VisualizerBase:
                  vmax=self._colormap.vmax,
                  extent=extent)
         p.xlabel("$x$/kpc")
-        p.colorbar().set_label(self.colorbar_label)
+        p.colorbar().set_label(self._colorbar.label)
         p.savefig(filename)
         p.close(fig)
 

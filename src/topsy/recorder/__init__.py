@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 
 class VisualizationRecorder:
-    _record_properties = ['vmin', 'vmax', 'rotation_matrix', 'scale', 'position_offset']
+    _record_properties = ['vmin', 'vmax', 'rotation_matrix', 'scale', 'position_offset', 'colormap_name']
     _record_interpolation_class = [StepInterpolator, StepInterpolator, RotationInterpolator, LinearInterpolator,
-                                   LinearInterpolator]
+                                   LinearInterpolator, StepInterpolator]
 
     def __init__(self, visualizer: Visualizer):
         vs = ViewSynchronizer(synchronize=self._record_properties)
@@ -60,8 +60,7 @@ class VisualizationRecorder:
     def _get_value_at_time(self, property, time):
         return self._interpolators[property](time)
 
-    @classmethod
-    def _progress_iterator(cls, ntot):
+    def _progress_iterator(self, ntot):
         """Return an iterator that displays progress in an appropriate way
 
         Overriden for the qt gui"""
