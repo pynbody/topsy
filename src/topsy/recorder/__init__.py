@@ -97,7 +97,7 @@ class VisualizationRecorder:
                                            {'bytes_per_row': 4 * resolution[0]},
                                            (resolution[0], resolution[1], 1))
             im_npy = np.frombuffer(im, dtype=np.uint8).reshape((resolution[1], resolution[0], 4))
-            im_npy = im_npy[:, :,::2]
+            im_npy = im_npy[:, :,:3]
             yield im_npy
 
         self.playback = False
