@@ -121,12 +121,12 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
             self._recorder = VisualizationRecorderWithQtProgressbar(self._visualizer, self)
             self._recorder.record()
             self._record_action.setIconText("Finish and export to mp4")
-            self._record_action.setIcon(QtGui.QIcon("/topsy/canvas/icons/stop.png"))
+            self._record_action.setIcon(self._stop_icon)
         else:
             logger.info("Stopping recorder")
             self._recorder.stop()
             self._record_action.setIconText("Record")
-            self._record_action.setIcon(QtGui.QIcon("/topsy/canvas/icons/record.png"))
+            self._record_action.setIcon(self._record_icon)
             rec = self._recorder
             self._recorder = None
 

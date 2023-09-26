@@ -167,7 +167,7 @@ class Line:
         )
 
 
-    def encode_render_pass(self, command_encoder: wgpu.GPURenderPassEncoder,
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder,
                            target_texture_view: wgpu.GPUTextureView):
 
         self._params["vp_size_pix"] = target_texture_view.size[:2]

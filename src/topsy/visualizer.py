@@ -34,7 +34,7 @@ class VisualizerBase:
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
-        self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
+
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
 
@@ -46,6 +46,8 @@ class VisualizerBase:
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
         self._colormap = colormap.Colormap(self, weighted_average = False)
+        self._periodic_tiling = periodic_tiling
+
         if periodic_tiling:
             self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
         else:
@@ -179,11 +181,10 @@ class VisualizerBase:
                          [-np.sin(angle), 0, np.cos(angle)]])
 
     def _check_whether_inactive(self):
-        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.999:
-            self._sph.downsample_factor = 1
-            self._last_lores_draw_time = np.inf
-            self._display_fullres_render_status = True
-            self.invalidate()
+        logger.info(f"_check_whether_inactive {time.time()-self._last_lores_draw_time, config.FULL_RESOLUTION_RENDER_AFTER}")
+        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.95:
+            self._last_lores_draw_time = np.inf # prevent this from being called again
+            self.invalidate(reason=DrawReason.REFINE)
 
     @contextmanager
     def prevent_sph_rendering(self):
@@ -197,7 +198,7 @@ class VisualizerBase:
         if target_texture_view is None:
             target_texture_view = self.context.get_current_texture() # weirdly returns a view, not a texture
 
-        if reason == DrawReason.REFINE:
+        if reason == DrawReason.REFINE or reason == DrawReason.EXPORT:
             self._sph.downsample_factor = 1
 
         if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
@@ -227,19 +228,26 @@ class VisualizerBase:
         self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:
             self._crosshairs.encode_render_pass(command_encoder, target_texture_view)
-        self._cube.encode_render_pass(command_encoder, target_texture_view)
+        if self._periodic_tiling:
+            self._cube.encode_render_pass(command_encoder, target_texture_view)
+
+        if reason == DrawReason.REFINE:
+            self.display_status("Full-res render took {:.2f} s".format(self._render_timer.last_duration, timeout=0.1))
 
         if self.show_status:
             self._update_and_display_status(command_encoder, target_texture_view)
 
         self.device.queue.submit([command_encoder.finish()])
 
-        if self._sph.downsample_factor>1:
-            self._last_lores_draw_time = time.time()
-            self.canvas.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
-        elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
-            # this will affect the NEXT frame, not this one!
-            self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
+
+
+        if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
+            if self._sph.downsample_factor>1:
+                self._last_lores_draw_time = time.time()
+                self.canvas.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+            elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
+                # this will affect the NEXT frame, not this one!
+                self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
     @property
     def vmin(self):
@@ -304,9 +312,7 @@ class VisualizerBase:
             self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
             if self._sph.downsample_factor > 1:
                 self._status.text += f", downsample={self._sph.downsample_factor:d}"
-            if self._display_fullres_render_status:
-                self._status.text = f"Full-res render took {self._render_timer.last_duration:.2f} s"
-                self._display_fullres_render_status = False
+
             self._status.update()
 
         self._status.encode_render_pass(command_encoder, target_texture_view)

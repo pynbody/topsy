@@ -92,17 +92,13 @@ class VisualizationRecorder:
                 if val is not None:
                     setattr(self._visualizer, p, val)
             self._visualizer.display_status("github.com/pynbody/topsy/")
-            self._visualizer.draw(DrawReason.REFINE, render_texture.create_view())
+            self._visualizer.draw(DrawReason.EXPORT, render_texture.create_view())
             im = device.queue.read_texture({'texture': render_texture, 'origin': (0, 0, 0)},
                                            {'bytes_per_row': 4 * resolution[0]},
                                            (resolution[0], resolution[1], 1))
             im_npy = np.frombuffer(im, dtype=np.uint8).reshape((resolution[1], resolution[0], 4))
-            im_npy = im_npy[:, :, 2::-1]
-            e = time.time()
+            im_npy = im_npy[:, :,::2]
             yield im_npy
-            #self._visualizer.display_status(f"Rendering video frame {i+1} of {num_frames}")
-            #self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
-            #self._visualizer.context.present()
 
         self.playback = False
 

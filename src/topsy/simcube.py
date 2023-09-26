@@ -33,8 +33,8 @@ class SimCube(Line):
 
         super().__init__(visualizer, None, color, width)
 
-    def encode_render_pass(self, command_encoder: wgpu.GPURenderPassEncoder,
-                           target_texture_view: wgpu.GPUTextureView):
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder,
+                                 target_texture_view: wgpu.GPUTextureView):
         self._params["transform"] = self._visualizer._sph.last_transform_params["transform"] @ self._visualizer.sph_clipspace_to_screen_clipspace_matrix()
         super().encode_render_pass(command_encoder, target_texture_view)
 
