@@ -55,8 +55,8 @@ class StepInterpolator(Interpolator):
 
     def __call__(self, t):
         stream = self._timestream
-        for i, (t_ev, val_ev) in enumerate(stream):
-            if t_ev >= t:
+        for (t_ev, val_ev) in stream[::-1]:
+            if t_ev <= t:
                 if val_ev != self._last_value:
                     self._last_value = val_ev
                     return self._last_value

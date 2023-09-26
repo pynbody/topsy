@@ -29,6 +29,10 @@ dependencies = [
     "PySide6 >= 6.5.0" # windowing
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest >=6.2.0",
+]
 
 [project.scripts]
 topsy = "topsy:main"
