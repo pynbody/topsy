@@ -33,3 +33,22 @@ def test_rotation_interpolator():
     assert midway[0,0]<1.0 and midway[0,0]>0.0
     assert midway[0,1]<1.0 and midway[0,1]>0.0
     assert np.allclose(interp(1.0), np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]))
+
+def test_smoothed_linear_interpolator():
+    timestream = [(0.0, 0.0), (1.0, 1.0), (2.0, 4.0), (4.0, 0.0)]
+    interp = interpolator.SmoothedLinearInterpolator(timestream, smoothing=0.5)
+    assert np.allclose(interp(0.0), 0.18728488638447055)
+    assert np.allclose(interp(0.5), 0.5833226799824336)
+    assert np.allclose(interp(1.0), 1.3206482380039408)
+    assert np.allclose(interp(1.5), 2.3157963036465143)
+    assert np.allclose(interp(3.9), 0.5695905129936958)
+    assert np.allclose(interp(4.0), 0.4616432412285651)
+    assert interp(4.1) is interp.no_value
+    # check smoothness
+    assert abs(np.diff(np.diff([interp(x) for x in np.arange(0.0,4.0,0.05)]))).max()<0.02
+
+def test_smoothed_rotation_interpolator():
+    timestream = [(0.0, np.eye(3)), (1.0, np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]))]
+    interp = interpolator.SmoothedRotationInterpolator(timestream, smoothing=0.5)
+    for x in np.arange(0.0,1.0,0.1):
+        assert np.allclose(interp(x) @ interp(x).T, np.eye(3))
