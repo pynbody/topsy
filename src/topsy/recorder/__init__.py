@@ -91,8 +91,6 @@ class VisualizationRecorder:
         )
 
         num_frames = int(self._recording_ends_at * fps)
-        for p in ["log_scale", "quantity_name"]:
-            logger.info(f"Timestream {p}: {self._timestream[p]}")
         for i in self._progress_iterator(num_frames):
             t = i / fps
             for p in self._record_properties:

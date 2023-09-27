@@ -31,12 +31,25 @@ class Colormap:
         self._weighted_average = weighted_average
 
         self.vmin, self.vmax = 0,1
-        self.log_scale = True
+        self._log_scale = True
         # all three of these will be reset by set_vmin_vmax
 
         self._setup_texture()
         self._setup_shader_module()
         self._setup_render_pipeline()
+
+    @property
+    def log_scale(self):
+        return self._log_scale
+
+    @log_scale.setter
+    def log_scale(self, value):
+        old_value = self._log_scale
+        self._log_scale = value
+        if value != old_value:
+            self._setup_shader_module()
+            self._setup_render_pipeline()
+
     def _setup_shader_module(self):
         shader_code = load_shader("colormap.wgsl")
         # hack because at present we can't use const values in the shader to compile
@@ -216,15 +229,11 @@ class Colormap:
         # we'll do it on the CPU
         vals = self._visualizer.get_sph_image().ravel()
 
-        previous_log_scale = self.log_scale
         if (vals<0).any():
             self.log_scale = False
         else:
             self.log_scale = True
-
-        if previous_log_scale != self.log_scale:
-            self._setup_shader_module()
-            self._setup_render_pipeline()
+        # NB above switching of log scale will automatically rebuild the pipeline if needed
 
         if self.log_scale:
             vals = np.log10(vals)

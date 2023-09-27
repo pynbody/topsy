@@ -171,9 +171,10 @@ class VisualizerBase:
     def _reinitialize_colormap_and_bar(self):
         vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
         self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
-        self._colormap.vmin = vmin
-        self._colormap.vmax = vmax
-        self._colormap.log_scale = log_scale
+        if self.vmin_vmax_is_set:
+            self._colormap.vmin = vmin
+            self._colormap.vmax = vmax
+            self._colormap.log_scale = log_scale
         self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
                                                   self._get_colorbar_label())
 
