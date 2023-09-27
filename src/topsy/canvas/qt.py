@@ -49,28 +49,30 @@ class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
     def _progress_iterator(self, ntot):
         progress_bar = QtWidgets.QProgressDialog("Rendering to mp4...", "Stop", 0, ntot, self._parent_widget)
         progress_bar.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress_bar.forceShow()
 
         last_update = 0
 
         loop = QtCore.QEventLoop()
 
-        for i in range(ntot):
-            # updating the progress bar triggers a render in the main window, which
-            # in turn is quite slow (because it can trigger software rendering
-            # of resizable elements like the colorbar). So only update every half second or so.
-            if time.time() - last_update > 0.5:
-                last_update = time.time()
-                progress_bar.setValue(i)
+        try:
+            for i in range(ntot):
+                # updating the progress bar triggers a render in the main window, which
+                # in turn is quite slow (because it can trigger software rendering
+                # of resizable elements like the colorbar). So only update every half second or so.
+                if time.time() - last_update > 0.5:
+                    last_update = time.time()
+                    progress_bar.setValue(i)
 
-                with self._visualizer.prevent_sph_rendering():
-                    loop.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
+                    with self._visualizer.prevent_sph_rendering():
+                        loop.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents)
 
-                if progress_bar.wasCanceled():
-                    break
-            yield i
+                    if progress_bar.wasCanceled():
+                        break
+                yield i
 
-        progress_bar.close()
-        del progress_bar
+        finally:
+            progress_bar.close()
 
 class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
     _default_quantity_name = "Projected density"

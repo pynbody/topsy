@@ -169,12 +169,13 @@ class VisualizerBase:
         self.invalidate()
 
     def _reinitialize_colormap_and_bar(self):
-        vmin, vmax = self.vmin, self.vmax
+        vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
         self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
         self._colormap.vmin = vmin
         self._colormap.vmax = vmax
-
-        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name, self._get_colorbar_label())
+        self._colormap.log_scale = log_scale
+        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
+                                                  self._get_colorbar_label())
 
     def _get_colorbar_label(self):
         label = self.data_loader.get_quantity_label()
@@ -281,6 +282,16 @@ class VisualizerBase:
     def vmax(self, value):
         self._colormap.vmax = value
         self.vmin_vmax_is_set = True
+        self._refresh_colorbar()
+        self.invalidate()
+
+    @property
+    def log_scale(self):
+        return self._colormap.log_scale
+
+    @log_scale.setter
+    def log_scale(self, value):
+        self._colormap.log_scale = value
         self._refresh_colorbar()
         self.invalidate()
 

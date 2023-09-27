@@ -9,6 +9,8 @@ class Interpolator(ABC):
 
     The timestream is a list of (time, value) pairs, where time is a float and value is any type."""
 
+    no_value = object()
+
     def __init__(self, timestream):
         self._timestream = timestream
 
@@ -30,7 +32,7 @@ class LinearInterpolator(Interpolator):
                     t0, val0 = stream[i - 1]
                     assert t0 < t
                     return val0 + (val_ev - val0) * (t - t0) / (t_ev - t0)
-        return None
+        return self.no_value
 
 
 class RotationInterpolator(LinearInterpolator):
@@ -38,8 +40,8 @@ class RotationInterpolator(LinearInterpolator):
 
     def __call__(self, t):
         matr = super().__call__(t)
-        if matr is None:
-            return None
+        if matr is self.no_value:
+            return matr
 
         # orthogonalise matr:
         u, s, vh = np.linalg.svd(matr)
@@ -51,7 +53,7 @@ class StepInterpolator(Interpolator):
 
     def __init__(self, timestream):
         super().__init__(timestream)
-        self._last_value = None
+        self._last_value = self.no_value
 
     def __call__(self, t):
         stream = self._timestream
@@ -61,5 +63,5 @@ class StepInterpolator(Interpolator):
                     self._last_value = val_ev
                     return self._last_value
                 else:
-                    return None
-        return None
+                    return self.no_value
+        return self.no_value

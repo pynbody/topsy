@@ -4,8 +4,9 @@ import time
 import tqdm
 import wgpu
 import numpy as np
+import logging
 
-from . interpolator import StepInterpolator, LinearInterpolator, RotationInterpolator
+from . interpolator import Interpolator, StepInterpolator, LinearInterpolator, RotationInterpolator
 from ..drawreason import DrawReason
 from ..view_synchronizer import ViewSynchronizer
 
@@ -14,11 +15,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..visualizer import Visualizer
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 
 class VisualizationRecorder:
-    _record_properties = ['vmin', 'vmax', 'rotation_matrix', 'scale', 'position_offset', 'colormap_name']
-    _record_interpolation_class = [StepInterpolator, StepInterpolator, RotationInterpolator, LinearInterpolator,
-                                   LinearInterpolator, StepInterpolator]
+    _record_properties = ['vmin', 'vmax', 'log_scale', 'colormap_name', 'quantity_name',
+                          'rotation_matrix', 'scale', 'position_offset']
+    _record_interpolation_class = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
+                                   RotationInterpolator, LinearInterpolator, LinearInterpolator]
 
     def __init__(self, visualizer: Visualizer):
         vs = ViewSynchronizer(synchronize=self._record_properties)
@@ -85,12 +91,15 @@ class VisualizationRecorder:
         )
 
         num_frames = int(self._recording_ends_at * fps)
+        for p in ["log_scale", "quantity_name"]:
+            logger.info(f"Timestream {p}: {self._timestream[p]}")
         for i in self._progress_iterator(num_frames):
             t = i / fps
             for p in self._record_properties:
                 val = self._get_value_at_time(p, t)
-                if val is not None:
+                if val is not Interpolator.no_value:
                     setattr(self._visualizer, p, val)
+
             self._visualizer.display_status("github.com/pynbody/topsy/")
             self._visualizer.draw(DrawReason.EXPORT, render_texture.create_view())
             im = device.queue.read_texture({'texture': render_texture, 'origin': (0, 0, 0)},

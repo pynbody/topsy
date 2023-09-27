@@ -223,17 +223,18 @@ class TestDataLoader(AbstractDataLoader):
         return np.random.uniform(0.01, 1.0, size=(self._n_particles)).astype(np.float32)*1e-8
 
     def get_named_quantity(self, name):
-        if name=="temp":
+        if name=="test-quantity":
             return np.sin(self._gmm_pos[:,0])*np.cos(self._gmm_pos[:,1])*np.cos(self._gmm_pos[:,2])
         else:
             raise KeyError("Unknown quantity name")
 
     def get_quantity_names(self):
-        return ["temp"]
+        return ["test-quantity"]
 
     def get_quantity_label(self):
         if self.quantity_name is None:
-            return r"density / $M_{\odot} / \mathrm{kpc}^2$"
-        else:
+            return r"test density / $M_{\odot} / \mathrm{kpc}^2$"
+        elif self.quantity_name == "test-quantity":
             return "test quantity"
-
+        else:
+            return "unknown"
