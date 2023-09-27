@@ -6,7 +6,8 @@ import wgpu
 import numpy as np
 import logging
 
-from . interpolator import Interpolator, StepInterpolator, LinearInterpolator, RotationInterpolator
+from . interpolator import (Interpolator, StepInterpolator, LinearInterpolator, RotationInterpolator,
+                            SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedStepInterpolator)
 from ..drawreason import DrawReason
 from ..view_synchronizer import ViewSynchronizer
 
@@ -23,8 +24,8 @@ logger.setLevel(logging.INFO)
 class VisualizationRecorder:
     _record_properties = ['vmin', 'vmax', 'log_scale', 'colormap_name', 'quantity_name',
                           'rotation_matrix', 'scale', 'position_offset']
-    _record_interpolation_class = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
-                                   RotationInterpolator, LinearInterpolator, LinearInterpolator]
+    _record_interpolation_class = [SmoothedStepInterpolator, SmoothedStepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
+                                   SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
 
     def __init__(self, visualizer: Visualizer):
         vs = ViewSynchronizer(synchronize=self._record_properties)

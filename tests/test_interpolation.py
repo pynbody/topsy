@@ -52,3 +52,17 @@ def test_smoothed_rotation_interpolator():
     interp = interpolator.SmoothedRotationInterpolator(timestream, smoothing=0.5)
     for x in np.arange(0.0,1.0,0.1):
         assert np.allclose(interp(x) @ interp(x).T, np.eye(3))
+
+def test_smoothed_step_interpolator():
+    timestream = [(0.0, 0.0), (1.0, 5.0), (2.0, 0.0)]
+    interp = interpolator.SmoothedStepInterpolator(timestream, smoothing=0.5)
+    assert interp(0.1) == 0.0
+    assert interp(0.5) is interp.no_value
+    assert interp(1.0) == 0.0
+    assert interp(1.125) == 1.25
+    assert interp(1.25) == 2.5
+    assert interp(1.5) == 5.0
+    assert interp(1.75) is interp.no_value
+    assert interp(1.99) is interp.no_value
+    assert interp(2.0) == 5.0
+    assert interp(2.25) == 2.5
