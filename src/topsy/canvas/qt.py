@@ -189,6 +189,7 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
             if fname:
                 logger.info("Saving video to %s", fname)
                 rec.save_mp4(fname)
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(fname))
 
     def on_click_save(self):
         fd = QtWidgets.QFileDialog(self)
@@ -196,6 +197,8 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         if fname:
             logger.info("Saving snapshot to %s", fname)
             self._visualizer.save(fname)
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(fname))
+
 
 
 
