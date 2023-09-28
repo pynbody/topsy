@@ -38,6 +38,9 @@ class VisualizerBase:
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
 
+        self.show_colorbar = True
+        self.show_scalebar = True
+
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
 
         self._setup_wgpu()
@@ -240,8 +243,10 @@ class VisualizerBase:
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
-        self._colorbar.encode_render_pass(command_encoder, target_texture_view)
-        self._scalebar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_colorbar:
+            self._colorbar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_scalebar:
+            self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:
             self._crosshairs.encode_render_pass(command_encoder, target_texture_view)
         if self._periodic_tiling:

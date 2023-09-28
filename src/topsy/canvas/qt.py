@@ -14,7 +14,7 @@ import time
 import logging
 import matplotlib as mpl
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..visualizer import Visualizer
@@ -38,6 +38,118 @@ class MyLineEdit(QtWidgets.QLineEdit):
     def focusInEvent(self, event):
         super().focusInEvent(event)
         self._timer.start(0)
+
+class RecordingSettingsDialog(QtWidgets.QDialog):
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setWindowTitle("Recording settings")
+        self._layout = QtWidgets.QVBoxLayout()
+        self.setLayout(self._layout)
+
+        # checkbox for smoothing:
+        self._smooth_checkbox = QtWidgets.QCheckBox("Smooth timestream camera movements")
+        self._smooth_checkbox.setChecked(True)
+        self._layout.addWidget(self._smooth_checkbox)
+
+        # leave some space:
+        self._layout.addSpacing(10)
+
+        # checkbox for including vmin/vmax:
+        self._vmin_vmax_checkbox = QtWidgets.QCheckBox("Set vmin/vmax from timestream")
+        self._vmin_vmax_checkbox.setChecked(True)
+        self._layout.addWidget(self._vmin_vmax_checkbox)
+
+        # checkbox for changing quantity:
+        self._quantity_checkbox = QtWidgets.QCheckBox("Set quantity from timestream")
+        self._quantity_checkbox.setChecked(True)
+        self._layout.addWidget(self._quantity_checkbox)
+
+        self._layout.addSpacing(10)
+
+        # checkbox for showing colorbar:
+        self._colorbar_checkbox = QtWidgets.QCheckBox("Show colorbar")
+        self._colorbar_checkbox.setChecked(True)
+        self._layout.addWidget(self._colorbar_checkbox)
+
+        # checkbox for showing scalebar:
+        self._scalebar_checkbox = QtWidgets.QCheckBox("Show scalebar")
+        self._scalebar_checkbox.setChecked(True)
+        self._layout.addWidget(self._scalebar_checkbox)
+
+        self._layout.addSpacing(10)
+
+
+        # select resolution from dropdown, with options half HD, HD, 4K
+        self._resolution_dropdown = QtWidgets.QComboBox()
+        self._resolution_dropdown.addItems(["Half HD (960x540)", "HD (1920x1080)", "4K (3840x2160)"])
+        self._resolution_dropdown.setCurrentIndex(1)
+
+        # select fps from dropdown, with options 24, 30, 60
+        self._fps_dropdown = QtWidgets.QComboBox()
+        self._fps_dropdown.addItems(["24 fps", "30 fps", "60 fps"])
+        self._fps_dropdown.setCurrentIndex(1)
+
+        # put resolution/fps next to each other horizontally:
+        self._resolution_fps_layout = QtWidgets.QHBoxLayout()
+        self._resolution_fps_layout.addWidget(self._resolution_dropdown)
+        self._resolution_fps_layout.addWidget(self._fps_dropdown)
+        self._layout.addLayout(self._resolution_fps_layout)
+
+        self._layout.addSpacing(10)
+
+        # cancel and save.. buttons:
+        self._cancel_save_layout = QtWidgets.QHBoxLayout()
+        self._cancel_button = QtWidgets.QPushButton("Cancel")
+        self._cancel_button.clicked.connect(self.reject)
+        self._save_button = QtWidgets.QPushButton("Save")
+        # save button should be default:
+        self._save_button.setDefault(True)
+        self._save_button.clicked.connect(self.accept)
+        self._cancel_save_layout.addWidget(self._cancel_button)
+        self._cancel_save_layout.addWidget(self._save_button)
+        self._layout.addLayout(self._cancel_save_layout)
+
+        # show as a sheet on macos:
+        #self.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        self.setWindowFlags(QtCore.Qt.WindowType.Sheet)
+
+    @property
+    def fps(self):
+        return float(self._fps_dropdown.currentText().split()[0])
+
+    @property
+    def resolution(self):
+        import re
+        # use regexp
+        # e.g. the string 'blah (123x456)' should map to tuple (123,456)
+        match = re.match(r".*\((\d+)x(\d+)\)", self._resolution_dropdown.currentText())
+        return int(match.group(1)), int(match.group(2))
+
+    @property
+    def smooth(self):
+        return self._smooth_checkbox.isChecked()
+
+    @property
+    def set_vmin_vmax(self):
+        return self._vmin_vmax_checkbox.isChecked()
+
+    @property
+    def set_quantity(self):
+        return self._quantity_checkbox.isChecked()
+
+    @property
+    def show_colorbar(self):
+        return self._colorbar_checkbox.isChecked()
+
+    @property
+    def show_scalebar(self):
+        return self._scalebar_checkbox.isChecked()
+
+
+
+
+
 
 
 class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
@@ -223,11 +335,21 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
             self._record_action.setIcon(self._record_icon)
 
     def on_click_save_movie(self):
+        # show the options dialog first:
+        dialog = RecordingSettingsDialog(self)
+        dialog.exec()
+        if dialog.result() == QtWidgets.QDialog.DialogCode.Accepted:
             fd = QtWidgets.QFileDialog(self)
             fname, _ = fd.getSaveFileName(self, "Save video", "", "MP4 (*.mp4)")
             if fname:
                 logger.info("Saving video to %s", fname)
-                self._recorder.save_mp4(fname)
+                self._recorder.save_mp4(fname, show_colorbar=dialog.show_colorbar,
+                                        show_scalebar=dialog.show_scalebar,
+                                        fps=dialog.fps,
+                                        resolution=dialog.resolution,
+                                        smooth=dialog.smooth,
+                                        set_vmin_vmax=dialog.set_vmin_vmax,
+                                        set_quantity=dialog.set_quantity)
                 QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(fname))
 
     def on_click_save(self):
