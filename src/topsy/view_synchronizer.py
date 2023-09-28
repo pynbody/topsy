@@ -17,11 +17,16 @@ class ViewSynchronizer:
 
     The two visualizers will then be kept in sync
     """
-    def __init__(self):
+    def __init__(self, synchronize=['rotation_matrix', 'scale', 'position_offset']):
         self._views : list[weakref.ReferenceType[Visualizer]] = []
         self._requires_update : list[weakref.ReferenceType[Visualizer]] = []
+        self._synchronize = synchronize
 
     def perpetuate_update(self, source):
+        """Called when a view has been updated and the update needs to be perpetuated to other views.
+
+        Note that there is built-in protection against infinite loops. If view A calls this method
+        which causes view B to update, if view B calls this method nothing will be issued back to view A."""
         sources_needing_update = [view_weakref() for view_weakref in self._requires_update]
         if source in sources_needing_update:
             # OK the update has happened! Great, but don't broadcast it again
@@ -32,18 +37,31 @@ class ViewSynchronizer:
             view = view_weakref()
             if (view is not source and view is not None) and (view_weakref not in self._requires_update):
                 self._requires_update.append(view_weakref)
-                view.rotation_matrix = source.rotation_matrix
-                view.scale = source.scale
-                view.position_offset = source.position_offset
+                for var in self._synchronize:
+                    setattr(view, var, getattr(source, var))
+
+    def update_completed(self, view: Visualizer):
+        """Called when a view knows it will not be attempting to perpetuate an update it received
+
+        See note about infinite loops in perpetuate_update. This method is used when a view will
+        not be acting on the update it received, so it must be removed from the exclusion list
+        that perpetuate_update maintains."""
+        sources_needing_update = [view_weakref() for view_weakref in self._requires_update]
+        if view in sources_needing_update:
+            del self._requires_update[sources_needing_update.index(view)]
 
     def add_view(self, view: Visualizer):
         self._views.append(weakref.ref(view))
         view._view_synchronizer = self
 
+    def remove_view(self, view: Visualizer):
+        self._views.remove(weakref.ref(view))
+        del view._view_synchronizer
+
 class SynchronizationMixin:
     """Mixin class for Visualizer to allow it to synchronize with other views"""
-    def draw(self, reason):
-        super().draw(reason)
+    def draw(self, reason, render_texture_view=None):
+        super().draw(reason, render_texture_view)
         if hasattr(self, "_view_synchronizer") and reason != DrawReason.REFINE:
             self._view_synchronizer.perpetuate_update(self)
 
@@ -61,3 +79,10 @@ class SynchronizationMixin:
             vs.add_view(self)
             vs.add_view(other)
 
+    def stop_synchronizing(self):
+        """Stop synchronizing this visualizer with any other"""
+        if hasattr(self, "_view_synchronizer"):
+            self._view_synchronizer.remove_view(self)
+
+    def is_synchronizing(self):
+        return hasattr(self, "_view_synchronizer")

@@ -6,6 +6,8 @@ import time
 import wgpu
 import wgpu.backends.rs # noqa: F401, Select Rust backend
 
+from contextlib import contextmanager
+
 from . import config
 from . import canvas
 from . import colormap
@@ -29,21 +31,27 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP):
-        self.colormap_name = colormap_name
-        self._draw_pending = False
+        self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
-        self._display_fullres_render_status = False  # when True, customises info text to refer to full-res render
+
+        self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
+
+        self.show_colorbar = True
+        self.show_scalebar = True
 
         self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
 
         self._setup_wgpu()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args)
+
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
         self._colormap = colormap.Colormap(self, weighted_average = False)
+        self._periodic_tiling = periodic_tiling
+
         if periodic_tiling:
             self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
         else:
@@ -89,9 +97,8 @@ class VisualizerBase:
         )
 
     def invalidate(self, reason=DrawReason.CHANGE):
-        if not self._draw_pending:
-            self.canvas.request_draw(lambda: self.draw(reason))
-            self._draw_pending = True
+        # NB no need to check if we're already pending a draw - wgpu.gui does that for us
+        self.canvas.request_draw(lambda: self.draw(reason))
 
     def rotate(self, x_angle, y_angle):
         dx_rotation_matrix = self._x_rotation_matrix(x_angle)
@@ -106,6 +113,16 @@ class VisualizerBase:
     def rotation_matrix(self, value):
         self._sph.rotation_matrix = value
         self.invalidate()
+
+    @property
+    def colormap_name(self):
+        return self._colormap_name
+
+    @colormap_name.setter
+    def colormap_name(self, value):
+        self._colormap_name = value
+        self._reinitialize_colormap_and_bar()
+        self.invalidate(reason=DrawReason.PRESENTATION_CHANGE)
 
     @property
     def position_offset(self):
@@ -142,12 +159,34 @@ class VisualizerBase:
 
     @quantity_name.setter
     def quantity_name(self, value):
+
+        if value is not None:
+            # see if we can get it. Assume it'll be cached, so this won't waste time.
+            try:
+                self.data_loader.get_named_quantity(value)
+            except Exception as e:
+                raise ValueError(f"Unable to get quantity named '{value}'") from e
+
         self.data_loader.quantity_name = value
         self.vmin_vmax_is_set = False
-        self._colormap = colormap.Colormap(self, weighted_average = value is not None)
-        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name,
-                                                  r"$\log_{10}$ "+self.data_loader.get_quantity_label())
+        self._reinitialize_colormap_and_bar()
         self.invalidate()
+
+    def _reinitialize_colormap_and_bar(self):
+        vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
+        self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+        if self.vmin_vmax_is_set:
+            self._colormap.vmin = vmin
+            self._colormap.vmax = vmax
+            self._colormap.log_scale = log_scale
+        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
+                                                  self._get_colorbar_label())
+
+    def _get_colorbar_label(self):
+        label = self.data_loader.get_quantity_label()
+        if self._colormap.log_scale:
+            label = r"$\log_{10}$ " + label
+        return label
 
     @staticmethod
     def _y_rotation_matrix(angle):
@@ -162,32 +201,38 @@ class VisualizerBase:
                          [-np.sin(angle), 0, np.cos(angle)]])
 
     def _check_whether_inactive(self):
-        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.999:
+        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.95:
+            self._last_lores_draw_time = np.inf # prevent this from being called again
+            self.invalidate(reason=DrawReason.REFINE)
+
+    @contextmanager
+    def prevent_sph_rendering(self):
+        self._prevent_sph_rendering = True
+        try:
+            yield
+        finally:
+            self._prevent_sph_rendering = False
+
+    def draw(self, reason, target_texture_view=None):
+        if target_texture_view is None:
+            target_texture_view = self.context.get_current_texture() # weirdly returns a view, not a texture
+
+        if reason == DrawReason.REFINE or reason == DrawReason.EXPORT:
             self._sph.downsample_factor = 1
-            self._last_lores_draw_time = np.inf
-            self._display_fullres_render_status = True
-            self.invalidate()
 
+        if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
+            ce_label = "sph_render"
+            # labelling this is useful for understanding performance in macos instruments
+            if self._sph.downsample_factor>1:
+                ce_label += f"_ds{self._sph.downsample_factor:d}"
+            else:
+                ce_label += "_fullres"
 
+            command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+            self._sph.encode_render_pass(command_encoder)
 
-    def draw(self, reason):
-        ce_label = "sph_render"
-        # labelling this is useful for understanding performance in macos instruments
-        if self._sph.downsample_factor>1:
-            ce_label += f"_ds{self._sph.downsample_factor:d}"
-        else:
-            ce_label += "_fullres"
-
-        command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-        self._sph.encode_render_pass(command_encoder)
-
-        with self._render_timer:
-            self.device.queue.submit([command_encoder.finish()])
-
-        # in principle, we can often use the same command encoder for the drawing into the final
-        # buffer, but when vmin/vmax needs to be set, we need to render the image first.
-        # So we just always use a new command encoder for the final render. It is unclear whether
-        # this has any performance impact.
+            with self._render_timer:
+                self.device.queue.submit([command_encoder.finish()])
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -197,26 +242,33 @@ class VisualizerBase:
 
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
-        self._colormap.encode_render_pass(command_encoder)
-        self._colorbar.encode_render_pass(command_encoder)
-        self._scalebar.encode_render_pass(command_encoder)
+        self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_colorbar:
+            self._colorbar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_scalebar:
+            self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:
-            self._crosshairs.encode_render_pass(command_encoder)
-        self._cube.encode_render_pass(command_encoder)
+            self._crosshairs.encode_render_pass(command_encoder, target_texture_view)
+        if self._periodic_tiling:
+            self._cube.encode_render_pass(command_encoder, target_texture_view)
+
+        if reason == DrawReason.REFINE:
+            self.display_status("Full-res render took {:.2f} s".format(self._render_timer.last_duration, timeout=0.1))
 
         if self.show_status:
-            self._update_and_display_status(command_encoder)
+            self._update_and_display_status(command_encoder, target_texture_view)
 
         self.device.queue.submit([command_encoder.finish()])
 
-        if self._sph.downsample_factor>1:
-            self._last_lores_draw_time = time.time()
-            wgpu.gui.auto.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
-        elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
-            # this will affect the NEXT frame, not this one!
-            self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
-        self._draw_pending = False
+
+        if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
+            if self._sph.downsample_factor>1:
+                self._last_lores_draw_time = time.time()
+                self.canvas.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
+            elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
+                # this will affect the NEXT frame, not this one!
+                self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
     @property
     def vmin(self):
@@ -240,9 +292,20 @@ class VisualizerBase:
         self._refresh_colorbar()
         self.invalidate()
 
+    @property
+    def log_scale(self):
+        return self._colormap.log_scale
+
+    @log_scale.setter
+    def log_scale(self, value):
+        self._colormap.log_scale = value
+        self._refresh_colorbar()
+        self.invalidate()
+
     def _refresh_colorbar(self):
         self._colorbar.vmin = self._colormap.vmin
         self._colorbar.vmax = self._colormap.vmax
+        self._colorbar.label = self._get_colorbar_label()
         self._colorbar.update()
 
     def sph_clipspace_to_screen_clipspace_matrix(self):
@@ -253,6 +316,9 @@ class VisualizerBase:
         elif aspect_ratio<1:
             y_squash = 1.0
             x_squash = 1.0/aspect_ratio
+        else:
+            x_squash = 1.0
+            y_squash = 1.0
 
         matr = np.eye(4, dtype=np.float32)
         matr[0,0] = x_squash
@@ -265,7 +331,7 @@ class VisualizerBase:
         self._override_status_text = text
         self._override_status_text_until = time.time()+timeout
 
-    def _update_and_display_status(self, command_encoder):
+    def _update_and_display_status(self, command_encoder, target_texture_view):
         now = time.time()
         if hasattr(self, "_override_status_text_until") and now<self._override_status_text_until:
             if self._status.text!=self._override_status_text and now-self._last_status_update>config.STATUS_LINE_UPDATE_INTERVAL_RAPID:
@@ -278,14 +344,12 @@ class VisualizerBase:
             self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
             if self._sph.downsample_factor > 1:
                 self._status.text += f", downsample={self._sph.downsample_factor:d}"
-            if self._display_fullres_render_status:
-                self._status.text = f"Full-res render took {self._render_timer.last_duration:.2f} s"
-                self._display_fullres_render_status = False
+
             self._status.update()
 
-        self._status.encode_render_pass(command_encoder)
+        self._status.encode_render_pass(command_encoder, target_texture_view)
 
-    def get_rendered_image(self) -> np.ndarray:
+    def get_sph_image(self) -> np.ndarray:
         im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
                                             {'bytes_per_row':8*self._render_resolution},
                                             (self._render_resolution, self._render_resolution, 1))
@@ -296,9 +360,10 @@ class VisualizerBase:
             im = np_im[:,:,0]
         return im
 
+
     def save(self, filename='output.pdf'):
-        image = self.get_rendered_image()
-        import pylab as p
+        image = self.get_sph_image()
+        import matplotlib.pyplot as p
         fig = p.figure()
         p.clf()
         p.set_cmap(self.colormap_name)
@@ -311,12 +376,33 @@ class VisualizerBase:
                  vmax=self._colormap.vmax,
                  extent=extent)
         p.xlabel("$x$/kpc")
-        p.colorbar().set_label(self.colorbar_label)
+        p.colorbar().set_label(self._colorbar.label)
         p.savefig(filename)
         p.close(fig)
 
-    def run(self):
-        wgpu.gui.auto.run()
+    def show(self, force=False):
+        from wgpu.gui import jupyter
+        if isinstance(self.canvas, jupyter.WgpuCanvas):
+            return self.canvas
+        else:
+            from wgpu.gui import qt # can only safely import this if we think we're running in a qt environment
+            assert isinstance(self.canvas, qt.WgpuCanvas)
+            self.canvas.show()
+            if force or not util.is_inside_ipython():
+                qt.run()
+            elif not util.is_ipython_running_qt_event_loop():
+                # is_inside_ipython_console must be True; if it were False, the previous branch would have run
+                # instead.
+                print("\r\nYou appear to be running from inside ipython, but the gui event loop is not running.\r\n"
+                      "Please run %gui qt in ipython before calling show().\r\n"
+                      "\r\n"
+                      "Alternatively, if you do not want to continue interacting with ipython while the\r\n"
+                      "visualizer is running, you can call show(force=True) to run the gui without access\r\n"
+                      "to the ipython console until you close the visualizer window.\r\n\r\n"
+                      )
+        #else:
+        #    raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
+
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
     pass

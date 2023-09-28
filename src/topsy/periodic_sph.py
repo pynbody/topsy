@@ -17,12 +17,12 @@ class PeriodicSPHAccumulationOverlay(overlay.Overlay):
                     wgpu.BlendFactor.one,
                     wgpu.BlendOperation.add,
                  )
-    def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture, target_texture: wgpu.GPUTexture):
+    def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture):
         self._texture = source_texture
         self.num_repetitions = 0
         self.panel_scale = 1.0
         self.rotation_matrix = np.eye(3)
-        super().__init__(visualizer, target_texture)
+        super().__init__(visualizer, source_texture.format)
 
     def _setup_texture(self):
         pass
@@ -62,7 +62,7 @@ class PeriodicSPH(sph.SPH):
                 usage=render_texture.usage,
                 label=f"proxy_sph"
             )
-        self._accumulator = PeriodicSPHAccumulationOverlay(visualizer, proxy_render_texture, render_texture)
+        self._accumulator = PeriodicSPHAccumulationOverlay(visualizer, proxy_render_texture)
         super().__init__(visualizer, proxy_render_texture, wrapping=True)
 
     def encode_render_pass(self, command_encoder):
@@ -71,5 +71,5 @@ class PeriodicSPH(sph.SPH):
         self._accumulator.rotation_matrix = self.rotation_matrix
         self._accumulator.panel_scale = self._visualizer.periodicity_scale/self._visualizer.scale
 
-        self._accumulator.encode_render_pass(command_encoder, True)
+        self._accumulator.encode_render_pass(command_encoder, self._final_render_texture.create_view(), True)
 

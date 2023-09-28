@@ -167,15 +167,16 @@ class Line:
         )
 
 
-    def encode_render_pass(self, command_encoder: wgpu.GPURenderPassEncoder):
-        render_texture = self._visualizer.context.get_current_texture()
-        self._params["vp_size_pix"] = render_texture.size[:2]
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder,
+                           target_texture_view: wgpu.GPUTextureView):
+
+        self._params["vp_size_pix"] = target_texture_view.size[:2]
 
         self._device.queue.write_buffer(self._param_buffer, 0, self._params)
 
         render_pass = command_encoder.begin_render_pass(
             color_attachments=[{
-                "view": render_texture,
+                "view": target_texture_view,
                 "resolve_target": None,
                 "clear_value": (0.0, 0.0, 0.0, 1.0),
                 "load_op": wgpu.LoadOp.load,

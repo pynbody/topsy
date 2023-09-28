@@ -15,7 +15,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 readme = 'README.md'
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 
 dependencies = [
     "numpy >=1.16.0",
@@ -24,9 +24,15 @@ dependencies = [
     "pillow >=9.5.0", # 9.5.0 needed for Image.frombytes accepting memoryview
     "wgpu >= 0.9.4",
     "jupyter_rfb >=0.4.1",
-    "glfw >= 2.6.0" # windowing
+    "tqdm >=4.62.0",
+    "opencv-python >=4.8.0",
+    "PySide6 >= 6.5.0" # windowing
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest >=6.2.0",
+]
 
 [project.scripts]
 topsy = "topsy:main"

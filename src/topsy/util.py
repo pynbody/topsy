@@ -2,6 +2,7 @@ import numpy as np
 import time
 import wgpu
 import re
+import os
 
 def load_shader(name):
     from importlib import resources
@@ -22,6 +23,25 @@ def preprocess_shader(shader_code, active_flags):
     shader_code = re.sub(r"^.*\[\[[A-Z_]+]].*$", "", shader_code, flags=re.MULTILINE)
     return shader_code
 
+def is_inside_ipython():
+    try:
+        __IPYTHON__
+        return True
+    except NameError:
+        return False
+
+def is_inside_jupyter_notebook():
+    return "JPY_SESSION_NAME" in os.environ
+
+def is_ipython_running_qt_event_loop():
+    if not is_inside_ipython():
+        return False
+    import IPython.lib.guisupport
+    return IPython.lib.guisupport.is_event_loop_running_qt4()
+
+def determine_backend():
+    if is_inside_ipython():
+        pass
 class TimeGpuOperation:
     """Context manager for timing GPU operations"""
     def __init__(self, device, n_frames_smooth=10):

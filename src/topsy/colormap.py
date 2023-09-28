@@ -31,12 +31,25 @@ class Colormap:
         self._weighted_average = weighted_average
 
         self.vmin, self.vmax = 0,1
-        self.log_scale = True
+        self._log_scale = True
         # all three of these will be reset by set_vmin_vmax
 
         self._setup_texture()
         self._setup_shader_module()
         self._setup_render_pipeline()
+
+    @property
+    def log_scale(self):
+        return self._log_scale
+
+    @log_scale.setter
+    def log_scale(self, value):
+        old_value = self._log_scale
+        self._log_scale = value
+        if value != old_value:
+            self._setup_shader_module()
+            self._setup_render_pipeline()
+
     def _setup_shader_module(self):
         shader_code = load_shader("colormap.wgsl")
         # hack because at present we can't use const values in the shader to compile
@@ -190,14 +203,12 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder):
-        display_texture = self._visualizer.context.get_current_texture()
-
-        self._update_parameter_buffer(display_texture.size[0], display_texture.size[1])
+    def encode_render_pass(self, command_encoder, target_texture_view):
+        self._update_parameter_buffer(target_texture_view.size[0], target_texture_view.size[1])
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
-                    "view": display_texture,
+                    "view": target_texture_view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 1.0),
                     "load_op": wgpu.LoadOp.load,
@@ -216,17 +227,13 @@ class Colormap:
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
-        vals = self._visualizer.get_rendered_image().ravel()
+        vals = self._visualizer.get_sph_image().ravel()
 
-        previous_log_scale = self.log_scale
         if (vals<0).any():
             self.log_scale = False
         else:
             self.log_scale = True
-
-        if previous_log_scale != self.log_scale:
-            self._setup_shader_module()
-            self._setup_render_pipeline()
+        # NB above switching of log scale will automatically rebuild the pipeline if needed
 
         if self.log_scale:
             vals = np.log10(vals)

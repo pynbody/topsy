@@ -99,7 +99,13 @@ class PynbodyDataInMemory(AbstractDataLoader):
         return self.snapshot['mass'].astype(np.float32)[self._random_order]
 
     def get_named_quantity(self, name):
-        return self.snapshot[name].astype(np.float32)[self._random_order]
+        qty =self.snapshot[name]
+        if len(qty.shape)==2:
+            qty = qty[:,0]
+        return qty.astype(np.float32)[self._random_order]
+
+    def get_quantity_names(self):
+        return self.snapshot.loadable_keys()
 
     def get_quantity_label(self):
         if self.quantity_name is None:
@@ -115,6 +121,8 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def get_periodicity_scale(self):
         return float(self.snapshot.properties['boxsize'].in_units("kpc"))
+    def get_filename(self):
+        return self.snapshot.filename
 
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""
@@ -217,14 +225,21 @@ class TestDataLoader(AbstractDataLoader):
         return np.random.uniform(0.01, 1.0, size=(self._n_particles)).astype(np.float32)*1e-8
 
     def get_named_quantity(self, name):
-        if name=="temp":
+        if name=="test-quantity":
             return np.sin(self._gmm_pos[:,0])*np.cos(self._gmm_pos[:,1])*np.cos(self._gmm_pos[:,2])
         else:
             raise KeyError("Unknown quantity name")
 
+    def get_quantity_names(self):
+        return ["test-quantity"]
+
     def get_quantity_label(self):
         if self.quantity_name is None:
-            return r"density / $M_{\odot} / \mathrm{kpc}^2$"
-        else:
+            return r"test density / $M_{\odot} / \mathrm{kpc}^2$"
+        elif self.quantity_name == "test-quantity":
             return "test quantity"
+        else:
+            return "unknown"
 
+    def get_filename(self):
+        return "test data"
