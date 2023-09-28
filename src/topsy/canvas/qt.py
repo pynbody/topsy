@@ -76,8 +76,10 @@ class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
 
 class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
     _default_quantity_name = "Projected density"
+    _all_instances = []
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._all_instances.append(self)
         self.hide()
 
         self._toolbar = QtWidgets.QToolBar()
@@ -86,18 +88,29 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         # setup toolbar to show text and icons
         self._toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
-
-        self._record_icon = _get_icon("record.png")
-        self._stop_icon = _get_icon("stop.png")
-        self._save_icon = _get_icon("camera.png")
+        self._load_icons()
 
         self._record_action = QtGui.QAction(self._record_icon, "Record", self)
-        self._record_action.setIconText("Record")
         self._record_action.triggered.connect(self.on_click_record)
 
         self._save_action = QtGui.QAction(self._save_icon, "Snapshot", self)
-        self._save_action.setIconText("Snapshot")
         self._save_action.triggered.connect(self.on_click_save)
+
+        self._save_movie_action = QtGui.QAction(self._save_movie_icon, "Save mp4", self)
+        self._save_movie_action.triggered.connect(self.on_click_save_movie)
+        self._save_movie_action.setDisabled(True)
+
+        self._save_script_action = QtGui.QAction(self._export_icon, "Save timestream", self)
+        self._save_script_action.triggered.connect(self.on_click_save_script)
+        self._save_script_action.setDisabled(True)
+
+        self._load_script_action = QtGui.QAction(self._import_icon, "Load timestream", self)
+        self._load_script_action.triggered.connect(self.on_click_load_script)
+
+        self._link_action = QtGui.QAction(self._unlinked_icon, "Link to other windows", self)
+        self._link_action.setIconText("Link")
+        self._link_action.triggered.connect(self.on_click_link)
+
 
         self._colormap_menu = QtWidgets.QComboBox()
         self._colormap_menu.addItems(mpl.colormaps.keys())
@@ -120,15 +133,22 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
             self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
             self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
             self._quantity_menu.adjustSize()
+            self.setWindowTitle("topsy: "+self._visualizer.data_loader.get_filename())
 
         self.call_later(0, populate_quantity_menu)
 
-
+        self._toolbar.addAction(self._load_script_action)
+        self._toolbar.addAction(self._save_script_action)
         self._toolbar.addAction(self._record_action)
+        self._toolbar.addAction(self._save_movie_action)
+
+        self._toolbar.addSeparator()
         self._toolbar.addAction(self._save_action)
         self._toolbar.addSeparator()
         self._toolbar.addWidget(self._colormap_menu)
         self._toolbar.addWidget(self._quantity_menu)
+        self._toolbar.addSeparator()
+        self._toolbar.addAction(self._link_action)
         self._recorder = None
 
 
@@ -145,7 +165,27 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
 
         self._toolbar.adjustSize()
 
+        self._toolbar_update_timer = QtCore.QTimer(self)
+        self._toolbar_update_timer.timeout.connect(self._update_toolbar)
+        self._toolbar_update_timer.start(100)
+
         layout.addLayout(our_layout)
+
+    def __del__(self):
+        try:
+            self._all_instances.remove(self)
+        except ValueError:
+            pass
+        super().__del__()
+    def _load_icons(self):
+        self._record_icon = _get_icon("record.png")
+        self._stop_icon = _get_icon("stop.png")
+        self._save_icon = _get_icon("camera.png")
+        self._linked_icon = _get_icon("linked.png")
+        self._unlinked_icon = _get_icon("unlinked.png")
+        self._save_movie_icon = _get_icon("movie.png")
+        self._import_icon = _get_icon("load_script.png")
+        self._export_icon = _get_icon("save_script.png")
 
     def _colormap_menu_changed_action(self):
         logger.info("Colormap changed to %s", self._colormap_menu.currentText())
@@ -170,25 +210,24 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
 
     def on_click_record(self):
 
-        if self._recorder is None:
+        if self._recorder is None or not self._recorder.recording:
             logger.info("Starting recorder")
             self._recorder = VisualizationRecorderWithQtProgressbar(self._visualizer, self)
             self._recorder.record()
-            self._record_action.setIconText("Finish and export to mp4")
+            self._record_action.setIconText("Stop")
             self._record_action.setIcon(self._stop_icon)
         else:
             logger.info("Stopping recorder")
             self._recorder.stop()
             self._record_action.setIconText("Record")
             self._record_action.setIcon(self._record_icon)
-            rec = self._recorder
-            self._recorder = None
 
+    def on_click_save_movie(self):
             fd = QtWidgets.QFileDialog(self)
             fname, _ = fd.getSaveFileName(self, "Save video", "", "MP4 (*.mp4)")
             if fname:
                 logger.info("Saving video to %s", fname)
-                rec.save_mp4(fname)
+                self._recorder.save_mp4(fname)
                 QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(fname))
 
     def on_click_save(self):
@@ -198,6 +237,51 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
             logger.info("Saving snapshot to %s", fname)
             self._visualizer.save(fname)
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(fname))
+
+    def on_click_save_script(self):
+        fd = QtWidgets.QFileDialog(self)
+        fname, _ = fd.getSaveFileName(self, "Save camera movements", "", "Python Pickle (*.pickle)")
+        if fname:
+            logger.info("Saving timestream to %s", fname)
+            self._recorder.save_timestream(fname)
+
+    def on_click_load_script(self):
+        fd = QtWidgets.QFileDialog(self)
+        fname, _ = fd.getOpenFileName(self, "Load camera movements", "", "Python Pickle (*.pickle)")
+        if fname:
+            logger.info("Loading timestream from %s", fname)
+            self._recorder = VisualizationRecorderWithQtProgressbar(self._visualizer, self)
+            self._recorder.load_timestream(fname)
+
+
+    def on_click_link(self):
+        if self._visualizer.is_synchronizing():
+            logger.info("Stop synchronizing")
+            self._visualizer.stop_synchronizing()
+        else:
+            logger.info("Start synchronizing")
+            from .. import view_synchronizer
+            synchronizer = view_synchronizer.ViewSynchronizer()
+            for instance in self._all_instances:
+                synchronizer.add_view(instance._visualizer)
+
+    def _update_toolbar(self):
+        if self._recorder is not None or len(self._all_instances)<2:
+            self._link_action.setDisabled(True)
+        else:
+            self._link_action.setDisabled(False)
+            if self._visualizer.is_synchronizing():
+                self._link_action.setIcon(self._linked_icon)
+                self._link_action.setIconText("Unlink")
+            else:
+                self._link_action.setIcon(self._unlinked_icon)
+                self._link_action.setIconText("Link")
+        if self._recorder is not None and not self._recorder.recording:
+            self._save_movie_action.setDisabled(False)
+            self._save_script_action.setDisabled(False)
+        else:
+            self._save_movie_action.setDisabled(True)
+            self._save_script_action.setDisabled(True)
 
 
 

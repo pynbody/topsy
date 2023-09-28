@@ -43,6 +43,7 @@ class VisualizerBase:
         self._setup_wgpu()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args)
+
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
         self._colormap = colormap.Colormap(self, weighted_average = False)
@@ -357,7 +358,7 @@ class VisualizerBase:
 
     def save(self, filename='output.pdf'):
         image = self.get_sph_image()
-        import pylab as p
+        import matplotlib.pyplot as p
         fig = p.figure()
         p.clf()
         p.set_cmap(self.colormap_name)

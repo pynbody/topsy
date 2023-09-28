@@ -5,6 +5,7 @@ import tqdm
 import wgpu
 import numpy as np
 import logging
+import pickle
 
 from . interpolator import (Interpolator, StepInterpolator, LinearInterpolator, RotationInterpolator,
                             SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedStepInterpolator)
@@ -22,9 +23,9 @@ logger.setLevel(logging.INFO)
 
 
 class VisualizationRecorder:
-    _record_properties = ['vmin', 'vmax', 'log_scale', 'colormap_name', 'quantity_name',
+    _record_properties = ['colormap_name', 'quantity_name', 'log_scale', 'vmin', 'vmax', # NB ordering is important to prevent triggering auto-scaling
                           'rotation_matrix', 'scale', 'position_offset']
-    _record_interpolation_class = [SmoothedStepInterpolator, SmoothedStepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
+    _record_interpolation_class = [StepInterpolator, StepInterpolator, StepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator,
                                    SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
 
     def __init__(self, visualizer: Visualizer):
@@ -61,8 +62,7 @@ class VisualizationRecorder:
             self._recording_ends_at = self._time_elapsed()
         self._recording = False
         self._playback = False
-        self._interpolators = {r: c(self._timestream[r])
-                               for c, r in zip(self._record_interpolation_class, self._record_properties)}
+
 
     def _get_value_at_time(self, property, time):
         return self._interpolators[property](time)
@@ -78,8 +78,12 @@ class VisualizationRecorder:
             self.stop()
         if self._recording_ends_at is None:
             raise RuntimeError("Can't playback before recording")
-        self._playback = True
+
         self._recording = False
+
+        self._playback = True
+        self._interpolators = {r: c(self._timestream[r])
+                               for c, r in zip(self._record_interpolation_class, self._record_properties)}
 
         device = self._visualizer.device
 
@@ -119,4 +123,15 @@ class VisualizationRecorder:
             writer.write(image)
 
         writer.release()
+
+    def save_timestream(self, fname):
+        pickle.dump((self._timestream, self._recording_ends_at), open(fname, 'wb'))
+
+    def load_timestream(self, fname):
+        self._timestream, self._recording_ends_at = pickle.load(open(fname, 'rb'))
+
+
+    @property
+    def recording(self):
+        return self._recording
 

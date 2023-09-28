@@ -1,5 +1,6 @@
 from io import BytesIO
 
+import matplotlib
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 
@@ -32,7 +33,6 @@ class TextOverlay(Overlay):
 
         Based on
         https://matplotlib.org/stable/gallery/text_labels_and_annotations/mathtext_asarray.html"""
-
         fig = Figure(facecolor="none")
         fig.text(0, 0, s, **kwargs)
         with BytesIO() as buf:

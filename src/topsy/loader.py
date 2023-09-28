@@ -121,6 +121,8 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def get_periodicity_scale(self):
         return float(self.snapshot.properties['boxsize'].in_units("kpc"))
+    def get_filename(self):
+        return self.snapshot.filename
 
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""
@@ -238,3 +240,6 @@ class TestDataLoader(AbstractDataLoader):
             return "test quantity"
         else:
             return "unknown"
+
+    def get_filename(self):
+        return "test data"
