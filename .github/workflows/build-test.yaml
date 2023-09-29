@@ -34,6 +34,7 @@ jobs:
       working-directory: tests
       run: python -m pytest
     - uses: actions/upload-artifact@v3
+      if: always()
       with:
         name: Outputs from tests
         path: tests/output/
