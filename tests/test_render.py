@@ -27,6 +27,7 @@ def test_sph_output():
     vis.canvas.draw()
     result = vis.get_sph_image()
     assert result.shape == (200,200)
+    np.save(folder / "test.npy", result) # for debugging
     test = result[::20,::20].flatten()
     expect = np.array([6.6993198e-14, 1.1507333e-13, 1.7919646e-13, 2.4612135e-13,
        2.9066495e-13, 2.8998280e-13, 2.4486413e-13, 1.7858511e-13,
