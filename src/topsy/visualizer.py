@@ -355,6 +355,26 @@ class VisualizerBase:
             im = np_im[:,:,0]
         return im
 
+    def get_presentation_image(self) -> np.ndarray:
+        texture_view = self.context.get_current_texture()
+        size = texture_view.size
+        bytes_per_pixel = 4 # NB this might be wrong in principle!
+        data = self.device.queue.read_texture(
+            {
+                "texture": texture_view.texture,
+                "mip_level": 0,
+                "origin": (0, 0, 0),
+            },
+            {
+                "offset": 0,
+                "bytes_per_row": bytes_per_pixel * size[0],
+                "rows_per_image": size[1],
+            },
+            size,
+        )
+
+        return np.frombuffer(data, np.uint8).reshape(size[1], size[0], 4)
+
 
     def save(self, filename='output.pdf'):
         image = self.get_sph_image()
