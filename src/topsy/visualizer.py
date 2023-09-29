@@ -30,7 +30,7 @@ class VisualizerBase:
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
-                 colormap_name = config.DEFAULT_COLORMAP):
+                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas):
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
@@ -38,7 +38,8 @@ class VisualizerBase:
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
 
-        self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
+
+        self.canvas = canvas_class(visualizer=self, title="topsy")
 
         self._setup_wgpu()
 
