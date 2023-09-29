@@ -33,3 +33,7 @@ jobs:
     - name: Run all tests
       working-directory: tests
       run: python -m pytest
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Outputs from tests
+        path: tests/output/
