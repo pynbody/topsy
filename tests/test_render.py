@@ -24,6 +24,23 @@ def test_render():
     result = vis.get_presentation_image()
     plt.imsave(folder / "test.png", result) # needs manual verification
 
+def test_particle_pos_smooth():
+    # this is testing the test data
+    xyzw = vis.data_loader.get_pos_smooth()
+    npt.assert_allclose(xyzw[::100],
+       [[ 1.6189760e+01, -4.0728635e-01, -1.8409515e+01,  2.0848181e+01],
+       [-3.6236227e-01,  1.9854842e-02, -3.4908600e+00,  1.2997785e+00],
+       [ 5.6721487e+00, -8.8317409e-02, -9.4208164e+00,  1.0804868e+01],
+       [-3.6954129e+00, -5.1248574e+00,  1.4329858e+01,  1.5497326e+01],
+       [-2.5594389e+01, -9.0724382e+00, -3.3397295e+00,  2.3571991e+01],
+       [-3.6231318e-01,  1.6435374e-02,  1.8260944e+00,  1.0799329e+00],
+       [ 9.7273951e+00,  1.8408798e-01, -6.7287006e+00,  1.3380475e+01],
+       [ 1.4229246e+01,  2.2913518e+00, -1.6219862e+01,  1.8701763e+01],
+       [ 1.0776958e+01,  1.6861650e+01,  1.8014458e+01,  2.3113770e+01],
+       [ 8.6214191e-01, -1.3920928e-02,  1.7059642e+00,  1.0834730e+00]])
+
+
+
 def test_sph_output():
     vis.draw(reason=DrawReason.EXPORT)
     result = vis.get_sph_image()
