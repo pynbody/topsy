@@ -220,7 +220,7 @@ class TestDataLoader(AbstractDataLoader):
         return sm
 
     def get_mass(self):
-        return np.random.uniform(0.01, 1.0, size=(self._n_particles)).astype(np.float32)*1e-8
+        return np.repeat(np.float32(1e-8), self._n_particles)
 
     def get_named_quantity(self, name):
         if name=="test-quantity":
