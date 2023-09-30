@@ -20,6 +20,7 @@ class SPH:
         self._render_texture = render_texture
         self._device = visualizer.device
         self._wrapping = wrapping
+        self._kernel = None
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -252,15 +253,18 @@ class SPH:
         sph_render_pass.end()
 
 
-    def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
-        if hasattr(SPH, "_kernel_texture"):
-            # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
-            return
+    def _get_kernel_at_resolution(self, n_samples):
+        if self._kernel is None:
+            self._kernel = pynbody.sph.Kernel2D()
 
-        pynbody_sph_kernel = pynbody.sph.Kernel2D()
-        x, y = np.meshgrid(np.linspace(-2, 2, n_samples), np.linspace(-2, 2, n_samples))
+        # sph kernel is sampled at the centre of the pixels, and the full grid ranges from -2 to 2.
+        # thus the left hand most pixel is at -2+2/n_samples, and the right hand most pixel is at 2-2/n_samples.
+        pixel_centres = np.linspace(-2+2./n_samples, 2-2./n_samples, n_samples)
+        x, y = np.meshgrid(pixel_centres, pixel_centres)
         distance = np.sqrt(x ** 2 + y ** 2)
-        kernel_im = np.array([pynbody_sph_kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
+
+        # TODO: the below could easily be optimized
+        kernel_im = np.array([self._kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
         # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
         # It should be normalized such that the integral over the kernel is 1/h^2. We have h=1 here, and the
@@ -268,43 +272,34 @@ class SPH:
         # This results in a correction of a few percent, typically; not huge but not negligible either.
         #
         # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
-        kernel_im *= (n_samples/4)**2 / kernel_im.sum()
+        kernel_im *= (n_samples / 4) ** 2 / kernel_im.sum()
+
+        return kernel_im
+
+    def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
+        if hasattr(SPH, "_kernel_texture"):
+            # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
+            return
 
         SPH._kernel_texture = self._device.create_texture(
             label="kernel_texture",
             size=(n_samples, n_samples, 1),
             dimension=wgpu.TextureDimension.d2,
             format=wgpu.TextureFormat.r32float,
-            mip_level_count=2,
+            mip_level_count=n_mip_levels,
             sample_count=1,
             usage=wgpu.TextureUsage.COPY_DST | wgpu.TextureUsage.TEXTURE_BINDING,
         )
 
-        self._device.queue.write_texture(
-            {
-                "texture": self._kernel_texture,
-                "mip_level": 0,
-                "origin": (0, 0, 0),
-            },
-            kernel_im.astype(np.float32).tobytes(),
-            {
-                "offset": 0,
-                "bytes_per_row": 4*n_samples,
-            },
-            (n_samples, n_samples, 1)
-        )
 
-        kt_mip = kernel_im
-
-        for i in range(1, n_mip_levels):
-            kt_mip = kt_mip[::2, ::2]
+        for i in range(0, n_mip_levels):
             self._device.queue.write_texture(
                 {
                     "texture": self._kernel_texture,
-                    "mip_level": 1,
+                    "mip_level": i,
                     "origin": (0, 0, 0),
                 },
-                kt_mip.astype(np.float32).tobytes(),
+                self._get_kernel_at_resolution(n_samples//2**i).astype(np.float32).tobytes(),
                 {
                     "offset": 0,
                     "bytes_per_row": 4 * n_samples // 2**i,
