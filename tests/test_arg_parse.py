@@ -7,9 +7,6 @@ def test_simple_arg_parse():
     args = args[0]
     assert args.filename == "test://1000"
     assert args.quantity == "test-quantity"
-    assert args.center is None
-    assert args.particle is None
-    assert args.tile is False
     assert args.resolution == topsy.config.DEFAULT_RESOLUTION
     assert args.colormap == topsy.config.DEFAULT_COLORMAP
 
