@@ -38,12 +38,15 @@ class VisualizerBase:
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
         self.vmin_vmax_is_set = False
 
+        self.show_colorbar = True
+        self.show_scalebar = True
 
         self.canvas = canvas_class(visualizer=self, title="topsy")
 
         self._setup_wgpu()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args)
+
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
         self._colormap = colormap.Colormap(self, weighted_average = False)
@@ -240,8 +243,10 @@ class VisualizerBase:
 
         command_encoder = self.device.create_command_encoder(label="render_to_screen")
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
-        self._colorbar.encode_render_pass(command_encoder, target_texture_view)
-        self._scalebar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_colorbar:
+            self._colorbar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_scalebar:
+            self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:
             self._crosshairs.encode_render_pass(command_encoder, target_texture_view)
         if self._periodic_tiling:
@@ -378,7 +383,7 @@ class VisualizerBase:
 
     def save(self, filename='output.pdf'):
         image = self.get_sph_image()
-        import pylab as p
+        import matplotlib.pyplot as p
         fig = p.figure()
         p.clf()
         p.set_cmap(self.colormap_name)

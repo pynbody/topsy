@@ -82,12 +82,15 @@ tell it what to center on using the `-c` flag, to which valid arguments are:
 * `-c zoom` (uses the shrink sphere center on the highest resolution particles, without loading a halo catalogue)
 * `-c all` (uses the shrink sphere center on all particles in the file)
 
-By default, it will show you dark matter particles. To change this pass `-p gas` to show gas particles or `-p star` for stars.
+By default, it will show you dark matter particles. To change this pass `-p gas` to show gas particles or `-p star` for 
+stars.
 
-If your particles have other quantities defined on them (such as `temp` for gas particles), you can view the density-weighted average quantity by passing `-q temp`. 
+If your particles have other quantities defined on them (such as `temp` for gas particles), you can view the 
+density-weighted average quantity by passing `-q temp`. Other quantities can be sele
 
 By default, topsy uses matplotlib's `twilight_shifted` colormap. To change this pass, for example, `-m viridis`, or the name
 of any other [matplotlib colormap](https://matplotlib.org/stable/tutorials/colors/colormaps.html#sequential).
+This can also be changed in real-time from the topsy window.
 
 Controls in the main window
 ---------------------------

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib
+import matplotlib.figure as figure
 import matplotlib.colors as colors
 import numpy as np
 
@@ -34,10 +35,12 @@ class ColorbarOverlay(Overlay):
     def render_contents(self):
         dpi_physical = self.dpi_logical*self._visualizer.canvas.pixel_ratio
 
-        fig = plt.figure(figsize=(self._visualizer.canvas.height_physical * self._aspect_ratio/dpi_physical,
+        fig = figure.Figure(figsize=(self._visualizer.canvas.height_physical * self._aspect_ratio/dpi_physical,
                                   self._visualizer.canvas.height_physical/dpi_physical),
                          dpi=dpi_physical,
                          facecolor=(1.0, 1.0, 1.0, 0.5))
+
+        canvas = matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
 
         cmap = matplotlib.colormaps[self.colormap]
         cNorm = colors.Normalize(vmin=self.vmin, vmax=self.vmax)
@@ -51,5 +54,4 @@ class ColorbarOverlay(Overlay):
         result: np.ndarray = np.frombuffer(fig.canvas.buffer_rgba(),dtype=np.uint8).reshape((height,width,4)).transpose((1,0,2))
         result = result.swapaxes(0,1).astype(np.float32)/256
 
-        plt.close(fig)
         return result

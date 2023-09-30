@@ -83,3 +83,6 @@ class SynchronizationMixin:
         """Stop synchronizing this visualizer with any other"""
         if hasattr(self, "_view_synchronizer"):
             self._view_synchronizer.remove_view(self)
+
+    def is_synchronizing(self):
+        return hasattr(self, "_view_synchronizer")
