@@ -1,8 +1,8 @@
-from __future__ import annotations
-
 """topsy - An astrophysics simulation visualization package based on webgpu, using pynbody for reading data"""
 
-__version__ = "0.3.0"
+from __future__ import annotations
+
+__version__ = "0.3.1"
 
 import argparse
 import logging
@@ -101,8 +101,9 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
     vis.quantity_name = quantity
     return vis
 
-def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT):
+def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
     from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
-                                data_loader_args=(nparticle,))
+                                data_loader_args=(nparticle,),
+                                **kwargs)
     return vis

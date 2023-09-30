@@ -30,7 +30,7 @@ class VisualizerBase:
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
-                 colormap_name = config.DEFAULT_COLORMAP):
+                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas):
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
@@ -41,7 +41,7 @@ class VisualizerBase:
         self.show_colorbar = True
         self.show_scalebar = True
 
-        self.canvas = canvas.VisualizerCanvas(visualizer=self, title="topsy")
+        self.canvas = canvas_class(visualizer=self, title="topsy")
 
         self._setup_wgpu()
 
@@ -359,6 +359,26 @@ class VisualizerBase:
         else:
             im = np_im[:,:,0]
         return im
+
+    def get_presentation_image(self) -> np.ndarray:
+        texture_view = self.context.get_current_texture()
+        size = texture_view.size
+        bytes_per_pixel = 4 # NB this might be wrong in principle!
+        data = self.device.queue.read_texture(
+            {
+                "texture": texture_view.texture,
+                "mip_level": 0,
+                "origin": (0, 0, 0),
+            },
+            {
+                "offset": 0,
+                "bytes_per_row": bytes_per_pixel * size[0],
+                "rows_per_image": size[1],
+            },
+            size,
+        )
+
+        return np.frombuffer(data, np.uint8).reshape(size[1], size[0], 4)
 
 
     def save(self, filename='output.pdf'):

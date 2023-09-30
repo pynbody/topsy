@@ -204,13 +204,16 @@ class TestDataLoader(AbstractDataLoader):
     def _generate_samples(self):
         # simple gaussian mixture model
         pos = np.empty((self._n_particles, 3), dtype=np.float32)
-        offset = 0
-        for i in range(len(self._gmm_weights)):
-            cpt_len = int(self._n_particles*self._gmm_weights[i])
-            pos[offset:offset+cpt_len] = \
-                np.random.normal(size=(cpt_len, 3), scale=1.0).astype(np.float32) * self._gmm_std[np.newaxis,i,:] + self._gmm_means[i]
-            offset += cpt_len
-        assert offset == self._n_particles
+        if self._n_particles==1:
+            pos[0] = self._gmm_means[0]
+        else:
+            offset = 0
+            for i in range(len(self._gmm_weights)):
+                cpt_len = int(self._n_particles*self._gmm_weights[i])
+                pos[offset:offset+cpt_len] = \
+                    np.random.normal(size=(cpt_len, 3), scale=1.0).astype(np.float32) * self._gmm_std[np.newaxis,i,:] + self._gmm_means[i]
+                offset += cpt_len
+            assert offset == self._n_particles
         return np.random.permutation(pos)
 
     def get_positions(self):
@@ -222,7 +225,7 @@ class TestDataLoader(AbstractDataLoader):
         return sm
 
     def get_mass(self):
-        return np.random.uniform(0.01, 1.0, size=(self._n_particles)).astype(np.float32)*1e-8
+        return np.repeat(np.float32(1e-8), self._n_particles)
 
     def get_named_quantity(self, name):
         if name=="test-quantity":
