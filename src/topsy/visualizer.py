@@ -20,6 +20,7 @@ from . import util
 from . import line
 from . import simcube
 from . import view_synchronizer
+from . import line_integral_convolution
 from .drawreason import DrawReason
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ class VisualizerBase:
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
-                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas):
+                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
+                 use_lic = True):
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
@@ -44,6 +46,7 @@ class VisualizerBase:
         self.canvas = canvas_class(visualizer=self, title="topsy")
 
         self._setup_wgpu()
+        self._setup_render_texture()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args)
 
@@ -56,6 +59,14 @@ class VisualizerBase:
             self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
         else:
             self._sph = sph.SPH(self, self.render_texture)
+
+        if use_lic:
+            self._use_lic = True
+            self._unconvolved_sph_render_texture = self.render_texture
+            self._setup_render_texture() # the old one will be rendered into by SPH, the new one is the LIC output
+            self._lic = line_integral_convolution.LineIntegralConvolution(self,
+                                                                          self.render_texture,
+                                                                          self._unconvolved_sph_render_texture)
         #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
         self._last_status_update = 0.0
@@ -87,6 +98,8 @@ class VisualizerBase:
             # but for now, just stop the canvas being srgb
             self.canvas_format = self.canvas_format[:-5]
         self.context.configure(device=self.device, format=self.canvas_format)
+
+    def _setup_render_texture(self):
         self.render_texture: wgpu.GPUTexture = self.device.create_texture(
             size=(self._render_resolution, self._render_resolution, 1),
             usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
@@ -233,6 +246,16 @@ class VisualizerBase:
 
             with self._render_timer:
                 self.device.queue.submit([command_encoder.finish()])
+
+            if self._use_lic:
+                command_encoder: wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+                self._lic.encode_render_pass(command_encoder)
+                self.device.queue.submit([command_encoder.finish()])
+
+
+
+
+
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
