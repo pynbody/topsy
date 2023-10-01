@@ -1,3 +1,6 @@
+![Example topsy animations](https://github.com/pynbody/topsy/assets/4377338/b885c107-4f02-496c-b763-6865388c26c4)
+
+
 topsy
 =====
 
@@ -14,7 +17,7 @@ of interest from the community.
 Installing
 ----------
 
-You will need python 3.8 or later, running in a UNIX variant (basically MacOS, Linux or if you're on Windows you need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)). You can then install `topsy` using `pip` 
+You will need python 3.10 or later, running in a UNIX variant (basically MacOS, Linux or if you're on Windows you need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)). You can then install `topsy` using `pip` 
 as usual:
 
 ```
