@@ -25,7 +25,7 @@ pip install topsy
 ```
 
 This will install topsy and its dependencies (including `pynbody` itself) into
-your current python environment. (If it fails, check that you have python 3.8
+your current python environment. (If it fails, check that you have python 3.10
 or later, and `pip` is itself up-to-date using `pip install -U pip`.)
 
 As usual, you can also install direct from github, e.g.
