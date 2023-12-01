@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import time
 import wgpu
-import wgpu.backends.rs # noqa: F401, Select Rust backend
 
 from contextlib import contextmanager
 
@@ -77,8 +76,7 @@ class VisualizerBase:
         self.invalidate(DrawReason.INITIAL_UPDATE)
 
     def _setup_wgpu(self):
-        self.adapter: wgpu.GPUAdapter = wgpu.request_adapter(canvas=self.canvas,
-                                                             power_preference="high-performance")
+        self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
         self.device: wgpu.GPUDevice = self.adapter.request_device(
             required_features=["TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES"])
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
@@ -215,8 +213,7 @@ class VisualizerBase:
             self._prevent_sph_rendering = False
 
     def draw(self, reason, target_texture_view=None):
-        if target_texture_view is None:
-            target_texture_view = self.context.get_current_texture() # weirdly returns a view, not a texture
+
 
         if reason == DrawReason.REFINE or reason == DrawReason.EXPORT:
             self._sph.downsample_factor = 1
@@ -241,8 +238,12 @@ class VisualizerBase:
             self.vmin_vmax_is_set = True
             self._refresh_colorbar()
 
+        command_encoder = self.device.create_command_encoder()
 
-        command_encoder = self.device.create_command_encoder(label="render_to_screen")
+        if target_texture_view is None:
+            target_texture_view = self.canvas.get_context().get_current_texture().create_view()
+
+
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
         if self.show_colorbar:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
@@ -362,12 +363,12 @@ class VisualizerBase:
         return im
 
     def get_presentation_image(self) -> np.ndarray:
-        texture_view = self.context.get_current_texture()
-        size = texture_view.size
+        texture = self.context.get_current_texture()
+        size = texture.size
         bytes_per_pixel = 4 # NB this might be wrong in principle!
         data = self.device.queue.read_texture(
             {
-                "texture": texture_view.texture,
+                "texture": texture,
                 "mip_level": 0,
                 "origin": (0, 0, 0),
             },
