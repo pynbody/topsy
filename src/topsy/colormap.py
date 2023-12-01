@@ -259,7 +259,6 @@ class Colormap:
         parameters["vmin"] = self.vmin
         parameters["vmax"] = self.vmax
 
-        self._visualizer.context.get_current_texture()
 
         parameters["window_aspect_ratio"] = float(width)/height
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
