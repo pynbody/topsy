@@ -26,6 +26,7 @@ logger.setLevel(logging.INFO)
 class VisualizerBase:
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
     show_status = True
+    device = None # device will be shared across all instances
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
@@ -77,8 +78,9 @@ class VisualizerBase:
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
-        self.device: wgpu.GPUDevice = self.adapter.request_device(
-            required_features=["TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES"])
+        if self.device is None:
+            type(self).device: wgpu.GPUDevice = self.adapter.request_device(
+                required_features=["TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES"])
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
         self.canvas_format = self.context.get_preferred_format(self.adapter)
         if self.canvas_format.endswith("-srgb"):
