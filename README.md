@@ -109,7 +109,21 @@ python to get this to work). Then you can use the following controls:
 * To move the centre, hold shift while dragging the mouse.
 * To rescale the colours to an appropriate range for the current view, press `r`(ange)
 * To return the view to the original orientation and zoom, press `h`(ome)
-* To save a snapshot of the current image as a pdf press `s`(ave)
+
+There is also a toolbar at the bottom of the window with some buttons:
+
+* <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/record.png?raw=true" style="width: 1em;">
+  - start recording actions (rotations, scalings, movements and more). Press again to stop. 
+* <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/movie.png?raw=true" style="width: 1em;">
+  - render the recorded actions into an mp4 file. You will be prompted about various options and a filename.
+* <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/load_script.png?raw=true" style="width: 1em;">
+  <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/save_script.png?raw=true" style="width: 1em;">
+  - load and save the recorded actions to a file for later use.
+* <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/camera.png?raw=true" style="width: 1em;">
+  - save a snapshot of the current view to an image file.
+* <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/linked.png?raw=true" style="width: 1em;">
+  - link this window to other topsy windows, so that rotating, scaling or moving one does the same to the other
+* A dropdown menu is provided for choosing a colormap, and an editable dropdown for choosing what quantity to visualise. You can type in any `pynbody`-derivable quantity.
 
 Using from jupyter
 ------------------
