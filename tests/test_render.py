@@ -96,3 +96,8 @@ def test_rotated_sph_output():
         plt.imsave(folder / "test_rotated.png", result)  # needs manual verification
     finally:
         vis.rotation_matrix = np.eye(3, dtype=np.float32)
+
+
+def test_second_renderer():
+    # tests that creating a second renderer works OK
+    vis2 = topsy._test(2000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas)
