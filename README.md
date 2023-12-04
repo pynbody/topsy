@@ -91,11 +91,18 @@ By default, it will show you dark matter particles. To change this pass `-p gas`
 stars.
 
 If your particles have other quantities defined on them (such as `temp` for gas particles), you can view the 
-density-weighted average quantity by passing `-q temp`. Other quantities can be sele
+density-weighted average quantity by passing `-q temp`, or by selecting it via the main window controls
+(see below). 
 
-By default, topsy uses matplotlib's `twilight_shifted` colormap. To change this pass, for example, `-m viridis`, or the name
-of any other [matplotlib colormap](https://matplotlib.org/stable/tutorials/colors/colormaps.html#sequential).
-This can also be changed in real-time from the topsy window.
+To open more than one visualisation window on different files or with different parameters, you can
+pass multiple groups of parameters separated by `+`, for example to see separate views of the gas and
+dark matter you could launch `topsy` with:
+
+```
+topsy -c halo-1 -p gas my_simulation + -c halo-1 -p dm my_simulation
+```
+
+You can choose to link the rotation/zoom of multiple views using the toolbar (see below).
 
 Controls in the main window
 ---------------------------
