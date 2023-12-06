@@ -28,22 +28,19 @@ This will install topsy and its dependencies (including `pynbody` itself) into
 your current python environment. (If it fails, check that you have python 3.10
 or later, and `pip` is itself up-to-date using `pip install -U pip`.)
 
-As usual, you can also install direct from github, e.g.
+### Alternative 1: install into isolated environment using pipx
+
+You can also install `topsy` into its own isolated environment using [pipx](https://pypi.org/project/pipx/):
 
 ```
-pip install git+https://github.com/pynbody/topsy
+pipx install topsy
 ```
 
-Or clone the repository and install for development using
+The command line tool will now be available, but you won't have access to the `topsy` package from your existing python environment. This can be useful if you don't want to risk disturbing anything.
 
-```
-pip install -e .
-```
+### Alternative 2: install into new environment using venv and pip 
 
-from inside the cloned repository.
-
-If you want to play with `topsy` without disturbing your current installation,
-I recommend using `venv`:
+If you want to play with `topsy` without disturbing your existing installation, but also want to be able to use `topsy` from python scripts or jupyter etc, I recommend using `venv`:
 
 ```
 # create a toy environment
@@ -64,20 +61,40 @@ deactivate
 For more information about venv, see its 
 [tutorial page](https://docs.python.org/3/library/venv.html).
 
+### Alternative 3: install unreleased versions or contribute to development
+
+As usual, you can also install direct from github, e.g.
+
+```
+pip install git+https://github.com/pynbody/topsy
+```
+
+Or clone the repository and install for development using
+
+```
+pip install -e .
+```
+
+from inside the cloned repository.
+
+
+
 
 Trying it out
 -------------
 
-*Quick start: if you just want to try it out and you don't have a 
+### Very quick start
+
+Once `topsy` is installed, if you just want to try it out and you don't have a 
 suitable simulation snapshot to hand, you can download some
 from the [tangos tutorial datasets (4.8GB)](http://ftp.star.ucl.ac.uk/~app/tangos/tutorial_changa.tar.gz).
 You need to untar them (`tar -xzf tutorial_changa.tar.gz` from your command line), then
 you can type `topsy pioneer50h128.1536gst1.bwK1.000832` to visualise that file's
-dark matter content.*
+dark matter content.
 
-*Long version:* The package provides one simple command called `topsy`, to be 
-called straight from your shell. Pass `topsy` the path to the
-simulation that you wish to visualise. 
+### More detailed description
+
+If using from the command line, pass `topsy` the path to the simulation that you wish to visualise. 
 
 You can (and probably should) also
 tell it what to center on using the `-c` flag, to which valid arguments are:
@@ -88,11 +105,11 @@ tell it what to center on using the `-c` flag, to which valid arguments are:
 * `-c all` (uses the shrink sphere center on all particles in the file)
 
 By default, it will show you dark matter particles. To change this pass `-p gas` to show gas particles or `-p star` for 
-stars.
+stars. Note that the particle type _cannot_ be changed once the window is open (although you can open a separate window for each particle type; see below).
 
 If your particles have other quantities defined on them (such as `temp` for gas particles), you can view the 
-density-weighted average quantity by passing `-q temp`, or by selecting it via the main window controls
-(see below). 
+density-weighted average quantity by passing `-q temp`. The quantity to visualise can also be changed by selecting it via the main window controls
+(see below).  
 
 To open more than one visualisation window on different files or with different parameters, you can
 pass multiple groups of parameters separated by `+`, for example to see separate views of the gas and
@@ -107,9 +124,7 @@ You can choose to link the rotation/zoom of multiple views using the toolbar (se
 Controls in the main window
 ---------------------------
 
-If everything works, a window will pop up with a beautiful rendering of your simulation. Make sure the window
-is in focus (for some reason on MacOS I sometimes have to switch to another application then back to 
-python to get this to work). Then you can use the following controls:
+The view in the `topsy` window can be manipulated as follows:
 
 * To spin around the centre, drag the mouse.
 * To zoom in and out, use the mouse scroll wheel.
@@ -155,4 +170,5 @@ vis.canvas
 
 This loads your data into `f`, performs some centering, creates the `topsy` viewer and then the final line (`vis.canvas`) instructs `jupyter` to bring up the interactive widget. 
 
-Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Additionally, you can manipulate things on the fly. For example, you can type `vis.quantity_name = 'temp'` to immediately switch to viewing temperature (compare with the `-q` flag above). 
+Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Additionally, you can manipulate things on the fly. For example, you can type `vis.quantity_name = 'temp'` to immediately switch to viewing temperature (compare with the `-q` flag above). To switch back to a density projection, use `vis.quantity_name = None` (_not_ `vis.quantity_name='rho'` which renders an average density rather than a projected density). 
+
