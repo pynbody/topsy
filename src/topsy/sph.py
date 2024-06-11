@@ -255,7 +255,11 @@ class SPH:
 
     def _get_kernel_at_resolution(self, n_samples):
         if self._kernel is None:
-            self._kernel = pynbody.sph.Kernel2D()
+            try:
+                self._kernel = pynbody.sph.Kernel2D()
+            except AttributeError:
+                # pynbody v2:
+                self._kernel = pynbody.sph.kernels.Kernel2D()
 
         # sph kernel is sampled at the centre of the pixels, and the full grid ranges from -2 to 2.
         # thus the left hand most pixel is at -2+2/n_samples, and the right hand most pixel is at 2-2/n_samples.

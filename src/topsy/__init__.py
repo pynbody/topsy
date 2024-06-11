@@ -30,11 +30,18 @@ def parse_args(args=None):
     argparser.add_argument("--particle", "-p", help="Specify the particle type to visualise",
                             default="dm", type=str)
     argparser.add_argument("--center", "-c", help="Specify the centering method: 'halo-<N>', 'all', 'zoom' or 'none'",
-                           default="halo-1", type=str)
+                           default="none", type=str)
     argparser.add_argument("--quantity", "-q", help="Specify a quantity to render instead of density",
                            default=None, type=str)
     argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
                            default=False, action="store_true")
+
+    argparser.add_argument("--load-sphere", nargs=4, help="Load a sphere of particles with the given "
+                                                          "radius and centre in simulation units, "
+                                                          "e.g. --load-sphere 0.2 0.3 0.4 0.5 to load a sphere of "
+                                                          "particles centre (0.3, 0.4, 0.5), radius 0.2. " 
+                                                          "Supported only for swift simulations",
+                            default=None, type=float)
 
     if args is None:
         args = sys.argv[1:]
@@ -77,8 +84,13 @@ def main():
             logger.info(f"Using test data with {n_part} particles")
             loader_args = (n_part,)
         else:
+            import pynbody
             loader_class = loader.PynbodyDataLoader
-            loader_args = (args.filename, args.center, args.particle)
+            if args.load_sphere is not None:
+                loader_args = (args.filename, args.center, args.particle,
+                               pynbody.filt.Sphere(args.load_sphere[0], args.load_sphere[1:]))
+            else:
+                loader_args = (args.filename, args.center, args.particle)
 
 
         vis = visualizer.Visualizer(data_loader_class=loader_class,

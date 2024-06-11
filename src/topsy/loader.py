@@ -2,7 +2,9 @@ import numpy as np
 import wgpu
 import logging
 import pynbody
-import pickle 
+import pickle
+
+from typing import Optional
 
 from . import config
 # ABC support:
@@ -126,10 +128,15 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""
-    def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str):
+    def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str,
+                 take_region: Optional[pynbody.filt.Filter] = None):
 
         logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
-        snapshot = pynbody.load(filename)
+        if take_region is None:
+            snapshot = pynbody.load(filename)
+        else:
+            snapshot = pynbody.load(filename, take_region=take_region)
+
         snapshot.physical_units()
         self.filename = filename
 
