@@ -113,7 +113,22 @@ class VisualizerCanvasBase:
 # Note also that is_jupyter as implemented fails to distinguish correctly if we are
 # running inside a kernel that isn't attached to a notebook. There doesn't seem to
 # be any way to distinguish this, so we live with it for now.
-from wgpu.gui.auto import is_jupyter
+
+def is_jupyter():
+    """Determine whether the user is executing in a Jupyter Notebook / Lab.
+
+    This has been pasted from an old version of wgpu.gui.auto.is_jupyter; the function was removed"""
+    from IPython import get_ipython
+    try:
+        ip = get_ipython()
+        if ip is None:
+            return False
+        if ip.has_trait("kernel"):
+            return True
+        else:
+            return False
+    except NameError:
+        return False
 
 
 if is_jupyter():

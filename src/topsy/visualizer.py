@@ -80,7 +80,7 @@ class VisualizerBase:
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
         if self.device is None:
             type(self).device: wgpu.GPUDevice = self.adapter.request_device(
-                required_features=["TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES"])
+                required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"])
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
         self.canvas_format = self.context.get_preferred_format(self.adapter)
         if self.canvas_format.endswith("-srgb"):
