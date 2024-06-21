@@ -79,8 +79,13 @@ class VisualizerBase:
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
         if self.device is None:
+            max_buffer_size = self.adapter.limits['max_buffer_size']
+            # on some systems, this is 2^64 which can lead to overflows
+            if max_buffer_size > 2**63:
+                max_buffer_size = 2**63
             type(self).device: wgpu.GPUDevice = self.adapter.request_device(
-                required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"])
+                required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"],
+                required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
         self.canvas_format = self.context.get_preferred_format(self.adapter)
         if self.canvas_format.endswith("-srgb"):
