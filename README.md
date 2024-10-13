@@ -1,6 +1,4 @@
-![Example topsy animations](https://github.com/user-attachments/assets/a0f46529-058b-4cc9-a826-fc61aef11c69)
-
-
+https://github.com/user-attachments/assets/b185c3b8-8658-4f7d-96de-e976959e7ad6
 
 
 topsy
