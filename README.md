@@ -1,4 +1,6 @@
-![Example topsy animations](https://github.com/pynbody/topsy/assets/4377338/b885c107-4f02-496c-b763-6865388c26c4)
+![Example topsy animations](https://github.com/user-attachments/assets/a0f46529-058b-4cc9-a826-fc61aef11c69)
+
+
 
 
 topsy
