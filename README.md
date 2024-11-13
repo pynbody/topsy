@@ -87,7 +87,7 @@ Trying it out
 
 Once `topsy` is installed, if you just want to try it out and you don't have a 
 suitable simulation snapshot to hand, you can download some
-from the [tangos tutorial datasets (4.8GB)](http://ftp.star.ucl.ac.uk/~app/tangos/tutorial_changa.tar.gz).
+from the [tangos tutorial datasets (5.1GB)](https://zenodo.org/records/5959983/files/tutorial_changa.tar.gz?download=1).
 You need to untar them (`tar -xzf tutorial_changa.tar.gz` from your command line), then
 you can type `topsy pioneer50h128.1536gst1.bwK1.000832` to visualise that file's
 dark matter content.
