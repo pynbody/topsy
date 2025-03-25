@@ -30,7 +30,9 @@ class VisualizerBase:
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
-                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas):
+                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
+                 hdr = False):
+        self._hdr = hdr
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self.crosshairs_visible = False
@@ -87,11 +89,16 @@ class VisualizerBase:
                 required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"],
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
-        self.canvas_format = self.context.get_preferred_format(self.adapter)
-        if self.canvas_format.endswith("-srgb"):
-            # matplotlib colours aren't srgb. It might be better to convert
-            # but for now, just stop the canvas being srgb
-            self.canvas_format = self.canvas_format[:-5]
+
+        if self._hdr:
+            self.canvas_format = "rgba16float"
+        else:
+            self.canvas_format = self.context.get_preferred_format(self.adapter)
+            if self.canvas_format.endswith("-srgb"):
+                # matplotlib colours aren't srgb. It might be better to convert
+                # but for now, just stop the canvas being srgb
+                self.canvas_format = self.canvas_format[:-5]
+
         self.context.configure(device=self.device, format=self.canvas_format)
         self.render_texture: wgpu.GPUTexture = self.device.create_texture(
             size=(self._render_resolution, self._render_resolution, 1),
@@ -180,13 +187,18 @@ class VisualizerBase:
 
     def _reinitialize_colormap_and_bar(self):
         vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
-        self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+        if self._hdr:
+            self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
+            self._colorbar = None
+        else:
+            self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+            self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
+                                                      self._get_colorbar_label())
         if self.vmin_vmax_is_set:
             self._colormap.vmin = vmin
             self._colormap.vmax = vmax
             self._colormap.log_scale = log_scale
-        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
-                                                  self._get_colorbar_label())
+
 
     def _get_colorbar_label(self):
         label = self.data_loader.get_quantity_label()
@@ -252,7 +264,7 @@ class VisualizerBase:
 
 
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
-        if self.show_colorbar:
+        if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
             self._scalebar.encode_render_pass(command_encoder, target_texture_view)
@@ -312,6 +324,8 @@ class VisualizerBase:
         self.invalidate()
 
     def _refresh_colorbar(self):
+        if self._colorbar is None:
+            return
         self._colorbar.vmin = self._colormap.vmin
         self._colorbar.vmax = self._colormap.vmax
         self._colorbar.label = self._get_colorbar_label()

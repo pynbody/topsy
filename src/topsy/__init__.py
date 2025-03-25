@@ -35,6 +35,7 @@ def parse_args(args=None):
                            default=None, type=str)
     argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
                            default=False, action="store_true")
+    argparser.add_argument('--hdr', help="[Experimental] Enable HDR rendering", action="store_true")
 
     argparser.add_argument("--load-sphere", nargs=4, help="Load a sphere of particles with the given "
                                                           "radius and centre in simulation units, "
@@ -96,6 +97,7 @@ def main():
         vis = visualizer.Visualizer(data_loader_class=loader_class,
                                     data_loader_args=loader_args,
                                     colormap_name=args.colormap,
+                                    hdr=args.hdr,
                                     periodic_tiling=args.tile,
                                     render_resolution=args.resolution)
 

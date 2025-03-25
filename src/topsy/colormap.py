@@ -66,8 +66,7 @@ class Colormap:
 
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
-        cmap = matplotlib.colormaps[self._colormap_name]
-        rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
+        rgba = self._generate_mapping_rgba_f32(num_points)
 
         self._texture = self._device.create_texture(
             label="colormap_texture",
@@ -92,6 +91,11 @@ class Colormap:
             },
             (num_points, 1, 1)
         )
+
+    def _generate_mapping_rgba_f32(self, num_points):
+        cmap = matplotlib.colormaps[self._colormap_name]
+        rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
+        return rgba
 
     def _setup_render_pipeline(self):
         self._parameter_buffer = self._device.create_buffer(size =4 * 3,
@@ -262,3 +266,19 @@ class Colormap:
 
         parameters["window_aspect_ratio"] = float(width)/height
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
+
+class HDRColormap(Colormap):
+    def __init__(self, visualizer: Visualizer, weighted_average: bool = False, max_brightness: float = 3.0):
+        self._max_brightness = max_brightness
+        super().__init__(visualizer, weighted_average)
+
+    def _generate_mapping_rgba_f32(self, num_points):
+        v = np.linspace(0.0, self._max_brightness, num_points)
+        rgba = np.zeros((num_points, 4), dtype=np.float32)
+        rgba[:, 0] = v
+        rgba[:, 1] = v
+        rgba[:, 2] = v
+        rgba[:, 3] = 1.0
+        return rgba
+
+
