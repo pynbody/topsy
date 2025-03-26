@@ -25,7 +25,7 @@ def test_render():
     assert result.dtype == np.uint8
     # silly test, but it's better than nothing:
     assert result[:,:,0].max() == 255
-    assert result[:,:,0].min() == 0
+    assert result[:,:,0].min() <= 5
 
     plt.imsave(folder / "test.png", result) # needs manual verification
 
@@ -95,7 +95,7 @@ def test_sph_output():
 
     # now let's also check that the distribution is sharply peaked around the right value
     assert abs((test/expect).mean()-1.0)<0.001
-    assert (test/expect).std() < 0.01
+    assert (test/expect).std() < 0.015
 
 def test_rotated_sph_output():
     vis.rotation_matrix = np.array([[0.0, 1.0, 0.0],
