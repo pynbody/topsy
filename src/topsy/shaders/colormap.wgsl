@@ -88,3 +88,47 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
 
     return output;
 }
+
+@fragment
+fn fragment_main_mono(input: VertexOutput) -> FragmentOutput {
+    var LN_10 = 2.30258509;
+    var output: FragmentOutput;
+    var value : f32;
+
+    value = textureSample(image_texture, image_sampler, input.texcoord).r;
+
+    [[LOG_SCALE]] value = log(value)/LN_10;
+
+    // clamp lower limit but not upper limit (for HDR)
+    value = max((value - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
+
+    output.color = vec4<f32>(value, value, value, 1.0);
+
+    return output;
+}
+
+@fragment
+fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
+    var LN_10 = 2.30258509;
+    var output: FragmentOutput;
+    var value_r: f32;
+    var value_g: f32;
+    var value_b: f32;
+
+    value_r = textureSample(image_texture, image_sampler, input.texcoord).r;
+    value_g = textureSample(image_texture, image_sampler, input.texcoord).g;
+    value_b = textureSample(image_texture, image_sampler, input.texcoord).b;
+
+    [[LOG_SCALE]] value_r = log(value_r)/LN_10;
+    [[LOG_SCALE]] value_g = log(value_g)/LN_10;
+    [[LOG_SCALE]] value_b = log(value_b)/LN_10;
+
+    // clamp lower limit but not upper limit (for HDR)
+    value_r = max((value_r - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
+    value_g = max((value_g - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
+    value_b = max((value_b - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
+
+    output.color = vec4<f32>(value_r, value_g, value_b, 1.0);
+
+    return output;
+}

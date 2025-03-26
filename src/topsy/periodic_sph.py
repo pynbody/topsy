@@ -53,17 +53,20 @@ class PeriodicSPHAccumulationOverlay(overlay.Overlay):
     def render_contents(self) -> np.ndarray:
         # must be implemented, but should never be called because texture is provided externally
         raise RuntimeError("SPHAccumulationOverlay.render_contents() should never be called")
+
 class PeriodicSPH(sph.SPH):
-    def __init__(self, visualizer, render_texture):
-        self._final_render_texture = render_texture
-        proxy_render_texture =  visualizer.device.create_texture(
-                size=render_texture.size,
-                format=render_texture.format,
-                usage=render_texture.usage,
+    def __init__(self, visualizer, render_size):
+        super().__init__(visualizer, render_size, wrapping=True)
+        self._periodic_texture =  visualizer.device.create_texture(
+                size=self._render_texture.size,
+                format=self._render_texture.format,
+                usage=self._render_texture.usage,
                 label=f"proxy_sph"
             )
-        self._accumulator = PeriodicSPHAccumulationOverlay(visualizer, proxy_render_texture)
-        super().__init__(visualizer, proxy_render_texture, wrapping=True)
+        self._accumulator = PeriodicSPHAccumulationOverlay(visualizer, self._render_texture)
+
+    def get_output_texture(self) -> wgpu.Texture:
+        return self._periodic_texture
 
     def encode_render_pass(self, command_encoder):
         super().encode_render_pass(command_encoder)
@@ -71,5 +74,5 @@ class PeriodicSPH(sph.SPH):
         self._accumulator.rotation_matrix = self.rotation_matrix
         self._accumulator.panel_scale = self._visualizer.periodicity_scale/self._visualizer.scale
 
-        self._accumulator.encode_render_pass(command_encoder, self._final_render_texture.create_view(), True)
+        self._accumulator.encode_render_pass(command_encoder, self._periodic_texture.create_view(), True)
 

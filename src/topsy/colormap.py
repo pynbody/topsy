@@ -21,6 +21,9 @@ logger.setLevel(logging.INFO)
 
 
 class Colormap:
+    input_channels = 2
+    fragment_shader = "fragment_main"
+    percentile_scaling = [1.0, 99.9]
 
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._visualizer = visualizer
@@ -186,7 +189,7 @@ class Colormap:
                 multisample=None,
                 fragment={
                     "module": self._shader,
-                    "entry_point": "fragment_main",
+                    "entry_point": self.fragment_shader,
                     "targets": [
                         {
                             "format": self._output_format,
@@ -244,7 +247,7 @@ class Colormap:
 
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
-            self.vmin, self.vmax = np.percentile(vals, [1.0, 99.9])
+            self.vmin, self.vmax = np.percentile(vals, self.percentile_scaling)
         elif len(vals)>2:
             self.vmin, self.vmax = np.min(vals), np.max(vals)
         else:
@@ -268,17 +271,13 @@ class Colormap:
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
 class HDRColormap(Colormap):
-    def __init__(self, visualizer: Visualizer, weighted_average: bool = False, max_brightness: float = 3.0):
-        self._max_brightness = max_brightness
-        super().__init__(visualizer, weighted_average)
+    input_channels = 2
+    fragment_shader = "fragment_main_mono"
+    percentile_scaling = [1.0, 90.0]
 
-    def _generate_mapping_rgba_f32(self, num_points):
-        v = np.linspace(0.0, self._max_brightness, num_points)
-        rgba = np.zeros((num_points, 4), dtype=np.float32)
-        rgba[:, 0] = v
-        rgba[:, 1] = v
-        rgba[:, 2] = v
-        rgba[:, 3] = 1.0
-        return rgba
+class HDRTricolorMap(Colormap):
+    input_channels = 3
+    fragment_shader = "fragment_main_tri"
+    percentile_scaling = [1.0, 90.0]
 
 

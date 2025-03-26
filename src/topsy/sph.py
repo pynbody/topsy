@@ -12,12 +12,21 @@ if TYPE_CHECKING:
     from .visualizer import Visualizer
 
 class SPH:
-    render_format = wgpu.TextureFormat.r32float
+    render_format = wgpu.TextureFormat.rg32float
 
-    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture,
+    def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False):
         self._visualizer = visualizer
-        self._render_texture = render_texture
+
+        self._render_texture = visualizer.device.create_texture(
+            size=(render_resolution, render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                  wgpu.TextureUsage.TEXTURE_BINDING |
+                  wgpu.TextureUsage.COPY_SRC,
+            format=self.render_format,
+            label="sph_render_texture",
+        )
+
         self._device = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
@@ -34,6 +43,9 @@ class SPH:
         self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
+
+    def get_output_texture(self) -> wgpu.Texture:
+        return self._render_texture
 
 
     def _setup_shader_module(self):
@@ -153,7 +165,7 @@ class SPH:
                     "entry_point": "fragment_main",
                     "targets": [
                         {
-                            "format": wgpu.TextureFormat.rg32float,
+                            "format": self.render_format,
                             "blend": {
                                 "color": {
                                     "src_factor": wgpu.BlendFactor.one,

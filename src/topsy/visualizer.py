@@ -35,6 +35,8 @@ class VisualizerBase:
         self._hdr = hdr
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
+        self._sph_class = sph.SPH
+
         self.crosshairs_visible = False
 
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
@@ -51,14 +53,17 @@ class VisualizerBase:
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
-        self._reinitialize_colormap_and_bar(0.0,1.0,True)
-
         self._periodic_tiling = periodic_tiling
 
         if periodic_tiling:
-            self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
+            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
         else:
-            self._sph = sph.SPH(self, self.render_texture)
+            self._sph = sph.SPH(self, self._render_resolution)
+
+        self.render_texture = self._sph.get_output_texture()
+
+        self._reinitialize_colormap_and_bar(0.0, 1.0, True)
+
         #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
         self._last_status_update = 0.0
@@ -100,14 +105,6 @@ class VisualizerBase:
                 self.canvas_format = self.canvas_format[:-5]
 
         self.context.configure(device=self.device, format=self.canvas_format)
-        self.render_texture: wgpu.GPUTexture = self.device.create_texture(
-            size=(self._render_resolution, self._render_resolution, 1),
-            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
-                  wgpu.TextureUsage.TEXTURE_BINDING |
-                  wgpu.TextureUsage.COPY_SRC,
-            format=wgpu.TextureFormat.rg32float,
-            label="sph_render_texture",
-        )
 
     def invalidate(self, reason=DrawReason.CHANGE):
         # NB no need to check if we're already pending a draw - wgpu.gui does that for us
