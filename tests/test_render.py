@@ -22,7 +22,20 @@ def setup_module():
 def test_render():
     vis.draw(reason=DrawReason.EXPORT)
     result = vis.get_presentation_image()
+    assert result.dtype == np.uint8
+    # silly test, but it's better than nothing:
+    assert result[:,:,0].max() == 255
+    assert result[:,:,0].min() == 0
+
     plt.imsave(folder / "test.png", result) # needs manual verification
+
+def test_hdr_render():
+    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
+    vis.draw(reason=DrawReason.EXPORT)
+    result = vis.get_presentation_image()
+
+    assert result.dtype == np.float16
+    assert result.max() > 1.0
 
 def test_particle_pos_smooth():
     # this is testing the test data

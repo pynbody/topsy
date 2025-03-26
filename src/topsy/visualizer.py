@@ -51,7 +51,8 @@ class VisualizerBase:
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
-        self._colormap = colormap.Colormap(self, weighted_average = False)
+        self._reinitialize_colormap_and_bar(0.0,1.0,True)
+
         self._periodic_tiling = periodic_tiling
 
         if periodic_tiling:
@@ -63,7 +64,6 @@ class VisualizerBase:
         self._last_status_update = 0.0
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
 
-        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, "TODO")
         self._scalebar = scalebar.ScalebarOverlay(self)
 
         self._crosshairs = line.Line(self,
@@ -185,8 +185,14 @@ class VisualizerBase:
         self._reinitialize_colormap_and_bar()
         self.invalidate()
 
-    def _reinitialize_colormap_and_bar(self):
-        vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
+    def _reinitialize_colormap_and_bar(self, vmin = None, vmax = None, log_scale = None):
+        if vmin is None:
+            vmin = self.vmin
+        if vmax is None:
+            vmax = self.vmax
+        if log_scale is None:
+            log_scale = self.log_scale
+
         if self._hdr:
             self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
             self._colorbar = None
@@ -383,14 +389,30 @@ class VisualizerBase:
             im = np_im[:,:,0]
         return im
 
-    def get_presentation_image(self) -> np.ndarray:
-        texture = self.context.get_current_texture()
+    def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
+        texture: wgpu.GPUTexture = self.device.create_texture(
+            size=(resolution[0], resolution[1], 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                  wgpu.TextureUsage.COPY_SRC,
+            format=self.canvas_format,
+            label="output_texture",
+        )
+        self.draw(DrawReason.EXPORT, texture.create_view())
+
         size = texture.size
-        bytes_per_pixel = 4 # NB this might be wrong in principle!
+
+        if texture.format.endswith("8unorm"):
+            bytes_per_pixel = 4
+            np_type = np.uint8
+        elif texture.format.endswith("16float"):
+            bytes_per_pixel = 8
+            np_type = np.float16
+        else:
+            raise ValueError(f"Unsupported texture format {texture.format}")
+
         data = self.device.queue.read_texture(
             {
                 "texture": texture,
-                "mip_level": 0,
                 "origin": (0, 0, 0),
             },
             {
@@ -401,7 +423,7 @@ class VisualizerBase:
             size,
         )
 
-        return np.frombuffer(data, np.uint8).reshape(size[1], size[0], 4)
+        return np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
 
 
     def save(self, filename='output.pdf'):
