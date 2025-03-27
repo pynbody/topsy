@@ -116,8 +116,9 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
     return vis
 
 def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
-    from . import visualizer, loader
+    from . import visualizer, loader, drawreason
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
                                 **kwargs)
+    vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis

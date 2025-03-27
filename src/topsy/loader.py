@@ -253,3 +253,6 @@ class TestDataLoader(AbstractDataLoader):
 
     def get_filename(self):
         return "test data"
+
+    def get_periodicity_scale(self):
+        return 100.0
