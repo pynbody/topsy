@@ -31,8 +31,9 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
-                 hdr = False):
+                 hdr = False, rgb=False):
         self._hdr = hdr
+        self._rgb = rgb
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
@@ -57,6 +58,9 @@ class VisualizerBase:
 
         if periodic_tiling:
             self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
+        elif self._rgb:
+            logger.info("Using RGB renderer")
+            self._sph = sph.RGBSPH(self, self._render_resolution)
         else:
             self._sph = sph.SPH(self, self._render_resolution)
 
@@ -190,7 +194,10 @@ class VisualizerBase:
         if log_scale is None:
             log_scale = self.log_scale
 
-        if self._hdr:
+        if self._rgb:
+            self._colormap = colormap.RGBColormap(self)
+            self._colorbar = None
+        elif self._hdr:
             self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
             self._colorbar = None
         else:
@@ -376,15 +383,21 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
+        nchannels = self._sph._nchannels_output
+
         im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
-                                            {'bytes_per_row':8*self._render_resolution},
+                                            {'bytes_per_row':4*nchannels * self._render_resolution},
                                             (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np.float32).reshape((self._render_resolution, self._render_resolution, 2))
-        if self.averaging:
-            im = np_im[:,:,1]/np_im[:,:,0]
+        np_im = np.frombuffer(im, dtype=np.float32).reshape((self._render_resolution, self._render_resolution, nchannels))
+
+        if nchannels == 4:
+            np_im = np_im[:,:,:3]
+        elif self.averaging:
+            np_im = np_im[:,:,1]/np_im[:,:,0]
         else:
-            im = np_im[:,:,0]
-        return im
+            np_im = np_im[:,:,0]
+
+        return np_im
 
     def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
         texture: wgpu.GPUTexture = self.device.create_texture(

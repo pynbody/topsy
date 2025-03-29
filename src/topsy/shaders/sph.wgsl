@@ -15,8 +15,9 @@ var<uniform> trans_params: TransformParams;
 
 struct VertexInput {
    @location(0) pos: vec4<f32>, // NB w is used for the smoothing length
-   @location(1) mass: f32,
-   @location(2) quantity: f32,
+   [[WEIGHTED]] @location(1) mass: f32,
+   [[WEIGHTED]] @location(2) quantity: f32,
+   [[CHANNELED]] @location(1) rgb_mass: vec3<f32>,
    @builtin(vertex_index) vertexIndex: u32,
    @builtin(instance_index) instanceIndex: u32
 }
@@ -24,13 +25,16 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) pos: vec4<f32>,
     @location(0) texcoord: vec2<f32>,
-    @location(1) weight: f32,
-    @location(2) quantity: f32
+    [[WEIGHTED]] @location(1) weight: f32,
+    [[WEIGHTED]] @location(2) quantity: f32
+    [[CHANNELED]] @location(1) channel_weights: vec4<f32>
 }
 
 
 struct FragmentOutput {
-    @location(0) density: vec2<f32>
+    [[DENSITY]] @location(0) output: f32,
+    [[WEIGHTED]] @location(0) output: vec2<f32>,
+    [[CHANNELED]] @location(0) output: vec4<f32>
 }
 
 @vertex
@@ -75,8 +79,11 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.pos = (trans_params.transform * output.pos);
     output.pos += vec4<f32>(clipspace_size*posOffset[input.vertexIndex],0.0,0.0);
     output.texcoord = texCoords[input.vertexIndex];
-    output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);
-    output.quantity = input.quantity;
+    [[WEIGHTED]] output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);
+    [[WEIGHTED]] output.quantity = input.quantity;
+    [[CHANNELED]] output.channel_weights = vec4<f32>(input.rgb_mass,0);
+    [[CHANNELED]] output.channel_weights *= trans_params.mass_scale/(smooth_length*smooth_length);
+
     return output;
 }
 
@@ -90,8 +97,13 @@ var kernel_sampler: sampler;
 fn fragment_main(input: VertexOutput) -> FragmentOutput {
     var output: FragmentOutput;
 
-    var value = input.weight*textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
+    var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
 
-    output.density = vec2<f32>(value, value*input.quantity);
+    [[WEIGHTED]] value *= input.weight;
+    [[WEIGHTED]] output.output = vec2<f32>(value, value*input.quantity);
+
+    [[CHANNELED]] output.output = input.channel_weights * value;
+
+
     return output;
 }

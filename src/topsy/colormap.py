@@ -275,9 +275,9 @@ class HDRColormap(Colormap):
     fragment_shader = "fragment_main_mono"
     percentile_scaling = [1.0, 90.0]
 
-class HDRTricolorMap(Colormap):
+class RGBColormap(Colormap):
     input_channels = 3
     fragment_shader = "fragment_main_tri"
-    percentile_scaling = [1.0, 90.0]
+    percentile_scaling = [1.0, 99.0]
 
 

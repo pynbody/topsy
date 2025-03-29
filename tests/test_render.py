@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import numpy.testing as npt
+import pytest
 
 import topsy
 from topsy.drawreason import DrawReason
@@ -10,16 +11,19 @@ from topsy.drawreason import DrawReason
 from topsy.canvas import offscreen
 from matplotlib import pyplot as plt
 
-
-def setup_module():
-    global vis, folder
-    np.random.seed(1337)
-    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas)
-
+@pytest.fixture
+def folder():
     folder = Path(__file__).parent / "output"
     folder.mkdir(exist_ok=True)
+    return folder
 
-def test_render():
+@pytest.fixture
+def vis():
+    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas)
+    return vis
+
+
+def test_render(vis, folder):
     result = vis.get_presentation_image()
     assert result.dtype == np.uint8
     # silly test, but it's better than nothing:
@@ -29,14 +33,14 @@ def test_render():
     plt.imsave(folder / "test.png", result) # needs manual verification
 
 
-def test_hdr_render():
+def test_hdr_render(vis):
     vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
     result = vis.get_presentation_image()
 
     assert result.dtype == np.float16
     assert result.max() > 1.0
 
-def test_particle_pos_smooth():
+def test_particle_pos_smooth(vis):
     # this is testing the test data
     xyzw = vis.data_loader.get_pos_smooth()
     npt.assert_allclose(xyzw[::100],
@@ -53,7 +57,7 @@ def test_particle_pos_smooth():
 
 
 
-def test_sph_output():
+def test_sph_output(vis, folder):
     result = vis.get_sph_image()
     assert result.shape == (200,200)
     np.save(folder / "test.npy", result) # for debugging
@@ -95,13 +99,13 @@ def test_sph_output():
     assert abs((test/expect).mean()-1.0)<0.001
     assert (test/expect).std() < 0.015
 
-def test_periodic_sph_output():
+def test_periodic_sph_output(vis):
     vis2 = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, periodic_tiling=True)
     result = vis2.get_sph_image()
     result_untiled = vis.get_sph_image()
     assert result.std() > 3*result_untiled.std()
 
-def test_rotated_sph_output():
+def test_rotated_sph_output(vis):
     unrotated_output = vis.get_sph_image()
     vis.rotation_matrix = np.array([[0.0, 1.0, 0.0],
                                     [-1.0, 0.0, 0.0],
@@ -115,3 +119,8 @@ def test_rotated_sph_output():
     finally:
         vis.rotation_matrix = np.eye(3, dtype=np.float32)
 
+
+def test_rgb_sph_output():
+    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, rgb=True)
+    result = vis.get_sph_image()
+    assert result.shape == (200,200,3)
