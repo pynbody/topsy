@@ -4,6 +4,8 @@ import numpy as np
 import wgpu
 import pynbody
 
+from logging import getLogger
+
 from .util import load_shader, preprocess_shader
 from . import config
 
@@ -11,10 +13,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .visualizer import Visualizer
 
+logger = getLogger(__name__)
+
 class SPH:
     render_format = wgpu.TextureFormat.rg32float
     _nchannels_input = 2
     _nchannels_output = 2
+    _output_dtype = np.float32
 
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False):
@@ -229,6 +234,7 @@ class SPH:
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         transform_params["mass_scale"] = self._get_mass_scale()
+        # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
 
@@ -347,3 +353,4 @@ class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float
     _nchannels_input = 3
     _nchannels_output = 4
+    _output_dtype = np.float32

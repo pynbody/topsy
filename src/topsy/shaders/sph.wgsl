@@ -72,7 +72,6 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
         return output;
     }
 
-    var boxsize : f32=25000.0;
     // perform transformation
     output.pos = input.pos;
     output.pos.w = 1.0;
@@ -81,8 +80,7 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.texcoord = texCoords[input.vertexIndex];
     [[WEIGHTED]] output.weight = trans_params.mass_scale*input.mass/(smooth_length*smooth_length);
     [[WEIGHTED]] output.quantity = input.quantity;
-    [[CHANNELED]] output.channel_weights = vec4<f32>(input.rgb_mass,0);
-    [[CHANNELED]] output.channel_weights *= trans_params.mass_scale/(smooth_length*smooth_length);
+    [[CHANNELED]] output.channel_weights = vec4<f32>(input.rgb_mass,0) * (trans_params.mass_scale/(smooth_length*smooth_length));
 
     return output;
 }

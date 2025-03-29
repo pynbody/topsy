@@ -113,8 +113,16 @@ class PynbodyDataInMemory(AbstractDataLoader):
     def get_mass(self):
         return self.snapshot['mass'].astype(np.float32)[self._random_order]
 
+    def _effective_mass_for_band(self, band):
+        return (10 ** (-0.4 * self.snapshot[band + "_mag"]))[self._random_order]
+
     def get_rgb_masses(self):
-        raise NotImplementedError("RGB masses not implemented for this data loader")
+        rgb = np.empty((len(self.snapshot), 3), dtype=np.float32)
+        rgb[:,0] = self._effective_mass_for_band('I')*0.5
+        rgb[:,1] = self._effective_mass_for_band('V')
+        rgb[:,2] = self._effective_mass_for_band('U')
+        rgb[np.isnan(rgb)] = 0.0
+        return rgb
 
     def get_named_quantity(self, name):
         qty =self.snapshot[name]

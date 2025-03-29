@@ -195,7 +195,10 @@ class VisualizerBase:
             log_scale = self.log_scale
 
         if self._rgb:
-            self._colormap = colormap.RGBColormap(self)
+            if self._hdr:
+                self._colormap = colormap.RGBHDRColormap(self)
+            else:
+                self._colormap = colormap.RGBColormap(self)
             self._colorbar = None
         elif self._hdr:
             self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
@@ -384,11 +387,13 @@ class VisualizerBase:
 
     def get_sph_image(self) -> np.ndarray:
         nchannels = self._sph._nchannels_output
+        np_dtype = self._sph._output_dtype
+        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
 
         im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
-                                            {'bytes_per_row':4*nchannels * self._render_resolution},
+                                            {'bytes_per_row':bytes_per_pixel * self._render_resolution},
                                             (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np.float32).reshape((self._render_resolution, self._render_resolution, nchannels))
+        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
 
         if nchannels == 4:
             np_im = np_im[:,:,:3]

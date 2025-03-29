@@ -256,6 +256,8 @@ class Colormap:
             logger.warning("Press 'r' in the window to try again")
             self.vmin, self.vmax = 0.0, 1.0
 
+        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+
 
     def _update_parameter_buffer(self, width, height):
         parameter_dtype = [("vmin", np.float32, (1,)),
@@ -278,6 +280,32 @@ class HDRColormap(Colormap):
 class RGBColormap(Colormap):
     input_channels = 3
     fragment_shader = "fragment_main_tri"
-    percentile_scaling = [1.0, 99.0]
+    max_percentile = 99.9
+    dynamic_range = 3.0
 
+    def autorange_vmin_vmax(self):
+        vals = self._visualizer.get_sph_image().ravel()
+
+        self.log_scale = True
+
+        if self.log_scale:
+            vals = np.log10(vals)
+
+        vals = vals[np.isfinite(vals)]
+        if len(vals) > 200:
+            self.vmax = np.percentile(vals, self.max_percentile)
+        elif len(vals)>2:
+            self.vmax = np.max(vals)
+        else:
+            logger.warning(
+                "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
+            logger.warning("Press 'r' in the window to try again")
+            self.vmax = 1.0
+
+        self.vmin = self.vmax - self.dynamic_range
+
+        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+
+class RGBHDRColormap(RGBColormap):
+    max_percentile = 90.0
 
