@@ -1,7 +1,8 @@
 struct ColormapParams {
     vmin: f32,
     vmax: f32,
-    window_aspect_ratio: f32
+    window_aspect_ratio: f32,
+    gamma: f32
 };
 
 struct VertexOutput {
@@ -124,9 +125,9 @@ fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
     [[LOG_SCALE]] value_b = log(value_b)/LN_10;
 
     // clamp lower limit but not upper limit (for HDR)
-    value_r = max((value_r - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
-    value_g = max((value_g - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
-    value_b = max((value_b - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
+    value_r = pow(max((value_r - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
+    value_g = pow(max((value_g - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
+    value_b = pow(max((value_b - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
 
     output.color = vec4<f32>(value_r, value_g, value_b, 1.0);
 

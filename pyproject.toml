@@ -26,7 +26,8 @@ dependencies = [
     "jupyter_rfb >=0.4.1",
     "tqdm >=4.62.0",
     "opencv-python >=4.8.0",
-    "PySide6 >= 6.5.0" # windowing
+    "PySide6 >= 6.5.0", # windowing
+    "superqt>=0.7.3", # rangeslider
 ]
 
 [project.optional-dependencies]

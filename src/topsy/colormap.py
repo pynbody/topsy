@@ -8,6 +8,7 @@ import matplotlib
 
 from . import config
 
+from .drawreason import DrawReason
 from .util import load_shader, preprocess_shader
 
 from typing import TYPE_CHECKING
@@ -101,7 +102,7 @@ class Colormap:
         return rgba
 
     def _setup_render_pipeline(self):
-        self._parameter_buffer = self._device.create_buffer(size =4 * 3,
+        self._parameter_buffer = self._device.create_buffer(size =4 * 4,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -262,7 +263,8 @@ class Colormap:
     def _update_parameter_buffer(self, width, height):
         parameter_dtype = [("vmin", np.float32, (1,)),
                            ("vmax", np.float32, (1,)),
-                           ("window_aspect_ratio", np.float32, (1,))]
+                           ("window_aspect_ratio", np.float32, (1,)),
+                           ("gamma", np.float32, (1,))]
 
         parameters = np.zeros((), dtype=parameter_dtype)
         parameters["vmin"] = self.vmin
@@ -270,6 +272,7 @@ class Colormap:
 
 
         parameters["window_aspect_ratio"] = float(width)/height
+        parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
 class HDRColormap(Colormap):
@@ -285,6 +288,19 @@ class RGBColormap(Colormap):
 
     _pc2_to_sqarcsec = 2.3504430539466191e-09
 
+    def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
+        self._gamma = 1.0
+        super().__init__(visualizer, weighted_average)
+
+    @property
+    def gamma(self):
+        return self._gamma
+
+    @gamma.setter
+    def gamma(self, value):
+        self._gamma = value
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+
     @property
     def max_mag(self):
         return -2.5 * (self.vmin + np.log10(self._pc2_to_sqarcsec))
@@ -292,7 +308,7 @@ class RGBColormap(Colormap):
     @max_mag.setter
     def max_mag(self, value):
         self.vmin = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
-        self._visualizer.invalidate()
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @property
     def min_mag(self):
@@ -301,7 +317,7 @@ class RGBColormap(Colormap):
     @min_mag.setter
     def min_mag(self, value):
         self.vmax = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
-        self._visualizer.invalidate()
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     def autorange_vmin_vmax(self):
         vals = self._visualizer.get_sph_image().ravel()

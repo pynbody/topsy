@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import PySide6 # noqa: F401 (need to import to select the qt backend)
 from PySide6 import QtWidgets, QtGui, QtCore
+from superqt import QLabeledDoubleRangeSlider, QLabeledDoubleSlider
 
 from wgpu.gui.qt import WgpuCanvas, call_later
 from . import VisualizerCanvasBase
@@ -150,52 +151,67 @@ class RecordingSettingsDialog(QtWidgets.QDialog):
 class RGBMapControls(QtWidgets.QDialog):
     def __init__(self, parent: WgpuCanvas):
         super().__init__()
+        self._parent = parent
         self._visualizer = parent._visualizer
+
+
         self.setWindowTitle("RGB map controls")
+
+        # set default width of window to 400 pixels:
+        self.resize(400, 0)
+
         self._layout = QtWidgets.QVBoxLayout()
         self.setLayout(self._layout)
 
-        self._open_dialog_button = QtWidgets.QPushButton("RGB controls")
-        self._open_dialog_button.clicked.connect(self.open)
+        self._rgb_icon = _get_icon("rgb.png")
+        self._open_action = QtGui.QAction(self._rgb_icon, "RGB controls", self)
+        self._open_action.triggered.connect(self.open)
 
-        self._max_mag = QtWidgets.QLabel("Max mag/arcsec^2")
-        self._max_mag_input = QtWidgets.QLineEdit()
+        self._mag_range = QLabeledDoubleRangeSlider()
+        self._mag_range.setWindowTitle("Test")
+        self._mag_range.setRange(15, 35)
+        self._mag_range.setValue((15,32))
+        self._mag_range.valueChanged.connect(self._mag_range_changed)
+        self._mag_label = QtWidgets.QLabel("mag/arcsec^2")
+        self._mag_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
-        self._max_mag_input.editingFinished.connect(self._max_mag_input_changed)
+        self._gamma_label = QtWidgets.QLabel("gamma")
+        self._gamma_slider = QLabeledDoubleSlider()
+        self._gamma_slider.setRange(0.5, 3.0)
+        self._gamma_slider.setValue(1.0)
+        self._gamma_slider.valueChanged.connect(self._gamma_changed)
 
-        self._min_mag = QtWidgets.QLabel("Min mag/arcsec^2")
-        self._min_mag_input = QtWidgets.QLineEdit()
 
-        self._min_mag_input.editingFinished.connect(self._min_mag_input_changed)
+        self._layout.addWidget(self._mag_range)
+        self._layout.addWidget(self._mag_label)
+        self._layout.addSpacing(10)
+        self._layout.addWidget(self._gamma_label)
+        self._layout.addWidget(self._gamma_slider)
 
-        self._layout.addWidget(self._max_mag)
-        self._layout.addWidget(self._max_mag_input)
-        self._layout.addWidget(self._min_mag)
-        self._layout.addWidget(self._min_mag_input)
+        self.setWindowFlags(QtCore.Qt.WindowType.Popup | QtCore.Qt.WindowType.FramelessWindowHint)
+
 
     def open(self):
         self._colormap = self._visualizer._colormap
-        self._max_mag_input.setText(f"{self._colormap.max_mag:.2f}")
-        self._min_mag_input.setText(f"{self._colormap.min_mag:.2f}")
-        super().open()
+        self._mag_range.setValue((self._colormap.min_mag, self._colormap.max_mag))
+        self._gamma_slider.setValue(self._colormap.gamma)
+
+        action_rect = self._parent._toolbar.actionGeometry(self._open_action)
+        popoverPosition = self._parent._toolbar.mapToGlobal(action_rect.topLeft())
+        super().show()
+        self.move(popoverPosition - QtCore.QPoint(self.width()//2, self.height()))
 
 
-    def _max_mag_input_changed(self):
-        try:
-            self._colormap.max_mag = float(self._max_mag_input.text())
-        except ValueError:
-            pass
-        self._max_mag_input.setText(str(self._colormap.max_mag))
 
-    def _min_mag_input_changed(self):
-        try:
-            self._colormap.min_mag = float(self._min_mag_input.text())
-        except ValueError:
-            pass
-        self._min_mag_input.setText(str(self._colormap.min_mag))
+
+    def _mag_range_changed(self):
+        self._colormap.min_mag, self._colormap.max_mag = self._mag_range.value()
+
+    def _gamma_changed(self):
+        self._colormap.gamma = self._gamma_slider.value()
 
     def add_to_toolbar(self, toolbar):
-        toolbar.addWidget(self._open_dialog_button)
+        toolbar.addAction(self._open_action)
 
 
 
@@ -374,6 +390,7 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         except ValueError:
             pass
         super().__del__()
+
     def _load_icons(self):
         self._record_icon = _get_icon("record.png")
         self._stop_icon = _get_icon("stop.png")
