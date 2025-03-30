@@ -147,8 +147,55 @@ class RecordingSettingsDialog(QtWidgets.QDialog):
         return self._scalebar_checkbox.isChecked()
 
 
+class RGBMapControls(QtWidgets.QDialog):
+    def __init__(self, parent: WgpuCanvas):
+        super().__init__()
+        self._visualizer = parent._visualizer
+        self.setWindowTitle("RGB map controls")
+        self._layout = QtWidgets.QVBoxLayout()
+        self.setLayout(self._layout)
+
+        self._open_dialog_button = QtWidgets.QPushButton("RGB controls")
+        self._open_dialog_button.clicked.connect(self.open)
+
+        self._max_mag = QtWidgets.QLabel("Max mag/arcsec^2")
+        self._max_mag_input = QtWidgets.QLineEdit()
+
+        self._max_mag_input.editingFinished.connect(self._max_mag_input_changed)
+
+        self._min_mag = QtWidgets.QLabel("Min mag/arcsec^2")
+        self._min_mag_input = QtWidgets.QLineEdit()
+
+        self._min_mag_input.editingFinished.connect(self._min_mag_input_changed)
+
+        self._layout.addWidget(self._max_mag)
+        self._layout.addWidget(self._max_mag_input)
+        self._layout.addWidget(self._min_mag)
+        self._layout.addWidget(self._min_mag_input)
+
+    def open(self):
+        self._colormap = self._visualizer._colormap
+        self._max_mag_input.setText(f"{self._colormap.max_mag:.2f}")
+        self._min_mag_input.setText(f"{self._colormap.min_mag:.2f}")
+        super().open()
 
 
+    def _max_mag_input_changed(self):
+        try:
+            self._colormap.max_mag = float(self._max_mag_input.text())
+        except ValueError:
+            pass
+        self._max_mag_input.setText(str(self._colormap.max_mag))
+
+    def _min_mag_input_changed(self):
+        try:
+            self._colormap.min_mag = float(self._min_mag_input.text())
+        except ValueError:
+            pass
+        self._min_mag_input.setText(str(self._colormap.min_mag))
+
+    def add_to_toolbar(self, toolbar):
+        toolbar.addWidget(self._open_dialog_button)
 
 
 
@@ -186,8 +233,63 @@ class VisualizationRecorderWithQtProgressbar(VisualizationRecorder):
         finally:
             progress_bar.close()
 
-class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
+class ColorMapControls:
     _default_quantity_name = "Projected density"
+
+    def __init__(self, canvas: WgpuCanvas):
+        self._canvas = canvas
+        self._visualizer = canvas._visualizer
+
+        self._colormap_menu = QtWidgets.QComboBox()
+        self._colormap_menu.addItems(mpl.colormaps.keys())
+        self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
+        self._colormap_menu.currentTextChanged.connect(self._colormap_menu_changed_action)
+
+        self._quantity_menu = QtWidgets.QComboBox()
+        self._quantity_menu.addItem(self._default_quantity_name)
+        self._quantity_menu.setEditable(True)
+
+        self._quantity_menu.setLineEdit(MyLineEdit())
+
+        # at this moment, the data loader hasn't been initialized yet, so we can't
+        # use it to populate the menu. This needs a callback:
+        def populate_quantity_menu():
+            self._quantity_menu.addItems(self._visualizer.data_loader.get_quantity_names())
+            self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
+            self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
+            self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
+            self._quantity_menu.adjustSize()
+            self._canvas.setWindowTitle("topsy: " + self._visualizer.data_loader.get_filename())
+
+        self._canvas.call_later(0, populate_quantity_menu)
+
+    def add_to_toolbar(self, toolbar):
+        toolbar.addWidget(self._colormap_menu)
+        toolbar.addWidget(self._quantity_menu)
+
+    def _colormap_menu_changed_action(self):
+        logger.info("Colormap changed to %s", self._colormap_menu.currentText())
+        self._visualizer.colormap_name = self._colormap_menu.currentText()
+
+    def _quantity_menu_changed_action(self):
+        logger.info("Quantity changed to %s", self._quantity_menu.currentText())
+        if self._quantity_menu.currentText() == self._default_quantity_name:
+            self._visualizer.quantity_name = None
+        else:
+            try:
+                self._visualizer.quantity_name = self._quantity_menu.currentText()
+            except ValueError as e:
+                message = QtWidgets.QMessageBox(self._canvas)
+                message.setWindowTitle("Invalid quantity")
+                message.setText(str(e))
+                message.setIcon(QtWidgets.QMessageBox.Icon.Critical)
+                message.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+                self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
+                message.exec()
+
+
+class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
+
     _all_instances = []
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -224,30 +326,6 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._link_action.triggered.connect(self.on_click_link)
 
 
-        self._colormap_menu = QtWidgets.QComboBox()
-        self._colormap_menu.addItems(mpl.colormaps.keys())
-        self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
-        self._colormap_menu.currentTextChanged.connect(self._colormap_menu_changed_action)
-
-        self._quantity_menu = QtWidgets.QComboBox()
-        self._quantity_menu.addItem(self._default_quantity_name)
-        self._quantity_menu.setEditable(True)
-
-
-
-        self._quantity_menu.setLineEdit(MyLineEdit())
-
-        # at this moment, the data loader hasn't been initialized yet, so we can't
-        # use it to populate the menu. This needs a callback:
-        def populate_quantity_menu():
-            self._quantity_menu.addItems( self._visualizer.data_loader.get_quantity_names())
-            self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
-            self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
-            self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
-            self._quantity_menu.adjustSize()
-            self.setWindowTitle("topsy: "+self._visualizer.data_loader.get_filename())
-
-        self.call_later(0, populate_quantity_menu)
 
         self._toolbar.addAction(self._load_script_action)
         self._toolbar.addAction(self._save_script_action)
@@ -257,9 +335,16 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._toolbar.addSeparator()
         self._toolbar.addAction(self._save_action)
         self._toolbar.addSeparator()
-        self._toolbar.addWidget(self._colormap_menu)
-        self._toolbar.addWidget(self._quantity_menu)
-        self._toolbar.addSeparator()
+
+        if not self._visualizer._hdr and not self._visualizer._rgb:
+            self._colormap_controls = ColorMapControls(self)
+            self._colormap_controls.add_to_toolbar(self._toolbar)
+            self._toolbar.addSeparator()
+        elif self._visualizer._rgb:
+            self._colormap_controls = RGBMapControls(self)
+            self._colormap_controls.add_to_toolbar(self._toolbar)
+            self._toolbar.addSeparator()
+
         self._toolbar.addAction(self._link_action)
         self._recorder = None
 
@@ -298,27 +383,6 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._save_movie_icon = _get_icon("movie.png")
         self._import_icon = _get_icon("load_script.png")
         self._export_icon = _get_icon("save_script.png")
-
-    def _colormap_menu_changed_action(self):
-        logger.info("Colormap changed to %s", self._colormap_menu.currentText())
-        self._visualizer.colormap_name = self._colormap_menu.currentText()
-
-    def _quantity_menu_changed_action(self):
-        logger.info("Quantity changed to %s", self._quantity_menu.currentText())
-        if self._quantity_menu.currentText() == self._default_quantity_name:
-            self._visualizer.quantity_name = None
-        else:
-            try:
-                self._visualizer.quantity_name = self._quantity_menu.currentText()
-            except ValueError as e:
-                message = QtWidgets.QMessageBox(self)
-                message.setWindowTitle("Invalid quantity")
-                message.setText(str(e))
-                message.setIcon(QtWidgets.QMessageBox.Icon.Critical)
-                message.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
-                self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
-                message.exec()
-
 
     def on_click_record(self):
 

@@ -283,6 +283,26 @@ class RGBColormap(Colormap):
     max_percentile = 99.9
     dynamic_range = 3.0
 
+    _pc2_to_sqarcsec = 2.3504430539466191e-09
+
+    @property
+    def max_mag(self):
+        return -2.5 * (self.vmin + np.log10(self._pc2_to_sqarcsec))
+
+    @max_mag.setter
+    def max_mag(self, value):
+        self.vmin = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self._visualizer.invalidate()
+
+    @property
+    def min_mag(self):
+        return -2.5 * (self.vmax + np.log10(self._pc2_to_sqarcsec))
+
+    @min_mag.setter
+    def min_mag(self, value):
+        self.vmax = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self._visualizer.invalidate()
+
     def autorange_vmin_vmax(self):
         vals = self._visualizer.get_sph_image().ravel()
 
