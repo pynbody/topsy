@@ -230,12 +230,26 @@ class Colormap:
         colormap_render_pass.end()
 
 
+    def get_ui_range(self):
+        """Get a range for vmin->vmax suitable for user interface sliders"""
+        if not hasattr(self, "_vals_min"):
+            self.autorange_vmin_vmax()
+        if self.log_scale:
+            return self._log_vals_min, self._log_vals_max
+        else:
+            return self._vals_min, self._vals_max
+
     def autorange_vmin_vmax(self):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
         vals = self._visualizer.get_sph_image().ravel()
+
+        self._log_vals_max = np.nanmax(np.log10(vals))
+        self._log_vals_min = np.nanmin(np.log10(vals))
+        self._vals_max = np.nanmax(vals)
+        self._vals_min = np.nanmin(vals)
 
         if (vals<0).any():
             self.log_scale = False

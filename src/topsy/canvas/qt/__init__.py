@@ -67,6 +67,15 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._link_action.triggered.connect(self.on_click_link)
 
 
+        if not self._visualizer._hdr and not self._visualizer._rgb:
+            self._colormap_controls = ColorMapControls(self)
+        elif self._visualizer._rgb:
+            self._colormap_controls = RGBMapControls(self)
+
+        self._cmap_icon = _get_icon("rgb.png")
+        self._open_cmap = QtGui.QAction(self._cmap_icon, "Color", self)
+        self._open_cmap.triggered.connect(self._colormap_controls.open)
+
 
         self._toolbar.addAction(self._load_script_action)
         self._toolbar.addAction(self._save_script_action)
@@ -77,14 +86,9 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
         self._toolbar.addAction(self._save_action)
         self._toolbar.addSeparator()
 
-        if not self._visualizer._hdr and not self._visualizer._rgb:
-            self._colormap_controls = ColorMapControls(self)
-            self._colormap_controls.add_to_toolbar(self._toolbar)
-            self._toolbar.addSeparator()
-        elif self._visualizer._rgb:
-            self._colormap_controls = RGBMapControls(self)
-            self._colormap_controls.add_to_toolbar(self._toolbar)
-            self._toolbar.addSeparator()
+        self._toolbar.addAction(self._open_cmap)
+        self._toolbar.addSeparator()
+
 
         self._toolbar.addAction(self._link_action)
         self._recorder = None
