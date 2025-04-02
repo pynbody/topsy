@@ -25,6 +25,7 @@ class SPH:
                  wrapping = False):
         self._visualizer = visualizer
 
+        logger.info(f"Creating SPH renderer with resolution {render_resolution}")
         self._render_texture = visualizer.device.create_texture(
             size=(render_resolution, render_resolution, 1),
             usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
@@ -127,7 +128,7 @@ class SPH:
                 "step_mode": wgpu.VertexStepMode.instance,
                 "attributes": [
                     {
-                        "format": wgpu.VertexFormat.float32x4,
+                        "format": vertex_format,
                         "offset": 0,
                         "shader_location": 1,
                     }

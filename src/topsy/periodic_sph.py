@@ -12,11 +12,12 @@ import numpy as np
 import wgpu
 
 class PeriodicSPHAccumulationOverlay(overlay.Overlay):
-    _blending = (
-                    wgpu.BlendFactor.one,
-                    wgpu.BlendFactor.one,
-                    wgpu.BlendOperation.add,
-                 )
+    _blending = {
+        "src_factor": wgpu.BlendFactor.one,
+        "dst_factor": wgpu.BlendFactor.one,
+        "operation": wgpu.BlendOperation.add
+    }
+
     def __init__(self, visualizer: Visualizer, source_texture: wgpu.GPUTexture):
         self._texture = source_texture
         self.num_repetitions = 0

@@ -90,12 +90,13 @@ class VisualizerBase:
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
         if self.device is None:
-            max_buffer_size = self.adapter.limits['max_buffer_size']
+            max_buffer_size = self.adapter.limits['max-buffer-size']
             # on some systems, this is 2^64 which can lead to overflows
             if max_buffer_size > 2**63:
                 max_buffer_size = 2**63
             type(self).device: wgpu.GPUDevice = self.adapter.request_device(
-                required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"],
+                required_features=["texture-adapter-specific-format-features", "float32-filterable",
+                                   ],
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
 
@@ -131,6 +132,10 @@ class VisualizerBase:
     @property
     def colormap_name(self):
         return self._colormap_name
+
+    @property
+    def colormap(self):
+        return self._colormap
 
     @colormap_name.setter
     def colormap_name(self, value):
@@ -317,14 +322,27 @@ class VisualizerBase:
         self._colormap.vmin = value
         self.vmin_vmax_is_set = True
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @vmax.setter
     def vmax(self, value):
         self._colormap.vmax = value
         self.vmin_vmax_is_set = True
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
+
+    @property
+    def gamma(self):
+        if hasattr(self._colormap, 'gamma'):
+            return self._colormap.gamma
+        else:
+            return None
+
+    @gamma.setter
+    def gamma(self, value):
+        if hasattr(self._colormap, 'gamma'):
+            self._colormap.gamma = value
+            self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @property
     def log_scale(self):
@@ -334,7 +352,7 @@ class VisualizerBase:
     def log_scale(self, value):
         self._colormap.log_scale = value
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     def _refresh_colorbar(self):
         if self._colorbar is None:

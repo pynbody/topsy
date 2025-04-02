@@ -149,18 +149,18 @@ class Line:
                     {
                         "format": self._target_canvas_format,
                         "blend": {
-                            "color": (
-                                        wgpu.BlendFactor.src_alpha,
-                                        wgpu.BlendFactor.one_minus_src_alpha,
-                                        wgpu.BlendOperation.add,
-                                     ),
-                            "alpha": (
-                                        wgpu.BlendFactor.src_alpha,
-                                        wgpu.BlendFactor.one_minus_src_alpha,
-                                        wgpu.BlendOperation.add,
-                                     ),
-                        },
+                            "color": {
+                                 "src_target": wgpu.BlendFactor.src_alpha,
+                                 "dst_target": wgpu.BlendFactor.one_minus_src_alpha,
+                                 "operation": wgpu.BlendOperation.add,
+                            },
+                            "alpha": {
+                                "src_target": wgpu.BlendFactor.src_alpha,
+                                "dst_target": wgpu.BlendFactor.one_minus_src_alpha,
+                                "operation": wgpu.BlendOperation.add,
+                            },
                         "write_mask": wgpu.ColorWrite.ALL,
+                        }
                     }
                 ]
             }
