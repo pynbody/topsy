@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 import matplotlib as mpl
-from PySide6 import QtWidgets, QtGui, QtCore
+from PySide6 import QtWidgets, QtCore
 from superqt import QLabeledDoubleRangeSlider, QLabeledDoubleSlider
 from wgpu.gui.qt import WgpuCanvas
 
 from .lineedit import MyLineEdit
 
+import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,6 +76,51 @@ class RGBMapControls(MapControlsBase):
     def _gamma_changed(self):
         self._colormap.gamma = self._gamma_slider.value()
 
+class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._scale_exponent = 0
+        super().__init__(*args, **kwargs)
+
+    def _scale_float(self, value: float) -> float:
+        return value / 10**self._scale_exponent
+
+    def _unscale_float(self, value: float) -> float:
+        return value * 10**self._scale_exponent
+
+    def _repr_value_to_scale_exponent(self, value: float) -> int:
+        if value == 0.0:
+            return 0
+        exponent = math.floor(math.log10(abs(value)))
+        if exponent < -2 or exponent > 2:
+            return exponent
+        else:
+            return 0
+
+    def setRange(self, vmin: float, vmax: float) -> None:
+        if vmin == 0.0 and vmax == 0.0:
+            repr_val = 1.0
+        elif vmin==0.0:
+            repr_val = vmax
+        elif vmax==0.0:
+            repr_val = vmin
+        else:
+            repr_val = max(abs(vmin), abs(vmax))
+
+        self._scale_exponent = self._repr_value_to_scale_exponent(repr_val)
+        scaled_min = self._scale_float(vmin)
+        scaled_max = self._scale_float(vmax)
+
+        super().setRange(scaled_min, scaled_max)
+
+    def setValue(self, value: tuple[float, float]) -> None:
+        scaled_value = (self._scale_float(value[0]), self._scale_float(value[1]))
+        super().setValue(scaled_value)
+
+    def value(self) -> tuple[float, float]:
+        scaled_value = super().value()
+        return (self._unscale_float(scaled_value[0]), self._unscale_float(scaled_value[1]))
+
+
 
 class ColorMapControls(MapControlsBase):
     _default_quantity_name = "Projected density"
@@ -107,18 +155,31 @@ class ColorMapControls(MapControlsBase):
         self._menu_layout.addWidget(self._quantity_menu)
         self._menu_layout.addWidget(self._log_checkbox)
 
-        self._slider = QLabeledDoubleRangeSlider()
+        self._range_layout = QtWidgets.QHBoxLayout()
+        self._slider = QLabeledDoubleRangeSliderWithAutoscale()
         self._slider.setRange(0, 100)
         self._slider.setValue((10,50))
         self._slider.valueChanged.connect(self._slider_changed)
 
+        self._auto_button = QtWidgets.QPushButton("Auto")
+        self._auto_button.pressed.connect(self._auto)
+
+
+        self._range_layout.addWidget(self._slider)
+        self._range_layout.addWidget(self._auto_button)
+
+
         self._layout.addLayout(self._menu_layout)
-        self._layout.addWidget(self._slider)
+        self._layout.addLayout(self._range_layout)
 
 
     def open(self):
         self._update_ui()
         super().open()
+
+    def _auto(self):
+        self._visualizer._colormap.autorange_vmin_vmax()
+        self._update_ui()
 
     def _update_ui(self):
         self._disable_updates = True
@@ -130,8 +191,8 @@ class ColorMapControls(MapControlsBase):
                 self._first_update = False
             self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
             self._quantity_menu.adjustSize()
-            self._log_checkbox.setChecked(self._visualizer.log_scale)
             self._slider.setRange(*self._visualizer._colormap.get_ui_range())
+            self._log_checkbox.setChecked(self._visualizer.log_scale)
             self._slider.setValue((self._visualizer.vmin, self._visualizer.vmax))
         finally:
             self._disable_updates = False
