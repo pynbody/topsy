@@ -251,6 +251,14 @@ class Colormap:
         self._vals_max = np.nanmax(vals)
         self._vals_min = np.nanmin(vals)
 
+        if self._log_vals_max == self._log_vals_min:
+            self._log_vals_max += 1.0
+            self._log_vals_min -= 1.0
+
+        if self._vals_max == self._vals_min:
+            self._vals_max += 1.0
+            self._vals_min -= 1.0
+
         if (vals<0).any():
             self.log_scale = False
         else:
@@ -271,6 +279,7 @@ class Colormap:
             logger.warning("Press 'r' in the window to try again")
             self.vmin, self.vmax = 0.0, 1.0
 
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
 
@@ -354,6 +363,7 @@ class RGBColormap(Colormap):
 
         self.vmin = self.vmax - self.dynamic_range
 
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
 class RGBHDRColormap(RGBColormap):

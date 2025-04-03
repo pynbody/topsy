@@ -256,18 +256,7 @@ class VisualizerBase:
             self._sph.downsample_factor = 1
 
         if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
-            ce_label = "sph_render"
-            # labelling this is useful for understanding performance in macos instruments
-            if self._sph.downsample_factor>1:
-                ce_label += f"_ds{self._sph.downsample_factor:d}"
-            else:
-                ce_label += "_fullres"
-
-            command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-            self._sph.encode_render_pass(command_encoder)
-
-            with self._render_timer:
-                self.device.queue.submit([command_encoder.finish()])
+            self.render_sph()
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -308,6 +297,18 @@ class VisualizerBase:
             elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
                 # this will affect the NEXT frame, not this one!
                 self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
+
+    def render_sph(self):
+        ce_label = "sph_render"
+        # labelling this is useful for understanding performance in macos instruments
+        if self._sph.downsample_factor > 1:
+            ce_label += f"_ds{self._sph.downsample_factor:d}"
+        else:
+            ce_label += "_fullres"
+        command_encoder: wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+        self._sph.encode_render_pass(command_encoder)
+        with self._render_timer:
+            self.device.queue.submit([command_encoder.finish()])
 
     @property
     def vmin(self):

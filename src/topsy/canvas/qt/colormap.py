@@ -139,7 +139,6 @@ class ColorMapControls(MapControlsBase):
         self._colormap_menu.currentTextChanged.connect(self._colormap_menu_changed_action)
 
         self._quantity_menu = QtWidgets.QComboBox()
-        self._quantity_menu.addItem(self._default_quantity_name)
         self._quantity_menu.setEditable(True)
         self._quantity_menu.setLineEdit(MyLineEdit())
         self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
@@ -162,6 +161,7 @@ class ColorMapControls(MapControlsBase):
         self._slider.valueChanged.connect(self._slider_changed)
 
         self._auto_button = QtWidgets.QPushButton("Auto")
+        self._auto_button.setStyleSheet("color: black;") # unclear why this is necessary
         self._auto_button.pressed.connect(self._auto)
 
 
@@ -207,7 +207,12 @@ class ColorMapControls(MapControlsBase):
     def _log_checkbox_changed(self):
         if self._disable_updates:
             return
+        if self._visualizer.log_scale == self._log_checkbox.isChecked():
+            return
+        logger.info("Log scale changed to %s", self._log_checkbox.isChecked())
+
         self._visualizer.log_scale = self._log_checkbox.isChecked()
+        self._visualizer.vmin, self._visualizer.vmax = self._visualizer._colormap.get_ui_range()
         self._update_ui()
 
     def _slider_changed(self):
@@ -218,15 +223,24 @@ class ColorMapControls(MapControlsBase):
     def _quantity_menu_changed_action(self):
         if self._disable_updates:
             return
-        logger.info("Quantity changed to %s", self._quantity_menu.currentText())
+
         if self._quantity_menu.currentText() == self._default_quantity_name:
-            self._visualizer.quantity_name = None
+            new_quantity_name = None
         else:
-            try:
-                self._visualizer.quantity_name = self._quantity_menu.currentText()
-            except ValueError as e:
-                self._qt_errorbox(e)
-        self._update_ui()
+            new_quantity_name = self._quantity_menu.currentText()
+
+        if self._visualizer.quantity_name == new_quantity_name:
+            return
+
+        logger.info("Quantity changed to %s", new_quantity_name)
+
+        try:
+            self._visualizer.quantity_name = new_quantity_name
+        except ValueError as e:
+            self._qt_errorbox(e)
+
+        self._visualizer.render_sph()
+        self._auto()
 
     def _qt_errorbox(self, e):
         message = QtWidgets.QMessageBox(self)
