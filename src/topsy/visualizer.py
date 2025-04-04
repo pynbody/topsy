@@ -98,7 +98,7 @@ class VisualizerBase:
                 required_features=["texture-adapter-specific-format-features", "float32-filterable",
                                    ],
                 required_limits={"max_buffer_size": max_buffer_size})
-        self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
+        self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
 
         if self._hdr:
             self.canvas_format = "rgba16float"
@@ -112,7 +112,7 @@ class VisualizerBase:
         self.context.configure(device=self.device, format=self.canvas_format)
 
     def invalidate(self, reason=DrawReason.CHANGE):
-        # NB no need to check if we're already pending a draw - wgpu.gui does that for us
+        # NB no need to check if we're already pending a draw - rendercanvas does that for us
         self.canvas.request_draw(lambda: self.draw(reason))
 
     def rotate(self, x_angle, y_angle):
@@ -267,7 +267,7 @@ class VisualizerBase:
         command_encoder = self.device.create_command_encoder()
 
         if target_texture_view is None:
-            target_texture_view = self.canvas.get_context().get_current_texture().create_view()
+            target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
 
 
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
@@ -480,15 +480,15 @@ class VisualizerBase:
         p.close(fig)
 
     def show(self, force=False):
-        from wgpu.gui import jupyter
-        if isinstance(self.canvas, jupyter.WgpuCanvas):
+        from rendercanvas import jupyter
+        if isinstance(self.canvas, jupyter.RenderCanvas):
             return self.canvas
         else:
-            from wgpu.gui import qt # can only safely import this if we think we're running in a qt environment
-            assert isinstance(self.canvas, qt.WgpuCanvas)
+            from rendercanvas import qt # can only safely import this if we think we're running in a qt environment
+            assert isinstance(self.canvas, qt.RenderCanvas)
             self.canvas.show()
             if force or not util.is_inside_ipython():
-                qt.run()
+                qt.loop.run()
             elif not util.is_ipython_running_qt_event_loop():
                 # is_inside_ipython_console must be True; if it were False, the previous branch would have run
                 # instead.

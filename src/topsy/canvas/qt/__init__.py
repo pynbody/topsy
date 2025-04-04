@@ -4,7 +4,7 @@ from __future__ import annotations
 import PySide6 # noqa: F401 (need to import to select the qt backend)
 from PySide6 import QtWidgets, QtGui, QtCore
 
-from wgpu.gui.qt import WgpuCanvas, call_later
+from rendercanvas.qt import RenderCanvas, loop
 
 from .colormap import RGBMapControls, ColorMapControls
 from .lineedit import MyLineEdit
@@ -29,7 +29,7 @@ def _get_icon(name):
     return QtGui.QIcon(os.path.join(this_dir, "icons", name))
 
 
-class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
+class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
     _all_instances = []
     def __init__(self, **kwargs):
@@ -230,4 +230,4 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
 
     @classmethod
     def call_later(cls, delay, fn, *args):
-        call_later(delay, fn, *args)
+        loop.call_later(delay, fn, *args)

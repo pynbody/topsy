@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
-import wgpu.gui.jupyter, wgpu.gui.auto
-
-from ..drawreason import DrawReason
+import rendercanvas.jupyter, rendercanvas.auto
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..visualizer import Visualizer
 
-
-from wgpu.gui.base import WgpuCanvasBase
 
 
 class VisualizerCanvasBase:
@@ -24,6 +20,8 @@ class VisualizerCanvasBase:
         self.pixel_ratio = 1
 
         super().__init__(*args, **kwargs)
+
+        self.add_event_handler(self.handle_event, "*")
 
     def handle_event(self, event):
         if event['event_type']=='pointer_move':
@@ -46,7 +44,7 @@ class VisualizerCanvasBase:
             self.release_drag()
         else:
             pass
-        super().handle_event(event)
+
 
     def drag(self, dx, dy):
         self._visualizer.rotate(dx*0.01, dy*0.01)
@@ -72,7 +70,7 @@ class VisualizerCanvasBase:
             self._visualizer.reset_view()
 
     def mouse_wheel(self, delta_x, delta_y):
-        if isinstance(self, wgpu.gui.jupyter.JupyterWgpuCanvas):
+        if isinstance(self, rendercanvas.jupyter.JupyterRenderCanvas):
             # scroll events are much smaller from the web browser, for
             # some reason, compared with native windowing
             delta_y *= 10
@@ -107,12 +105,13 @@ class VisualizerCanvasBase:
 
 # Now we are going to select a specific backend
 #
-# we don't use wgpu.gui.auto directly because it prefers the glfw backend over qt
+# we don't use rendercanvas.auto directly because it prefers the glfw backend over qt
 # whereas we want to use qt
 #
 # Note also that is_jupyter as implemented fails to distinguish correctly if we are
 # running inside a kernel that isn't attached to a notebook. There doesn't seem to
 # be any way to distinguish this, so we live with it for now.
+
 
 def is_jupyter():
     """Determine whether the user is executing in a Jupyter Notebook / Lab.

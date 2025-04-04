@@ -106,8 +106,8 @@ def main():
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
-    from wgpu.gui import qt
-    qt.run()
+    from rendercanvas import qt
+    qt.loop.run()
 
 def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
     from . import visualizer, loader

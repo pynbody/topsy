@@ -5,7 +5,7 @@ from typing import Any
 import matplotlib as mpl
 from PySide6 import QtWidgets, QtCore
 from superqt import QLabeledDoubleRangeSlider, QLabeledDoubleSlider
-from wgpu.gui.qt import WgpuCanvas
+from rendercanvas import BaseRenderCanvas
 
 from .lineedit import MyLineEdit
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 class MapControlsBase(QtWidgets.QDialog):
-    def __init__(self, parent: WgpuCanvas):
+    def __init__(self, parent: BaseRenderCanvas):
         self._parent = parent
         super().__init__()
 
@@ -33,7 +33,7 @@ class MapControlsBase(QtWidgets.QDialog):
 
 
 class RGBMapControls(MapControlsBase):
-    def __init__(self, parent: WgpuCanvas):
+    def __init__(self, parent: BaseRenderCanvas):
         super().__init__(parent)
 
         self._layout = QtWidgets.QVBoxLayout()
@@ -125,7 +125,7 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
 class ColorMapControls(MapControlsBase):
     _default_quantity_name = "Projected density"
 
-    def __init__(self, canvas: WgpuCanvas):
+    def __init__(self, canvas: BaseRenderCanvas):
         super().__init__(canvas)
 
         self._visualizer = canvas._visualizer # EEK!

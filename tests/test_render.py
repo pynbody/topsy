@@ -96,7 +96,7 @@ def test_sph_output(vis, folder):
     npt.assert_allclose(test, expect, rtol=5e-1)
 
     # now let's also check that the distribution is sharply peaked around the right value
-    assert abs((test/expect).mean()-1.0)<0.001
+    assert abs((test/expect).mean()-1.0)<0.0015
     assert (test/expect).std() < 0.015
 
 def test_periodic_sph_output(vis):

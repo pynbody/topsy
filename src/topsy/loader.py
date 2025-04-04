@@ -7,15 +7,18 @@ import pickle
 from typing import Optional
 
 from . import config
-# ABC support:
+
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
+
+
 class AbstractDataLoader(ABC):
     def __init__(self, device: wgpu.GPUDevice):
         self._device = device
         self.quantity_name = None
         self._quantity_buffer_is_for_name = None
+
     @abstractmethod
     def __len__(self):
         pass
@@ -118,16 +121,16 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def get_rgb_masses(self):
         rgb = np.empty((len(self.snapshot), 3), dtype=np.float32)
-        rgb[:,0] = self._effective_mass_for_band('I')*0.5
-        rgb[:,1] = self._effective_mass_for_band('V')
-        rgb[:,2] = self._effective_mass_for_band('U')
+        rgb[:, 0] = self._effective_mass_for_band('I') * 0.5
+        rgb[:, 1] = self._effective_mass_for_band('V')
+        rgb[:, 2] = self._effective_mass_for_band('U')
         rgb[np.isnan(rgb)] = 0.0
         return rgb
 
     def get_named_quantity(self, name):
-        qty =self.snapshot[name]
-        if len(qty.shape)==2:
-            qty = qty[:,0]
+        qty = self.snapshot[name]
+        if len(qty.shape) == 2:
+            qty = qty[:, 0]
         return qty.astype(np.float32)[self._random_order]
 
     def get_quantity_names(self):
@@ -147,11 +150,14 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def get_periodicity_scale(self):
         return float(self.snapshot.properties['boxsize'].in_units("kpc"))
+
     def get_filename(self):
         return self.snapshot.filename
 
+
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""
+
     def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str,
                  take_region: Optional[pynbody.filt.Filter] = None):
 
@@ -192,36 +198,36 @@ class PynbodyDataLoader(PynbodyDataInMemory):
     def _perform_smoothing(self):
         try:
             logger.info("Looking for cached smoothing/density data...")
-            smooth = pickle.load(open(self.filename+'-topsy-smooth.pkl', 'rb'))
+            smooth = pickle.load(open(self.filename + '-topsy-smooth.pkl', 'rb'))
             if len(smooth) == len(self.snapshot):
                 self.snapshot['smooth'] = smooth
             else:
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
 
-            rho = pickle.load(open(self.filename+'-topsy-rho.pkl', 'rb'))
+            rho = pickle.load(open(self.filename + '-topsy-rho.pkl', 'rb'))
             if len(rho) == len(self.snapshot):
                 self.snapshot['rho'] = rho
             else:
                 raise ValueError("Incorrect number of particles in cached density data")
         except:
             logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(self.snapshot['smooth'], open(self.filename+'-topsy-smooth.pkl', 'wb'))
-            pickle.dump(self.snapshot['rho'], open(self.filename+'-topsy-rho.pkl', 'wb'))
-
+            pickle.dump(self.snapshot['smooth'], open(self.filename + '-topsy-smooth.pkl', 'wb'))
+            pickle.dump(self.snapshot['rho'], open(self.filename + '-topsy-rho.pkl', 'wb'))
 
 
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = config.TEST_DATA_NUM_PARTICLES_DEFAULT,
                  seed: int = 1337):
         self._n_particles = n_particles
-        self._gmm_weights = [0.5, 0.4, 0.1] # should sum to 1
-        self._gmm_means = np.array([[0.0, 0.0, 0.0],[0.0, 0.0, 0.0],[6.0,10.0,0.0]])
-        self._gmm_std = np.array([[20.0, 20.0, 20.0], [4.0, 0.2, 4.0], [2.0,2.0,3.0]])
+        self._gmm_weights = [0.5, 0.4, 0.1]  # should sum to 1
+        self._gmm_means = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [6.0, 10.0, 0.0]])
+        self._gmm_std = np.array([[20.0, 20.0, 20.0], [4.0, 0.2, 4.0], [2.0, 2.0, 3.0]])
 
         self._gmm_pos = self._generate_samples(seed)
         self._gmm_den = self._evaluate_density(self._gmm_pos)
         super().__init__(device)
+
     def __len__(self):
         return self._n_particles
 
@@ -229,22 +235,24 @@ class TestDataLoader(AbstractDataLoader):
         # simple gaussian mixture model, density of particles per unit volume
         den = np.zeros(len(pos))
         for i in range(len(self._gmm_weights)):
-            den += self._gmm_weights[i] * np.exp(-np.sum((pos - self._gmm_means[i])**2/self._gmm_std[i]**2, axis=1)) \
-                                                 / ((2 * np.pi)**1.5 * np.prod(self._gmm_std[i]))
-        return den*self._n_particles
+            den += self._gmm_weights[i] * np.exp(
+                -np.sum((pos - self._gmm_means[i]) ** 2 / self._gmm_std[i] ** 2, axis=1)) \
+                   / ((2 * np.pi) ** 1.5 * np.prod(self._gmm_std[i]))
+        return den * self._n_particles
 
     def _generate_samples(self, seed):
         # simple gaussian mixture model
         np.random.seed(seed)
         pos = np.empty((self._n_particles, 3), dtype=np.float32)
-        if self._n_particles==1:
+        if self._n_particles == 1:
             pos[0] = self._gmm_means[0]
         else:
             offset = 0
             for i in range(len(self._gmm_weights)):
-                cpt_len = int(self._n_particles*self._gmm_weights[i])
-                pos[offset:offset+cpt_len] = \
-                    np.random.normal(size=(cpt_len, 3), scale=1.0).astype(np.float32) * self._gmm_std[np.newaxis,i,:] + self._gmm_means[i]
+                cpt_len = int(self._n_particles * self._gmm_weights[i])
+                pos[offset:offset + cpt_len] = \
+                    np.random.normal(size=(cpt_len, 3), scale=1.0).astype(np.float32) * self._gmm_std[np.newaxis, i,
+                                                                                        :] + self._gmm_means[i]
                 offset += cpt_len
             assert offset == self._n_particles
         return np.random.permutation(pos)
@@ -254,15 +262,15 @@ class TestDataLoader(AbstractDataLoader):
         return self._gmm_pos
 
     def get_smooth(self):
-        sm = 2.0/self._gmm_den**0.333333
+        sm = 2.0 / self._gmm_den ** 0.333333
         return sm
 
     def get_mass(self):
         return np.repeat(np.float32(1e-8), self._n_particles)
 
     def get_named_quantity(self, name):
-        if name=="test-quantity":
-            return np.sin(self._gmm_pos[:,0])*np.cos(self._gmm_pos[:,1])*np.cos(self._gmm_pos[:,2])
+        if name == "test-quantity":
+            return np.sin(self._gmm_pos[:, 0]) * np.cos(self._gmm_pos[:, 1]) * np.cos(self._gmm_pos[:, 2]) * 1e-4
         else:
             raise KeyError("Unknown quantity name")
 
@@ -285,8 +293,7 @@ class TestDataLoader(AbstractDataLoader):
 
     def get_rgb_masses(self):
         rgb = np.empty((len(self._gmm_pos), 3), dtype=np.float32)
-        rgb[:,0] = abs(np.sin(self._gmm_pos[:,0]/10.0))
-        rgb[:,1] = abs(np.cos(self._gmm_pos[:,1]/10.0))
-        rgb[:,2] = abs(np.cos(self._gmm_pos[:,2]/10.0))
+        rgb[:, 0] = abs(np.sin(self._gmm_pos[:, 0] / 10.0))
+        rgb[:, 1] = abs(np.cos(self._gmm_pos[:, 1] / 10.0))
+        rgb[:, 2] = abs(np.cos(self._gmm_pos[:, 2] / 10.0))
         return rgb
-
