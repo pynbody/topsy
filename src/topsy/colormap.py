@@ -239,6 +239,15 @@ class Colormap:
         else:
             return self._vals_min, self._vals_max
 
+    @classmethod
+    def _finite_range(cls, values):
+        valid = np.isfinite(values)
+        valid_values = values[valid]
+        if len(valid_values) > 0:
+            return np.min(valid_values), np.max(valid_values)
+        else:
+            return np.nan, np.nan
+
     def autorange_vmin_vmax(self):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
@@ -246,10 +255,8 @@ class Colormap:
         # we'll do it on the CPU
         vals = self._visualizer.get_sph_image().ravel()
 
-        self._log_vals_max = np.nanmax(np.log10(vals))
-        self._log_vals_min = np.nanmin(np.log10(vals))
-        self._vals_max = np.nanmax(vals)
-        self._vals_min = np.nanmin(vals)
+        self._log_vals_min, self._log_vals_max = self._finite_range(np.log10(vals))
+        self._vals_min, self._vals_max = self._finite_range(vals)
 
         if self._log_vals_max == self._log_vals_min:
             self._log_vals_max += 1.0
