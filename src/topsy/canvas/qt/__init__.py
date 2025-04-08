@@ -222,9 +222,15 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         # As a side effect, wgpu gui layer stores our function call, to enable it to be
         # repainted later. But we want to distinguish such repaints and handle them
         # differently, so we need to replace the function with our own
+        call_count = 0
         def function_wrapper():
-            function()
-            self._subwidget.draw_frame = lambda: self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
+            nonlocal call_count
+            if call_count == 0:
+                function()
+            else:
+                # we have been cached!
+                self._visualizer.draw(DrawReason.PRESENTATION_CHANGE)
+            call_count += 1
 
         super().request_draw(function_wrapper)
 

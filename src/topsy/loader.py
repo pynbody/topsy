@@ -170,13 +170,24 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         snapshot.physical_units()
         self.filename = filename
 
-        snapshot = snapshot[pynbody.family.get_family(particle)]
+        fam = pynbody.family.get_family(particle)
+        snapshot = snapshot[fam]
+
+        self._family_name = fam.name
 
         super().__init__(device, snapshot)
 
         self._perform_centering(center)
         snapshot.wrap()
         self._perform_smoothing()
+
+    @property
+    def _smooth_cache_filename(self):
+        return f"{self.filename}-topsy-smooth-{self._family_name}.pkl"
+
+    @property
+    def _rho_cache_filename(self):
+        return f"{self.filename}-topsy-rho-{self._family_name}.pkl"
 
     def _perform_centering(self, center):
         logger.info("Performing centering...")
@@ -198,22 +209,22 @@ class PynbodyDataLoader(PynbodyDataInMemory):
     def _perform_smoothing(self):
         try:
             logger.info("Looking for cached smoothing/density data...")
-            smooth = pickle.load(open(self.filename + '-topsy-smooth.pkl', 'rb'))
+            smooth = pickle.load(open(self._smooth_cache_filename, 'rb'))
             if len(smooth) == len(self.snapshot):
                 self.snapshot['smooth'] = smooth
             else:
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
 
-            rho = pickle.load(open(self.filename + '-topsy-rho.pkl', 'rb'))
+            rho = pickle.load(open(self._rho_cache_filename, 'rb'))
             if len(rho) == len(self.snapshot):
                 self.snapshot['rho'] = rho
             else:
                 raise ValueError("Incorrect number of particles in cached density data")
         except:
             logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(self.snapshot['smooth'], open(self.filename + '-topsy-smooth.pkl', 'wb'))
-            pickle.dump(self.snapshot['rho'], open(self.filename + '-topsy-rho.pkl', 'wb'))
+            pickle.dump(self.snapshot['smooth'], open(self._smooth_cache_filename, 'wb'))
+            pickle.dump(self.snapshot['rho'], open(self._rho_cache_filename, 'wb'))
 
 
 class TestDataLoader(AbstractDataLoader):

@@ -87,6 +87,7 @@ class VisualizerCanvasBase:
     def resize(self, *args):
         # putting this here as a reminder that the resize method must be passed to the base class
         super().resize(*args)
+
     def resize_complete(self, width, height, pixel_ratio=1):
         self.width_physical = int(width*pixel_ratio)
         self.height_physical = int(height*pixel_ratio)
