@@ -269,8 +269,8 @@ class VisualizerBase:
         if target_texture_view is None:
             target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
 
-
-        self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        color_prescale = self._sph.last_render_mass_scale if not self.averaging else 1.0
+        self._colormap.encode_render_pass(command_encoder, target_texture_view, color_prescale)
         if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
@@ -415,11 +415,11 @@ class VisualizerBase:
         np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
 
         if nchannels == 4:
-            np_im = np_im[:,:,:3]
+            np_im = np_im[:,:,:3] * self._sph.last_render_mass_scale
         elif self.averaging:
             np_im = np_im[:,:,1]/np_im[:,:,0]
         else:
-            np_im = np_im[:,:,0]
+            np_im = np_im[:,:,0] * self._sph.last_render_mass_scale
 
         return np_im
 

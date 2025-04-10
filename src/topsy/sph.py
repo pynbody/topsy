@@ -198,9 +198,6 @@ class SPH:
                 }
             )
 
-    def _get_mass_scale(self):
-        return getattr(self, "mass_scale", np.float32(self.downsample_factor))
-
     def _update_transform_buffer(self):
         model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
                                    [0, 1.0, 0, self.position_offset[1]],
@@ -228,13 +225,12 @@ class SPH:
                                   ("min_max_size", np.float32, (2,)),
                                   ("downsample_factor", np.uint32, (1,)),
                                   ("downsample_offset", np.uint32, (1,)),
-                                  ("mass_scale", np.float32, (1,)),
                                   ("boxsize_by_2_clipspace", np.float32, (1,)),
                                   ("padding", np.int32, (1,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        transform_params["mass_scale"] = self._get_mass_scale()
+        # transform_params["mass_scale"] = self._get_mass_scale()
         # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
@@ -250,6 +246,7 @@ class SPH:
         self.last_transform_params = transform_params
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
+        self.last_render_mass_scale = self.downsample_factor
 
     def encode_render_pass(self, command_encoder):
         self._update_transform_buffer()
