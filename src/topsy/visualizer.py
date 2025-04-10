@@ -30,9 +30,14 @@ class VisualizerBase:
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
-                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas):
+                 colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
+                 hdr = False, rgb=False):
+        self._hdr = hdr
+        self._rgb = rgb
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
+        self._sph_class = sph.SPH
+
         self.crosshairs_visible = False
 
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
@@ -49,19 +54,25 @@ class VisualizerBase:
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
-        self._colormap = colormap.Colormap(self, weighted_average = False)
         self._periodic_tiling = periodic_tiling
 
         if periodic_tiling:
-            self._sph = periodic_sph.PeriodicSPH(self, self.render_texture)
+            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
+        elif self._rgb:
+            logger.info("Using RGB renderer")
+            self._sph = sph.RGBSPH(self, self._render_resolution)
         else:
-            self._sph = sph.SPH(self, self.render_texture)
+            self._sph = sph.SPH(self, self._render_resolution)
+
+        self.render_texture = self._sph.get_output_texture()
+
+        self._reinitialize_colormap_and_bar(0.0, 1.0, True)
+
         #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
 
         self._last_status_update = 0.0
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
 
-        self._colorbar = colorbar.ColorbarOverlay(self, 0.0, 1.0, self.colormap_name, "TODO")
         self._scalebar = scalebar.ScalebarOverlay(self)
 
         self._crosshairs = line.Line(self,
@@ -77,33 +88,31 @@ class VisualizerBase:
         self.invalidate(DrawReason.INITIAL_UPDATE)
 
     def _setup_wgpu(self):
-        self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter(power_preference="high-performance")
+        self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
         if self.device is None:
-            max_buffer_size = self.adapter.limits['max_buffer_size']
+            max_buffer_size = self.adapter.limits['max-buffer-size']
             # on some systems, this is 2^64 which can lead to overflows
             if max_buffer_size > 2**63:
                 max_buffer_size = 2**63
-            type(self).device: wgpu.GPUDevice = self.adapter.request_device(
-                required_features=["TextureAdapterSpecificFormatFeatures", "float32-filterable"],
+            type(self).device: wgpu.GPUDevice = self.adapter.request_device_sync(
+                required_features=["texture-adapter-specific-format-features", "float32-filterable",
+                                   ],
                 required_limits={"max_buffer_size": max_buffer_size})
-        self.context: wgpu.GPUCanvasContext = self.canvas.get_context()
-        self.canvas_format = self.context.get_preferred_format(self.adapter)
-        if self.canvas_format.endswith("-srgb"):
-            # matplotlib colours aren't srgb. It might be better to convert
-            # but for now, just stop the canvas being srgb
-            self.canvas_format = self.canvas_format[:-5]
+        self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
+
+        if self._hdr:
+            self.canvas_format = "rgba16float"
+        else:
+            self.canvas_format = self.context.get_preferred_format(self.adapter)
+            if self.canvas_format.endswith("-srgb"):
+                # matplotlib colours aren't srgb. It might be better to convert
+                # but for now, just stop the canvas being srgb
+                self.canvas_format = self.canvas_format[:-5]
+
         self.context.configure(device=self.device, format=self.canvas_format)
-        self.render_texture: wgpu.GPUTexture = self.device.create_texture(
-            size=(self._render_resolution, self._render_resolution, 1),
-            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
-                  wgpu.TextureUsage.TEXTURE_BINDING |
-                  wgpu.TextureUsage.COPY_SRC,
-            format=wgpu.TextureFormat.rg32float,
-            label="sph_render_texture",
-        )
 
     def invalidate(self, reason=DrawReason.CHANGE):
-        # NB no need to check if we're already pending a draw - wgpu.gui does that for us
+        # NB no need to check if we're already pending a draw - rendercanvas does that for us
         self.canvas.request_draw(lambda: self.draw(reason))
 
     def rotate(self, x_angle, y_angle):
@@ -123,6 +132,10 @@ class VisualizerBase:
     @property
     def colormap_name(self):
         return self._colormap_name
+
+    @property
+    def colormap(self):
+        return self._colormap
 
     @colormap_name.setter
     def colormap_name(self, value):
@@ -178,15 +191,32 @@ class VisualizerBase:
         self._reinitialize_colormap_and_bar()
         self.invalidate()
 
-    def _reinitialize_colormap_and_bar(self):
-        vmin, vmax, log_scale = self.vmin, self.vmax, self.log_scale
-        self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+    def _reinitialize_colormap_and_bar(self, vmin = None, vmax = None, log_scale = None):
+        if vmin is None:
+            vmin = self.vmin
+        if vmax is None:
+            vmax = self.vmax
+        if log_scale is None:
+            log_scale = self.log_scale
+
+        if self._rgb:
+            if self._hdr:
+                self._colormap = colormap.RGBHDRColormap(self)
+            else:
+                self._colormap = colormap.RGBColormap(self)
+            self._colorbar = None
+        elif self._hdr:
+            self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
+            self._colorbar = None
+        else:
+            self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+            self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
+                                                      self._get_colorbar_label())
         if self.vmin_vmax_is_set:
             self._colormap.vmin = vmin
             self._colormap.vmax = vmax
             self._colormap.log_scale = log_scale
-        self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
-                                                  self._get_colorbar_label())
+
 
     def _get_colorbar_label(self):
         label = self.data_loader.get_quantity_label()
@@ -226,18 +256,7 @@ class VisualizerBase:
             self._sph.downsample_factor = 1
 
         if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
-            ce_label = "sph_render"
-            # labelling this is useful for understanding performance in macos instruments
-            if self._sph.downsample_factor>1:
-                ce_label += f"_ds{self._sph.downsample_factor:d}"
-            else:
-                ce_label += "_fullres"
-
-            command_encoder : wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-            self._sph.encode_render_pass(command_encoder)
-
-            with self._render_timer:
-                self.device.queue.submit([command_encoder.finish()])
+            self.render_sph()
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -248,11 +267,11 @@ class VisualizerBase:
         command_encoder = self.device.create_command_encoder()
 
         if target_texture_view is None:
-            target_texture_view = self.canvas.get_context().get_current_texture().create_view()
+            target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
 
 
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
-        if self.show_colorbar:
+        if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
             self._scalebar.encode_render_pass(command_encoder, target_texture_view)
@@ -279,6 +298,18 @@ class VisualizerBase:
                 # this will affect the NEXT frame, not this one!
                 self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
 
+    def render_sph(self):
+        ce_label = "sph_render"
+        # labelling this is useful for understanding performance in macos instruments
+        if self._sph.downsample_factor > 1:
+            ce_label += f"_ds{self._sph.downsample_factor:d}"
+        else:
+            ce_label += "_fullres"
+        command_encoder: wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
+        self._sph.encode_render_pass(command_encoder)
+        with self._render_timer:
+            self.device.queue.submit([command_encoder.finish()])
+
     @property
     def vmin(self):
         return self._colormap.vmin
@@ -292,14 +323,27 @@ class VisualizerBase:
         self._colormap.vmin = value
         self.vmin_vmax_is_set = True
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @vmax.setter
     def vmax(self, value):
         self._colormap.vmax = value
         self.vmin_vmax_is_set = True
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
+
+    @property
+    def gamma(self):
+        if hasattr(self._colormap, 'gamma'):
+            return self._colormap.gamma
+        else:
+            return None
+
+    @gamma.setter
+    def gamma(self, value):
+        if hasattr(self._colormap, 'gamma'):
+            self._colormap.gamma = value
+            self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @property
     def log_scale(self):
@@ -309,9 +353,11 @@ class VisualizerBase:
     def log_scale(self, value):
         self._colormap.log_scale = value
         self._refresh_colorbar()
-        self.invalidate()
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     def _refresh_colorbar(self):
+        if self._colorbar is None:
+            return
         self._colorbar.vmin = self._colormap.vmin
         self._colorbar.vmax = self._colormap.vmax
         self._colorbar.label = self._get_colorbar_label()
@@ -359,24 +405,48 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
-        im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
-                                            {'bytes_per_row':8*self._render_resolution},
-                                            (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np.float32).reshape((self._render_resolution, self._render_resolution, 2))
-        if self.averaging:
-            im = np_im[:,:,1]/np_im[:,:,0]
-        else:
-            im = np_im[:,:,0]
-        return im
+        nchannels = self._sph._nchannels_output
+        np_dtype = self._sph._output_dtype
+        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
 
-    def get_presentation_image(self) -> np.ndarray:
-        texture = self.context.get_current_texture()
+        im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
+                                            {'bytes_per_row':bytes_per_pixel * self._render_resolution},
+                                            (self._render_resolution, self._render_resolution, 1))
+        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
+
+        if nchannels == 4:
+            np_im = np_im[:,:,:3]
+        elif self.averaging:
+            np_im = np_im[:,:,1]/np_im[:,:,0]
+        else:
+            np_im = np_im[:,:,0]
+
+        return np_im
+
+    def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
+        texture: wgpu.GPUTexture = self.device.create_texture(
+            size=(resolution[0], resolution[1], 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                  wgpu.TextureUsage.COPY_SRC,
+            format=self.canvas_format,
+            label="output_texture",
+        )
+        self.draw(DrawReason.EXPORT, texture.create_view())
+
         size = texture.size
-        bytes_per_pixel = 4 # NB this might be wrong in principle!
+
+        if texture.format.endswith("8unorm"):
+            bytes_per_pixel = 4
+            np_type = np.uint8
+        elif texture.format.endswith("16float"):
+            bytes_per_pixel = 8
+            np_type = np.float16
+        else:
+            raise ValueError(f"Unsupported texture format {texture.format}")
+
         data = self.device.queue.read_texture(
             {
                 "texture": texture,
-                "mip_level": 0,
                 "origin": (0, 0, 0),
             },
             {
@@ -387,7 +457,7 @@ class VisualizerBase:
             size,
         )
 
-        return np.frombuffer(data, np.uint8).reshape(size[1], size[0], 4)
+        return np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
 
 
     def save(self, filename='output.pdf'):
@@ -410,15 +480,15 @@ class VisualizerBase:
         p.close(fig)
 
     def show(self, force=False):
-        from wgpu.gui import jupyter
-        if isinstance(self.canvas, jupyter.WgpuCanvas):
+        from rendercanvas import jupyter
+        if isinstance(self.canvas, jupyter.RenderCanvas):
             return self.canvas
         else:
-            from wgpu.gui import qt # can only safely import this if we think we're running in a qt environment
-            assert isinstance(self.canvas, qt.WgpuCanvas)
+            from rendercanvas import qt # can only safely import this if we think we're running in a qt environment
+            assert isinstance(self.canvas, qt.RenderCanvas)
             self.canvas.show()
             if force or not util.is_inside_ipython():
-                qt.run()
+                qt.loop.run()
             elif not util.is_ipython_running_qt_event_loop():
                 # is_inside_ipython_console must be True; if it were False, the previous branch would have run
                 # instead.

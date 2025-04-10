@@ -4,6 +4,8 @@ import numpy as np
 import wgpu
 import pynbody
 
+from logging import getLogger
+
 from .util import load_shader, preprocess_shader
 from . import config
 
@@ -11,13 +13,28 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .visualizer import Visualizer
 
-class SPH:
-    render_format = wgpu.TextureFormat.r32float
+logger = getLogger(__name__)
 
-    def __init__(self, visualizer: Visualizer, render_texture: wgpu.GPUTexture,
+class SPH:
+    render_format = wgpu.TextureFormat.rg32float
+    _nchannels_input = 2
+    _nchannels_output = 2
+    _output_dtype = np.float32
+
+    def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False):
         self._visualizer = visualizer
-        self._render_texture = render_texture
+
+        logger.info(f"Creating SPH renderer with resolution {render_resolution}")
+        self._render_texture = visualizer.device.create_texture(
+            size=(render_resolution, render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                  wgpu.TextureUsage.TEXTURE_BINDING |
+                  wgpu.TextureUsage.COPY_SRC,
+            format=self.render_format,
+            label="sph_render_texture",
+        )
+
         self._device = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
@@ -35,10 +52,14 @@ class SPH:
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
 
+    def get_output_texture(self) -> wgpu.Texture:
+        return self._render_texture
+
 
     def _setup_shader_module(self):
         wrap_flag = "WRAPPING" if self._wrapping else "NO_WRAPPING"
-        code = preprocess_shader(load_shader("sph.wgsl"), [wrap_flag])
+        type_flag = "CHANNELED" if self._nchannels_input == 3 else "WEIGHTED"
+        code = preprocess_shader(load_shader("sph.wgsl"), [wrap_flag, type_flag])
 
         self._shader = self._device.create_shader_module(code=code, label="sph")
 
@@ -99,6 +120,33 @@ class SPH:
                 bind_group_layouts=[self._bind_group_layout]
             )
 
+        vertex_format = wgpu.VertexFormat.float32x3
+
+        if self._nchannels_input == 3 :
+            channel_buffers = [{
+                "array_stride": 12,
+                "step_mode": wgpu.VertexStepMode.instance,
+                "attributes": [
+                    {
+                        "format": vertex_format,
+                        "offset": 0,
+                        "shader_location": 1,
+                    }
+                ]
+            } ]
+        else:
+            channel_buffers = [ {
+                                "array_stride": 4,
+                                "step_mode": wgpu.VertexStepMode.instance,
+                                "attributes": [
+                                    {
+                                        "format": wgpu.VertexFormat.float32,
+                                        "offset": 0,
+                                        "shader_location": i+1,
+                                    }
+                                ]
+                            } for i in range(self._nchannels_input)]
+
         self._render_pipeline = \
             self._device.create_render_pipeline(
                 layout=self._pipeline_layout,
@@ -118,30 +166,9 @@ class SPH:
                                 }
                             ]
                         },
-                        {
-                            "array_stride": 4,
-                            "step_mode": wgpu.VertexStepMode.instance,
-                            "attributes": [
-                                {
-                                    "format": wgpu.VertexFormat.float32,
-                                    "offset": 0,
-                                    "shader_location": 1,
-                                }
-                            ]
-                        },
-                        {
-                            "array_stride": 4,
-                            "step_mode": wgpu.VertexStepMode.instance,
-                            "attributes": [
-                                {
-                                    "format": wgpu.VertexFormat.float32,
-                                    "offset": 0,
-                                    "shader_location": 2,
-                                }
-                            ]
-                        }
 
-                    ]
+
+                    ] + channel_buffers
                 },
                 primitive={
                     "topology": wgpu.PrimitiveTopology.triangle_list,
@@ -153,7 +180,7 @@ class SPH:
                     "entry_point": "fragment_main",
                     "targets": [
                         {
-                            "format": wgpu.TextureFormat.rg32float,
+                            "format": self.render_format,
                             "blend": {
                                 "color": {
                                     "src_factor": wgpu.BlendFactor.one,
@@ -208,6 +235,7 @@ class SPH:
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         transform_params["mass_scale"] = self._get_mass_scale()
+        # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
 
@@ -244,10 +272,17 @@ class SPH:
 
         sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer(),
                                           offset=start_particles*16)
-        sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
-                                          offset=start_particles*4)
-        sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer(),
-                                          offset=start_particles*4)
+        if self._nchannels_input == 2:
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
+                                              offset=start_particles*4)
+            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer(),
+                                              offset=start_particles*4)
+        elif self._nchannels_input == 3:
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer(),
+                                              offset=start_particles*12)
+        else:
+            raise ValueError("Unexpected number of channels")
+
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
         sph_render_pass.draw(6, num_particles_to_render, 0, 0)
         sph_render_pass.end()
@@ -314,3 +349,9 @@ class SPH:
 
         SPH._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
                                                            mag_filter=wgpu.FilterMode.linear, )
+
+class RGBSPH(SPH):
+    render_format = wgpu.TextureFormat.rgba32float
+    _nchannels_input = 3
+    _nchannels_output = 4
+    _output_dtype = np.float32

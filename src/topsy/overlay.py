@@ -11,11 +11,11 @@ if TYPE_CHECKING:
 
 class Overlay(metaclass=ABCMeta):
 
-    _blending = (
-                    wgpu.BlendFactor.src_alpha,
-                    wgpu.BlendFactor.one_minus_src_alpha,
-                    wgpu.BlendOperation.add,
-                 )
+    _blending = {
+        "src_factor": wgpu.BlendFactor.src_alpha,
+        "dst_factor": wgpu.BlendFactor.one_minus_src_alpha,
+        "operation": wgpu.BlendOperation.add
+    }
 
     MAX_INSTANCES = 128
     def __init__(self, visualizer: Visualizer, target_canvas_format=None):

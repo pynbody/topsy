@@ -35,6 +35,8 @@ def parse_args(args=None):
                            default=None, type=str)
     argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
                            default=False, action="store_true")
+    argparser.add_argument('--hdr', help="[Experimental] Enable HDR rendering", action="store_true")
+    argparser.add_argument('--rgb', help="[Experimental] Enable RGB->UVI rendering for stars", action="store_true")
 
     argparser.add_argument("--load-sphere", nargs=4, help="Load a sphere of particles with the given "
                                                           "radius and centre in simulation units, "
@@ -96,14 +98,16 @@ def main():
         vis = visualizer.Visualizer(data_loader_class=loader_class,
                                     data_loader_args=loader_args,
                                     colormap_name=args.colormap,
+                                    hdr=args.hdr,
                                     periodic_tiling=args.tile,
-                                    render_resolution=args.resolution)
+                                    render_resolution=args.resolution,
+                                    rgb=args.rgb)
 
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
-    from wgpu.gui import qt
-    qt.run()
+    from rendercanvas import qt
+    qt.loop.run()
 
 def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
     from . import visualizer, loader
@@ -114,8 +118,9 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
     return vis
 
 def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
-    from . import visualizer, loader
+    from . import visualizer, loader, drawreason
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
                                 **kwargs)
+    vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis

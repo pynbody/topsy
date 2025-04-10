@@ -1,7 +1,7 @@
-from wgpu.gui.jupyter import WgpuCanvas, call_later
+from rendercanvas.jupyter import RenderCanvas, loop
 from . import VisualizerCanvasBase
 
-class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
+class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def request_draw(self, function=None):
 
         # As a side effect, wgpu gui layer stores our function call, to enable it to be
@@ -17,7 +17,7 @@ class VisualizerCanvas(VisualizerCanvasBase, WgpuCanvas):
 
     @classmethod
     def call_later(cls, delay, fn, *args):
-        call_later(delay, fn, *args)
+        loop.call_later(delay, fn, *args)
 
 
 

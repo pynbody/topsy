@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
-from wgpu.gui.offscreen import WgpuManualOffscreenCanvas, call_later
+from rendercanvas.offscreen import OffscreenRenderCanvas, loop
 
 from . import VisualizerCanvasBase
 
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ..visualizer import Visualizer
 
-
-class VisualizerCanvas(VisualizerCanvasBase, WgpuManualOffscreenCanvas):
+class VisualizerCanvas(VisualizerCanvasBase, OffscreenRenderCanvas):
 
     @classmethod
     def call_later(cls, delay, fn, *args):
-        call_later(delay, fn, *args)
+        loop.call_later(delay, fn, *args)
 

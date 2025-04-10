@@ -8,6 +8,7 @@ import matplotlib
 
 from . import config
 
+from .drawreason import DrawReason
 from .util import load_shader, preprocess_shader
 
 from typing import TYPE_CHECKING
@@ -21,6 +22,9 @@ logger.setLevel(logging.INFO)
 
 
 class Colormap:
+    input_channels = 2
+    fragment_shader = "fragment_main"
+    percentile_scaling = [1.0, 99.9]
 
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._visualizer = visualizer
@@ -66,8 +70,7 @@ class Colormap:
 
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
-        cmap = matplotlib.colormaps[self._colormap_name]
-        rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
+        rgba = self._generate_mapping_rgba_f32(num_points)
 
         self._texture = self._device.create_texture(
             label="colormap_texture",
@@ -93,8 +96,13 @@ class Colormap:
             (num_points, 1, 1)
         )
 
+    def _generate_mapping_rgba_f32(self, num_points):
+        cmap = matplotlib.colormaps[self._colormap_name]
+        rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
+        return rgba
+
     def _setup_render_pipeline(self):
-        self._parameter_buffer = self._device.create_buffer(size =4 * 3,
+        self._parameter_buffer = self._device.create_buffer(size =4 * 4,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -182,7 +190,7 @@ class Colormap:
                 multisample=None,
                 fragment={
                     "module": self._shader,
-                    "entry_point": "fragment_main",
+                    "entry_point": self.fragment_shader,
                     "targets": [
                         {
                             "format": self._output_format,
@@ -222,12 +230,41 @@ class Colormap:
         colormap_render_pass.end()
 
 
+    def get_ui_range(self):
+        """Get a range for vmin->vmax suitable for user interface sliders"""
+        if not hasattr(self, "_vals_min"):
+            self.autorange_vmin_vmax()
+        if self.log_scale:
+            return self._log_vals_min, self._log_vals_max
+        else:
+            return self._vals_min, self._vals_max
+
+    @classmethod
+    def _finite_range(cls, values):
+        valid = np.isfinite(values)
+        valid_values = values[valid]
+        if len(valid_values) > 0:
+            return np.min(valid_values), np.max(valid_values)
+        else:
+            return np.nan, np.nan
+
     def autorange_vmin_vmax(self):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
         vals = self._visualizer.get_sph_image().ravel()
+
+        self._log_vals_min, self._log_vals_max = self._finite_range(np.log10(vals))
+        self._vals_min, self._vals_max = self._finite_range(vals)
+
+        if self._log_vals_max == self._log_vals_min:
+            self._log_vals_max += 1.0
+            self._log_vals_min -= 1.0
+
+        if self._vals_max == self._vals_min:
+            self._vals_max += 1.0
+            self._vals_min -= 1.0
 
         if (vals<0).any():
             self.log_scale = False
@@ -240,7 +277,7 @@ class Colormap:
 
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
-            self.vmin, self.vmax = np.percentile(vals, [1.0, 99.9])
+            self.vmin, self.vmax = np.percentile(vals, self.percentile_scaling)
         elif len(vals)>2:
             self.vmin, self.vmax = np.min(vals), np.max(vals)
         else:
@@ -249,11 +286,15 @@ class Colormap:
             logger.warning("Press 'r' in the window to try again")
             self.vmin, self.vmax = 0.0, 1.0
 
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+
 
     def _update_parameter_buffer(self, width, height):
         parameter_dtype = [("vmin", np.float32, (1,)),
                            ("vmax", np.float32, (1,)),
-                           ("window_aspect_ratio", np.float32, (1,))]
+                           ("window_aspect_ratio", np.float32, (1,)),
+                           ("gamma", np.float32, (1,))]
 
         parameters = np.zeros((), dtype=parameter_dtype)
         parameters["vmin"] = self.vmin
@@ -261,4 +302,77 @@ class Colormap:
 
 
         parameters["window_aspect_ratio"] = float(width)/height
+        parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
+
+class HDRColormap(Colormap):
+    input_channels = 2
+    fragment_shader = "fragment_main_mono"
+    percentile_scaling = [1.0, 90.0]
+
+class RGBColormap(Colormap):
+    input_channels = 3
+    fragment_shader = "fragment_main_tri"
+    max_percentile = 99.9
+    dynamic_range = 3.0
+
+    _pc2_to_sqarcsec = 2.3504430539466191e-09
+
+    def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
+        self._gamma = 1.0
+        super().__init__(visualizer, weighted_average)
+
+    @property
+    def gamma(self):
+        return self._gamma
+
+    @gamma.setter
+    def gamma(self, value):
+        self._gamma = value
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+
+    @property
+    def max_mag(self):
+        return -2.5 * (self.vmin + np.log10(self._pc2_to_sqarcsec))
+
+    @max_mag.setter
+    def max_mag(self, value):
+        self.vmin = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+
+    @property
+    def min_mag(self):
+        return -2.5 * (self.vmax + np.log10(self._pc2_to_sqarcsec))
+
+    @min_mag.setter
+    def min_mag(self, value):
+        self.vmax = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+
+    def autorange_vmin_vmax(self):
+        vals = self._visualizer.get_sph_image().ravel()
+
+        self.log_scale = True
+
+        if self.log_scale:
+            vals = np.log10(vals)
+
+        vals = vals[np.isfinite(vals)]
+        if len(vals) > 200:
+            self.vmax = np.percentile(vals, self.max_percentile)
+        elif len(vals)>2:
+            self.vmax = np.max(vals)
+        else:
+            logger.warning(
+                "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
+            logger.warning("Press 'r' in the window to try again")
+            self.vmax = 1.0
+
+        self.vmin = self.vmax - self.dynamic_range
+
+        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
+        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+
+class RGBHDRColormap(RGBColormap):
+    max_percentile = 90.0
+

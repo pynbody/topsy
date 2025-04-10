@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import matplotlib
+import matplotlib, matplotlib.backends.backend_agg
 import matplotlib.figure as figure
 import matplotlib.colors as colors
 import numpy as np

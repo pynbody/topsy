@@ -23,12 +23,12 @@ logger.setLevel(logging.INFO)
 
 
 class VisualizationRecorder:
-    _record_properties = ['colormap_name', 'quantity_name', 'log_scale', 'vmin', 'vmax', # NB ordering is important to prevent triggering auto-scaling
+    _record_properties = ['colormap_name', 'quantity_name', 'log_scale', 'vmin', 'vmax', 'gamma', # NB ordering is important to prevent triggering auto-scaling
                           'rotation_matrix', 'scale', 'position_offset']
     _record_interpolation_class_smoothed = [StepInterpolator, StepInterpolator, StepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator,
-                                   SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
-    _record_interpolation_class_unsmoothed = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
-                                   StepInterpolator, RotationInterpolator, LinearInterpolator, LinearInterpolator]
+                                            SmoothedStepInterpolator, SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
+    _record_interpolation_class_unsmoothed = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
+                                              StepInterpolator, RotationInterpolator, LinearInterpolator, LinearInterpolator]
 
 
     def __init__(self, visualizer: Visualizer):

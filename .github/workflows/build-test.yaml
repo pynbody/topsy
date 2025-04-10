@@ -33,7 +33,7 @@ jobs:
     - name: Run all tests
       working-directory: tests
       run: python -m pytest
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       if: always()
       with:
         name: Outputs from tests on Python ${{ matrix.python-version }}
