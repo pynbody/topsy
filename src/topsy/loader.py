@@ -99,6 +99,8 @@ class AbstractDataLoader(ABC):
 class PynbodyDataInMemory(AbstractDataLoader):
     """Base class for data loaders that use pynbody."""
 
+    _name_smooth_array = 'topsy_smooth'
+
     def __init__(self, device: wgpu.GPUDevice, snapshot: pynbody.snapshot.SimSnap):
         super().__init__(device)
 
@@ -111,7 +113,7 @@ class PynbodyDataInMemory(AbstractDataLoader):
         return self.snapshot['pos'].astype(np.float32)[self._random_order]
 
     def get_smooth(self):
-        return self.snapshot['smooth'].astype(np.float32)[self._random_order]
+        return self.snapshot[self._name_smooth_array].astype(np.float32)[self._random_order]
 
     def get_mass(self):
         return self.snapshot['mass'].astype(np.float32)[self._random_order]
@@ -208,23 +210,17 @@ class PynbodyDataLoader(PynbodyDataInMemory):
 
     def _perform_smoothing(self):
         try:
-            logger.info("Looking for cached smoothing/density data...")
+            logger.info("Looking for cached smoothing data...")
             smooth = pickle.load(open(self._smooth_cache_filename, 'rb'))
             if len(smooth) == len(self.snapshot):
-                self.snapshot['smooth'] = smooth
+                self.snapshot[self._name_smooth_array] = smooth
             else:
                 raise ValueError("Incorrect number of particles in cached smoothing data")
             logger.info("...success!")
-
-            rho = pickle.load(open(self._rho_cache_filename, 'rb'))
-            if len(rho) == len(self.snapshot):
-                self.snapshot['rho'] = rho
-            else:
-                raise ValueError("Incorrect number of particles in cached density data")
         except:
-            logger.info("Generating smoothing/density data - this can take a while but will be cached for future runs")
-            pickle.dump(self.snapshot['smooth'], open(self._smooth_cache_filename, 'wb'))
-            pickle.dump(self.snapshot['rho'], open(self._rho_cache_filename, 'wb'))
+            logger.info("Generating smoothing data - this can take a while but will be cached for future runs")
+            self.snapshot[self._name_smooth_array] = pynbody.sph.smooth(self.snapshot)
+            pickle.dump(self.snapshot[self._name_smooth_array], open(self._smooth_cache_filename, 'wb'))
 
 
 class TestDataLoader(AbstractDataLoader):
