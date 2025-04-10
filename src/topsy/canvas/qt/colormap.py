@@ -90,7 +90,10 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
     def _repr_value_to_scale_exponent(self, value: float) -> int:
         if value == 0.0:
             return 0
-        exponent = math.floor(math.log10(abs(value)))
+        try:
+            exponent = math.floor(math.log10(abs(value)))
+        except ValueError:
+            return 0
         if exponent < -2 or exponent > 2:
             return exponent
         else:
@@ -187,7 +190,7 @@ class ColorMapControls(MapControlsBase):
             self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
             if self._first_update:
                 self._quantity_menu.addItem(self._default_quantity_name)
-                self._quantity_menu.addItems(self._visualizer.data_loader.get_quantity_names())
+                self._quantity_menu.addItems(sorted(self._visualizer.data_loader.get_quantity_names()))
                 self._first_update = False
             self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
             self._quantity_menu.adjustSize()
