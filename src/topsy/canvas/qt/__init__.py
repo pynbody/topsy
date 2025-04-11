@@ -192,7 +192,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
             self._visualizer.stop_synchronizing()
         else:
             logger.info("Start synchronizing")
-            from .. import view_synchronizer
+            from ... import view_synchronizer
             synchronizer = view_synchronizer.ViewSynchronizer()
             for instance in self._all_instances:
                 synchronizer.add_view(instance._visualizer)
