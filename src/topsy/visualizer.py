@@ -83,7 +83,6 @@ class VisualizerBase:
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
-        self._render_timer = util.TimeGpuOperation(self.device)
 
         self.invalidate(DrawReason.INITIAL_UPDATE)
 
@@ -251,12 +250,8 @@ class VisualizerBase:
 
     def draw(self, reason, target_texture_view=None):
 
-
-        if reason == DrawReason.REFINE or reason == DrawReason.EXPORT:
-            self._sph.downsample_factor = 1
-
-        if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
-            self.render_sph()
+        if not self._prevent_sph_rendering:
+            self.render_sph(reason)
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -280,35 +275,17 @@ class VisualizerBase:
         if self._periodic_tiling:
             self._cube.encode_render_pass(command_encoder, target_texture_view)
 
-        if reason == DrawReason.REFINE:
-            self.display_status("Full-res render took {:.2f} s".format(self._render_timer.last_duration, timeout=0.1))
-
         if self.show_status:
             self._update_and_display_status(command_encoder, target_texture_view)
 
         self.device.queue.submit([command_encoder.finish()])
 
-
-
         if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
-            if self._sph.downsample_factor>1:
-                self._last_lores_draw_time = time.time()
-                self.canvas.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
-            elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
-                # this will affect the NEXT frame, not this one!
-                self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
+            if self._sph.needs_refine():
+                self.invalidate(DrawReason.REFINE)
 
-    def render_sph(self):
-        ce_label = "sph_render"
-        # labelling this is useful for understanding performance in macos instruments
-        if self._sph.downsample_factor > 1:
-            ce_label += f"_ds{self._sph.downsample_factor:d}"
-        else:
-            ce_label += "_fullres"
-        command_encoder: wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-        self._sph.encode_render_pass(command_encoder)
-        with self._render_timer:
-            self.device.queue.submit([command_encoder.finish()])
+    def render_sph(self, draw_reason = DrawReason.CHANGE):
+        self._sph.render(draw_reason)
 
     @property
     def vmin(self):
@@ -396,7 +373,7 @@ class VisualizerBase:
 
         elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
-            self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
+            self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
             if self._sph.downsample_factor > 1:
                 self._status.text += f", downsample={self._sph.downsample_factor:d}"
 

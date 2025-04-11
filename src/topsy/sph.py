@@ -6,7 +6,8 @@ import pynbody
 
 from logging import getLogger
 
-from .util import load_shader, preprocess_shader
+from .util import load_shader, preprocess_shader, TimeGpuOperation
+from .drawreason import DrawReason
 from . import config
 
 from typing import TYPE_CHECKING
@@ -35,9 +36,13 @@ class SPH:
             label="sph_render_texture",
         )
 
-        self._device = visualizer.device
+        self._device : wgpu.GPUDevice = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
+        self._render_timer = TimeGpuOperation(self._device)
+
+        self._recommended_num_particles_to_render = int(config.INITIAL_PARTICLES_TO_RENDER)
+        self._recommendation_based_on_num_particles = 0
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -246,43 +251,96 @@ class SPH:
         self.last_transform_params = transform_params
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
-        self.last_render_mass_scale = self.downsample_factor
 
-    def encode_render_pass(self, command_encoder):
+    def _render_block(self, start, number):
+        encoded_render_pass = self.encode_render_pass(start, number, clear=(start==0))
+        self._device.queue.submit([encoded_render_pass])
+
+    def render(self, draw_reason=DrawReason.CHANGE):
+
+        if draw_reason == DrawReason.PRESENTATION_CHANGE:
+            return
+
         self._update_transform_buffer()
+
+        if draw_reason == DrawReason.REFINE:
+            num_rendered = self.num_rendered
+        else:
+            num_rendered = 0
+
+        if draw_reason == DrawReason.EXPORT:
+            num_initial = len(self._visualizer.data_loader)
+        else:
+            num_initial = min(self._recommended_num_particles_to_render,
+                              len(self._visualizer.data_loader) - num_rendered)
+
+        with self._render_timer:
+            self._render_block(num_rendered, num_initial)
+            num_rendered += num_initial
+
+            time = self._render_timer.time_elapsed()
+
+            num_achievable = int(num_initial / (time * config.TARGET_FPS))
+
+            # update future recommendation if it differs substantially from the current one... although not
+            # if we are basing on a wild extrapolation
+            if (num_initial * 10 >= self._recommended_num_particles_to_render and
+                    abs(num_achievable - self._recommended_num_particles_to_render) > self._recommended_num_particles_to_render):
+                self._recommended_num_particles_to_render = num_achievable
+                self._recommendation_based_on_num_particles = num_initial
+
+            # now decide if we can render more right now:
+            if num_achievable > 1.5*num_initial:
+                if num_achievable + num_rendered > len(self._visualizer.data_loader):
+                    num_achievable = len(self._visualizer.data_loader) - num_rendered
+
+                if num_achievable > num_initial:
+                    self._render_block(num_rendered, num_achievable-num_initial)
+                    num_rendered += num_achievable - num_initial
+
+        self.num_rendered = num_rendered
+        self.last_render_mass_scale = len(self._visualizer.data_loader) / num_rendered
+        self.last_render_fps = 1.0/self._render_timer.running_mean_duration
+        self.downsample_factor = int(self.last_render_mass_scale)
+
+    def needs_refine(self):
+        return self.num_rendered < len(self._visualizer.data_loader)
+
+    def encode_render_pass(self, start_particle, num_particles_to_render, clear=True) -> wgpu.GPUCommandBuffer:
+        command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()
-        sph_render_pass = command_encoder.begin_render_pass(
+        sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
             color_attachments=[
                 {
                     "view": view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 0.0),
-                    "load_op": wgpu.LoadOp.clear,
+                    "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
                     "store_op": wgpu.StoreOp.store,
                 }
             ]
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-        num_particles_to_render = len(self._visualizer.data_loader)//self.downsample_factor
-        start_particles = num_particles_to_render * self.downsample_offset
 
-        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer(),
-                                          offset=start_particles*16)
+
+        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
         if self._nchannels_input == 2:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
-                                              offset=start_particles*4)
-            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer(),
-                                              offset=start_particles*4)
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
+            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer())
         elif self._nchannels_input == 3:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer(),
-                                              offset=start_particles*12)
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer())
         else:
             raise ValueError("Unexpected number of channels")
 
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
-        sph_render_pass.draw(6, num_particles_to_render, 0, 0)
+
+
+        sph_render_pass.draw(6, num_particles_to_render, 0, start_particle)
         sph_render_pass.end()
+
+        return command_encoder.finish()
+
 
 
     def _get_kernel_at_resolution(self, n_samples):
