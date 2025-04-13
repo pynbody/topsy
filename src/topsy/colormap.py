@@ -324,7 +324,7 @@ class RGBColormap(Colormap):
     _pc2_to_sqarcsec = 2.3504430539466191e-09
 
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
-        self._gamma = 1.0
+        self._gamma = 3.0
         super().__init__(visualizer, weighted_average)
 
     @property
@@ -379,5 +379,6 @@ class RGBColormap(Colormap):
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
 class RGBHDRColormap(RGBColormap):
-    max_percentile = 90.0
+    max_percentile = 99.0
+    dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
