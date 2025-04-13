@@ -158,8 +158,7 @@ There is also a toolbar at the bottom of the window with some buttons:
   - save a snapshot of the current view to an image file.
 * <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/linked.png?raw=true" style="width: 1em;">
   - link this window to other topsy windows, so that rotating, scaling or moving one does the same to the other
-* A colormap control pane pops up when you click 'color'; this lets you select the min/max values, the quantity to visualise, 
-and the matplotlib colormap. (When in RGB mode, you just get to set the surface brightness range and a gamma value.) 
+* <img src="https://github.com/pynbody/topsy/blob/b516b3e15aeefcc78ecb4d8b52009f6243da7020/src/topsy/canvas/qt/icons/rgb.png?raw=true" style="width: 1em;"> - open colormap control; this lets you select the min/max values, the quantity to visualise, and the matplotlib colormap. (When in RGB / SSP mode, you just get to set the surface brightness range and a gamma value.) 
 
 Using from jupyter
 ------------------
