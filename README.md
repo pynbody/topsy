@@ -130,8 +130,8 @@ flag `--rgb`, e.g.
 topsy -c halo-1 -p s --rgb my_simulation 
 ```
 
-Even better, if you have an HDR display (e.g. recent Macbook Pros), you can use the `--hdr` flag to render in HDR mode. 
-When surface brightnesses exceed the apparent 'maximum', in HDR mode these will continue to 
+Even better, if you have an HDR display (e.g. recent Macbook Pros), you can use the `--hdr` flag to render in HDR mode.  
+Note in HDR mode that the magnitude range specified applies to the SDR range, i.e. HDR brightnesses extend beyond the specified maximum surface brightness limit. The exact brightest magntiude that can be displayed will depend on your display hardware.
 
 
 Controls in the main window
