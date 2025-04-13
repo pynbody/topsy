@@ -8,6 +8,8 @@ from logging import getLogger
 
 from .util import load_shader, preprocess_shader, TimeGpuOperation
 from .drawreason import DrawReason
+from .progressive_render import RenderProgression
+
 from . import config
 
 from typing import TYPE_CHECKING
@@ -39,10 +41,9 @@ class SPH:
         self._device : wgpu.GPUDevice = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
-        self._render_timer = TimeGpuOperation(self._device)
 
-        self._recommended_num_particles_to_render = int(config.INITIAL_PARTICLES_TO_RENDER)
-        self._recommendation_based_on_num_particles = 0
+        self._render_timer = TimeGpuOperation(self._device)
+        self._render_progression = RenderProgression(len(self._visualizer.data_loader))
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -263,6 +264,19 @@ class SPH:
 
         self._update_transform_buffer()
 
+        self._render_progression.start_frame(draw_reason)
+
+        with self._render_timer:
+            while (block := self._render_progression.get_block(self._render_timer.time_elapsed())) is not None:
+                self._render_block(*block)
+                self._render_progression.end_block(self._render_timer.time_elapsed())
+
+        self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
+        self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+
+
+        """
+
         if draw_reason == DrawReason.REFINE:
             num_rendered = self.num_rendered
         else:
@@ -302,9 +316,10 @@ class SPH:
         self.last_render_mass_scale = len(self._visualizer.data_loader) / num_rendered
         self.last_render_fps = 1.0/self._render_timer.running_mean_duration
         self.downsample_factor = int(self.last_render_mass_scale)
+        """
 
     def needs_refine(self):
-        return self.num_rendered < len(self._visualizer.data_loader)
+        return self._render_progression.needs_refine()
 
     def encode_render_pass(self, start_particle, num_particles_to_render, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
