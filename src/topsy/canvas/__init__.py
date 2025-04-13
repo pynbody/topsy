@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import rendercanvas.jupyter, rendercanvas.auto
+import time
+import copy
+
+from .. import config
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -94,7 +98,58 @@ class VisualizerCanvasBase:
         self.pixel_ratio = pixel_ratio
 
     def double_click(self, x, y):
-        pass
+        original_position = copy.copy(self._visualizer.position_offset)
+
+        biggest_dimension = max(self.width_physical, self.height_physical)
+
+
+        centre_physical_x = self.width_physical / (2*self.pixel_ratio)
+        centre_physical_y = self.height_physical / (2*self.pixel_ratio)
+
+        xy_displacement = 2. * self.pixel_ratio * np.array([centre_physical_x-x,
+                                                            y-centre_physical_y,
+                                                            0], dtype=np.float32) / biggest_dimension * self._visualizer.scale
+
+
+        self._visualizer.position_offset += self._visualizer.rotation_matrix.T @ xy_displacement
+
+
+        depth_im = self._visualizer.get_depth_image()
+        central_depth = depth_im[depth_im.shape[0]//2, depth_im.shape[1]//2]
+
+        if ~np.isnan(central_depth):
+            z_displacement = np.array([0, 0, -central_depth], dtype=np.float32)
+            self._visualizer.position_offset += self._visualizer.rotation_matrix.T @ z_displacement
+
+        final_position = self._visualizer.position_offset
+
+        # the actual work is done - now animate it so it looks understandable
+        self._visualizer.position_offset = original_position
+
+        #def interpolate_position(t):
+        #    return original_position + (final_position - original_position) * t
+
+        def interpolate_position(t):
+            t2 = t * t
+            t3 = t2 * t
+            h00 = 2 * t3 - 3 * t2 + 1
+            h01 = -2 * t3 + 3 * t2
+            return h00 * original_position + h01 * final_position
+
+        start = time.time()
+
+        def glide():
+            t = (time.time()-start)/config.GLIDE_TIME
+            if t>1:
+                self._visualizer.position_offset = final_position
+            else:
+                self.call_later(0.0, glide)
+                self._visualizer.position_offset = interpolate_position(t)
+
+
+
+        self.call_later(1. / config.TARGET_FPS, glide)
+
 
     @classmethod
     def call_later(cls, delay, fn, *args):

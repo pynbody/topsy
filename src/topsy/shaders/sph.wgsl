@@ -79,6 +79,10 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     output.texcoord = texCoords[input.vertexIndex];
     [[WEIGHTED]] output.weight = input.mass/(smooth_length*smooth_length);
     [[WEIGHTED]] output.quantity = input.quantity;
+
+    // [[DEPTH]] output.weight *= pow(input.mass/(smooth_length*smooth_length*smooth_length), 3.0); // local density weight
+    [[DEPTH]] output.quantity = output.pos.z;
+
     [[CHANNELED]] output.channel_weights = vec4<f32>(input.rgb_mass,0) /(smooth_length*smooth_length);
 
     return output;
