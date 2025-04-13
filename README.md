@@ -139,9 +139,9 @@ Controls in the main window
 
 The view in the `topsy` window can be manipulated as follows:
 
-* To spin around the centre, drag the mouse.
-* To zoom in and out, use the mouse scroll wheel.
-* To move the centre, hold shift while dragging the mouse.
+* To spin around the centre, **drag** the mouse.
+* To zoom in and out, use the mouse **scroll** wheel.
+* To move the centre, **double click** on a target (topsy will determine its depth), or **shift-drag** to move in x-y plane.
 * To rescale the colours to an appropriate range for the current view, press `r`(ange)
 * To return the view to the original orientation and zoom, press `h`(ome)
 
