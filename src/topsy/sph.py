@@ -274,50 +274,6 @@ class SPH:
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
 
-
-        """
-
-        if draw_reason == DrawReason.REFINE:
-            num_rendered = self.num_rendered
-        else:
-            num_rendered = 0
-
-        if draw_reason == DrawReason.EXPORT:
-            num_initial = len(self._visualizer.data_loader)
-        else:
-            num_initial = min(self._recommended_num_particles_to_render,
-                              len(self._visualizer.data_loader) - num_rendered)
-
-        with self._render_timer:
-            self._render_block(num_rendered, num_initial)
-            num_rendered += num_initial
-
-            time = self._render_timer.time_elapsed()
-
-            num_achievable = int(num_initial / (time * config.TARGET_FPS))
-
-            # update future recommendation if it differs substantially from the current one... although not
-            # if we are basing on a wild extrapolation
-            if (num_initial * 10 >= self._recommended_num_particles_to_render and
-                    abs(num_achievable - self._recommended_num_particles_to_render) > self._recommended_num_particles_to_render):
-                self._recommended_num_particles_to_render = num_achievable
-                self._recommendation_based_on_num_particles = num_initial
-
-            # now decide if we can render more right now:
-            if num_achievable > 1.5*num_initial:
-                if num_achievable + num_rendered > len(self._visualizer.data_loader):
-                    num_achievable = len(self._visualizer.data_loader) - num_rendered
-
-                if num_achievable > num_initial:
-                    self._render_block(num_rendered, num_achievable-num_initial)
-                    num_rendered += num_achievable - num_initial
-
-        self.num_rendered = num_rendered
-        self.last_render_mass_scale = len(self._visualizer.data_loader) / num_rendered
-        self.last_render_fps = 1.0/self._render_timer.running_mean_duration
-        self.downsample_factor = int(self.last_render_mass_scale)
-        """
-
     def needs_refine(self):
         return self._render_progression.needs_refine()
 

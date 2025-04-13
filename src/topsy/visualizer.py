@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from . import config
 from . import canvas
 from . import colormap
-from . import multiresolution_sph, sph, periodic_sph
+from . import sph, periodic_sph
 from . import colorbar
 from . import text
 from . import scalebar
@@ -68,8 +68,6 @@ class VisualizerBase:
 
         self._reinitialize_colormap_and_bar(0.0, 1.0, True)
 
-        #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
-
         self._last_status_update = 0.0
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
 
@@ -83,7 +81,7 @@ class VisualizerBase:
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
-
+        self.reset_view()
         self.invalidate(DrawReason.INITIAL_UPDATE)
 
     def _setup_wgpu(self):
@@ -153,7 +151,11 @@ class VisualizerBase:
 
     def reset_view(self):
         self._sph.rotation_matrix = np.eye(3)
-        self.scale = config.DEFAULT_SCALE
+        period_scale = self.data_loader.get_periodicity_scale()
+        if period_scale is not None:
+            self.scale = period_scale / 2
+        else:
+            self.scale = config.DEFAULT_SCALE
         self._sph.position_offset = np.zeros(3)
 
     @property
