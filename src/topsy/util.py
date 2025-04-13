@@ -42,15 +42,26 @@ def is_ipython_running_qt_event_loop():
 def determine_backend():
     if is_inside_ipython():
         pass
+
 class TimeGpuOperation:
     """Context manager for timing GPU operations"""
     def __init__(self, device, n_frames_smooth=10):
         self.device = device
+        self.dummy_buffer = self.device.create_buffer(
+            size=16,
+            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
+        )
         self.n_frames_smooth = n_frames_smooth
         self._recent_times = []
+
     def __enter__(self):
         self.start = time.time()
         return self
+
+    def time_elapsed(self):
+        self.device.queue.read_buffer(self.dummy_buffer, 0) # force sync
+        end = time.time()
+        return end - self.start
 
     def __exit__(self, *args):
         # Now, we want to measure how much time the render has taken so that we can adapt
@@ -59,18 +70,12 @@ class TimeGpuOperation:
         # right now these don't seem to be implemented. So we need to make something block
         # until the current queue is complete. The hack here is to do a trivial read
         # operation
-        dummy_buffer = self.device.create_buffer(
-            size=16,
-            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
-        )
-        self.device.queue.read_buffer(dummy_buffer, 0)
-        end = time.time()
 
-        self.end = time.time()
-        self.last_duration = self.end - self.start
+        self.last_duration = self.time_elapsed()
         self._recent_times.append(self.last_duration)
         if len(self._recent_times) > self.n_frames_smooth:
             self._recent_times.pop(0)
+
     @property
     def running_mean_duration(self):
         return np.mean(self._recent_times)

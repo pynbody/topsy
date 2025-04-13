@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from topsy.drawreason import DrawReason
+
 from . import sph
 from . import overlay
 
@@ -69,11 +71,19 @@ class PeriodicSPH(sph.SPH):
     def get_output_texture(self) -> wgpu.Texture:
         return self._periodic_texture
 
-    def encode_render_pass(self, command_encoder):
-        super().encode_render_pass(command_encoder)
+    def render(self, draw_reason=DrawReason.CHANGE):
+        if draw_reason == DrawReason.PRESENTATION_CHANGE:
+            return
+
+        super().render(draw_reason)
+
+        command_encoder = self._visualizer.device.create_command_encoder(label="PeriodicSPH")
         self._accumulator.num_repetitions = 2
         self._accumulator.rotation_matrix = self.rotation_matrix
-        self._accumulator.panel_scale = self._visualizer.periodicity_scale/self._visualizer.scale
+        self._accumulator.panel_scale = self._visualizer.periodicity_scale / self._visualizer.scale
 
         self._accumulator.encode_render_pass(command_encoder, self._periodic_texture.create_view(), True)
+
+        encoded_render_pass = command_encoder.finish()
+        self._device.queue.submit([encoded_render_pass])
 

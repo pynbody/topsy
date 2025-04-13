@@ -20,6 +20,7 @@ def folder():
 @pytest.fixture
 def vis():
     vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas)
+    vis.scale = 200.0
     return vis
 
 
@@ -58,6 +59,7 @@ def test_particle_pos_smooth(vis):
 
 
 def test_sph_output(vis, folder):
+    vis.render_sph(DrawReason.EXPORT)
     result = vis.get_sph_image()
     assert result.shape == (200,200)
     np.save(folder / "test.npy", result) # for debugging
@@ -99,13 +101,45 @@ def test_sph_output(vis, folder):
     assert abs((test/expect).mean()-1.0)<0.0015
     assert (test/expect).std() < 0.015
 
-def test_periodic_sph_output(vis):
+def test_periodic_sph_output(vis, folder):
     vis2 = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, periodic_tiling=True)
+    vis2.scale = 200.0
+    vis2.render_sph(DrawReason.EXPORT)
     result = vis2.get_sph_image()
-    result_untiled = vis.get_sph_image()
-    assert result.std() > 3*result_untiled.std()
+
+    np.save(folder / "test_periodic.npy", result)
+
+    expect = np.array([8.9322626e-08, 3.1703462e-10, 9.2687735e-10, 1.1192928e-09,
+       3.1655625e-10, 8.9333170e-08, 3.2010358e-10, 9.2814262e-10,
+       1.1169485e-09, 3.1108691e-10, 3.2055755e-10, 1.6879378e-10,
+       2.5913338e-10, 2.5908647e-10, 1.7273429e-10, 3.3135905e-10,
+       1.7230860e-10, 2.6059924e-10, 2.5635122e-10, 1.6636349e-10,
+       1.3825600e-09, 2.7530075e-10, 6.2645300e-10, 6.9163519e-10,
+       2.8291827e-10, 1.3944854e-09, 2.7912050e-10, 6.2802880e-10,
+       6.8869560e-10, 2.7608971e-10, 8.7882529e-10, 2.4545646e-10,
+       5.1961285e-10, 5.8564026e-10, 2.4835095e-10, 8.9120167e-10,
+       2.4955563e-10, 5.2136878e-10, 5.8244543e-10, 2.4107497e-10,
+       3.5990838e-10, 1.8307128e-10, 2.9074523e-10, 2.9106720e-10,
+       1.8820685e-10, 3.7185485e-10, 1.8720442e-10, 2.9251249e-10,
+       2.8785399e-10, 1.8088944e-10, 8.9335380e-08, 3.3031011e-10,
+       9.4112340e-10, 1.1338572e-09, 3.3094341e-10, 8.9348021e-08,
+       3.3437902e-10, 9.4284891e-10, 1.1307086e-09, 3.2375427e-10,
+       3.2530026e-10, 1.7408402e-10, 2.6467059e-10, 2.6495947e-10,
+       1.7861751e-10, 3.3720080e-10, 1.7819340e-10, 2.6643898e-10,
+       2.6174474e-10, 1.7130720e-10, 1.3846500e-09, 2.7765840e-10,
+       6.2892319e-10, 6.9430756e-10, 2.8559652e-10, 1.3971296e-09,
+       2.8180488e-10, 6.3067879e-10, 6.9111544e-10, 2.7830191e-10,
+       8.7712987e-10, 2.4356558e-10, 5.1764731e-10, 5.8348204e-10,
+       2.4619712e-10, 8.8906421e-10, 2.4739205e-10, 5.1924093e-10,
+       5.8052546e-10, 2.3932253e-10, 3.5584827e-10, 1.7859708e-10,
+       2.8607963e-10, 2.8608999e-10, 1.8324889e-10, 3.6689662e-10,
+       1.8223464e-10, 2.8758435e-10, 2.8330593e-10, 1.7673871e-10],
+      dtype=np.float32)
+
+    npt.assert_allclose(result[::20,::20].flatten(), expect, rtol=1e-1)
 
 def test_rotated_sph_output(vis):
+    vis.draw(reason=DrawReason.EXPORT)
     unrotated_output = vis.get_sph_image()
     vis.rotation_matrix = np.array([[0.0, 1.0, 0.0],
                                     [-1.0, 0.0, 0.0],

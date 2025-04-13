@@ -211,8 +211,8 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder, target_texture_view):
-        self._update_parameter_buffer(target_texture_view.size[0], target_texture_view.size[1])
+    def encode_render_pass(self, command_encoder, target_texture_view, value_scale):
+        self._update_parameter_buffer(target_texture_view.size[0], target_texture_view.size[1], value_scale)
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
@@ -290,7 +290,7 @@ class Colormap:
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
 
-    def _update_parameter_buffer(self, width, height):
+    def _update_parameter_buffer(self, width, height, mass_scale):
         parameter_dtype = [("vmin", np.float32, (1,)),
                            ("vmax", np.float32, (1,)),
                            ("window_aspect_ratio", np.float32, (1,)),
@@ -299,7 +299,12 @@ class Colormap:
         parameters = np.zeros((), dtype=parameter_dtype)
         parameters["vmin"] = self.vmin
         parameters["vmax"] = self.vmax
-
+        if self.log_scale:
+            parameters["vmin"] -= np.log10(mass_scale)
+            parameters["vmax"] -= np.log10(mass_scale)
+        else:
+            parameters["vmin"] /= mass_scale
+            parameters["vmax"] /= mass_scale
 
         parameters["window_aspect_ratio"] = float(width)/height
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
@@ -319,7 +324,7 @@ class RGBColormap(Colormap):
     _pc2_to_sqarcsec = 2.3504430539466191e-09
 
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
-        self._gamma = 1.0
+        self._gamma = 3.0
         super().__init__(visualizer, weighted_average)
 
     @property
@@ -374,5 +379,6 @@ class RGBColormap(Colormap):
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
 class RGBHDRColormap(RGBColormap):
-    max_percentile = 90.0
+    max_percentile = 99.0
+    dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 

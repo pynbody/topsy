@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from . import config
 from . import canvas
 from . import colormap
-from . import multiresolution_sph, sph, periodic_sph
+from . import sph, periodic_sph
 from . import colorbar
 from . import text
 from . import scalebar
@@ -68,8 +68,6 @@ class VisualizerBase:
 
         self._reinitialize_colormap_and_bar(0.0, 1.0, True)
 
-        #self._sph = multiresolution_sph.MultiresolutionSPH(self, self.render_texture)
-
         self._last_status_update = 0.0
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
 
@@ -83,8 +81,7 @@ class VisualizerBase:
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
-        self._render_timer = util.TimeGpuOperation(self.device)
-
+        self.reset_view()
         self.invalidate(DrawReason.INITIAL_UPDATE)
 
     def _setup_wgpu(self):
@@ -154,7 +151,11 @@ class VisualizerBase:
 
     def reset_view(self):
         self._sph.rotation_matrix = np.eye(3)
-        self.scale = config.DEFAULT_SCALE
+        period_scale = self.data_loader.get_periodicity_scale()
+        if period_scale is not None:
+            self.scale = period_scale / 2
+        else:
+            self.scale = config.DEFAULT_SCALE
         self._sph.position_offset = np.zeros(3)
 
     @property
@@ -251,12 +252,8 @@ class VisualizerBase:
 
     def draw(self, reason, target_texture_view=None):
 
-
-        if reason == DrawReason.REFINE or reason == DrawReason.EXPORT:
-            self._sph.downsample_factor = 1
-
-        if reason!=DrawReason.PRESENTATION_CHANGE and (not self._prevent_sph_rendering):
-            self.render_sph()
+        if not self._prevent_sph_rendering:
+            self.render_sph(reason)
 
         if not self.vmin_vmax_is_set:
             logger.info("Setting vmin/vmax")
@@ -269,8 +266,8 @@ class VisualizerBase:
         if target_texture_view is None:
             target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
 
-
-        self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        color_prescale = self._sph.last_render_mass_scale if not self.averaging else 1.0
+        self._colormap.encode_render_pass(command_encoder, target_texture_view, color_prescale)
         if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
@@ -280,35 +277,17 @@ class VisualizerBase:
         if self._periodic_tiling:
             self._cube.encode_render_pass(command_encoder, target_texture_view)
 
-        if reason == DrawReason.REFINE:
-            self.display_status("Full-res render took {:.2f} s".format(self._render_timer.last_duration, timeout=0.1))
-
         if self.show_status:
             self._update_and_display_status(command_encoder, target_texture_view)
 
         self.device.queue.submit([command_encoder.finish()])
 
-
-
         if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
-            if self._sph.downsample_factor>1:
-                self._last_lores_draw_time = time.time()
-                self.canvas.call_later(config.FULL_RESOLUTION_RENDER_AFTER, self._check_whether_inactive)
-            elif self._render_timer.last_duration>1/config.TARGET_FPS and self._sph.downsample_factor==1:
-                # this will affect the NEXT frame, not this one!
-                self._sph.downsample_factor = int(np.floor(float(config.TARGET_FPS)*self._render_timer.last_duration))
+            if self._sph.needs_refine():
+                self.invalidate(DrawReason.REFINE)
 
-    def render_sph(self):
-        ce_label = "sph_render"
-        # labelling this is useful for understanding performance in macos instruments
-        if self._sph.downsample_factor > 1:
-            ce_label += f"_ds{self._sph.downsample_factor:d}"
-        else:
-            ce_label += "_fullres"
-        command_encoder: wgpu.GPUCommandEncoder = self.device.create_command_encoder(label=ce_label)
-        self._sph.encode_render_pass(command_encoder)
-        with self._render_timer:
-            self.device.queue.submit([command_encoder.finish()])
+    def render_sph(self, draw_reason = DrawReason.CHANGE):
+        self._sph.render(draw_reason)
 
     @property
     def vmin(self):
@@ -396,7 +375,7 @@ class VisualizerBase:
 
         elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
-            self._status.text = f"${1.0 / self._render_timer.running_mean_duration:.0f}$ fps"
+            self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
             if self._sph.downsample_factor > 1:
                 self._status.text += f", downsample={self._sph.downsample_factor:d}"
 
@@ -415,11 +394,11 @@ class VisualizerBase:
         np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
 
         if nchannels == 4:
-            np_im = np_im[:,:,:3]
+            np_im = np_im[:,:,:3] * self._sph.last_render_mass_scale
         elif self.averaging:
             np_im = np_im[:,:,1]/np_im[:,:,0]
         else:
-            np_im = np_im[:,:,0]
+            np_im = np_im[:,:,0] * self._sph.last_render_mass_scale
 
         return np_im
 

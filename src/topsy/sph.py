@@ -6,7 +6,10 @@ import pynbody
 
 from logging import getLogger
 
-from .util import load_shader, preprocess_shader
+from .util import load_shader, preprocess_shader, TimeGpuOperation
+from .drawreason import DrawReason
+from .progressive_render import RenderProgression
+
 from . import config
 
 from typing import TYPE_CHECKING
@@ -35,9 +38,12 @@ class SPH:
             label="sph_render_texture",
         )
 
-        self._device = visualizer.device
+        self._device : wgpu.GPUDevice = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
+
+        self._render_timer = TimeGpuOperation(self._device)
+        self._render_progression = RenderProgression(len(self._visualizer.data_loader))
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -198,9 +204,6 @@ class SPH:
                 }
             )
 
-    def _get_mass_scale(self):
-        return getattr(self, "mass_scale", np.float32(self.downsample_factor))
-
     def _update_transform_buffer(self):
         model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
                                    [0, 1.0, 0, self.position_offset[1]],
@@ -228,13 +231,12 @@ class SPH:
                                   ("min_max_size", np.float32, (2,)),
                                   ("downsample_factor", np.uint32, (1,)),
                                   ("downsample_offset", np.uint32, (1,)),
-                                  ("mass_scale", np.float32, (1,)),
                                   ("boxsize_by_2_clipspace", np.float32, (1,)),
                                   ("padding", np.int32, (1,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        transform_params["mass_scale"] = self._get_mass_scale()
+        # transform_params["mass_scale"] = self._get_mass_scale()
         # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
@@ -251,41 +253,65 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-    def encode_render_pass(self, command_encoder):
+    def _render_block(self, start, number):
+        encoded_render_pass = self.encode_render_pass(start, number, clear=(start==0))
+        self._device.queue.submit([encoded_render_pass])
+
+    def render(self, draw_reason=DrawReason.CHANGE):
+
+        if draw_reason == DrawReason.PRESENTATION_CHANGE:
+            return
+
         self._update_transform_buffer()
+
+        self._render_progression.start_frame(draw_reason)
+
+        with self._render_timer:
+            while (block := self._render_progression.get_block(self._render_timer.time_elapsed())) is not None:
+                self._render_block(*block)
+                self._render_progression.end_block(self._render_timer.time_elapsed())
+
+        self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
+        self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+
+    def needs_refine(self):
+        return self._render_progression.needs_refine()
+
+    def encode_render_pass(self, start_particle, num_particles_to_render, clear=True) -> wgpu.GPUCommandBuffer:
+        command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()
-        sph_render_pass = command_encoder.begin_render_pass(
+        sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
             color_attachments=[
                 {
                     "view": view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 0.0),
-                    "load_op": wgpu.LoadOp.clear,
+                    "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
                     "store_op": wgpu.StoreOp.store,
                 }
             ]
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-        num_particles_to_render = len(self._visualizer.data_loader)//self.downsample_factor
-        start_particles = num_particles_to_render * self.downsample_offset
 
-        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer(),
-                                          offset=start_particles*16)
+
+        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
         if self._nchannels_input == 2:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer(),
-                                              offset=start_particles*4)
-            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer(),
-                                              offset=start_particles*4)
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
+            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer())
         elif self._nchannels_input == 3:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer(),
-                                              offset=start_particles*12)
+            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer())
         else:
             raise ValueError("Unexpected number of channels")
 
         sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
-        sph_render_pass.draw(6, num_particles_to_render, 0, 0)
+
+
+        sph_render_pass.draw(6, num_particles_to_render, 0, start_particle)
         sph_render_pass.end()
+
+        return command_encoder.finish()
+
 
 
     def _get_kernel_at_resolution(self, n_samples):

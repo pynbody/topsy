@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.3.6"
+__version__ = "0.4.0"
 
 import argparse
 import logging
@@ -38,11 +38,13 @@ def parse_args(args=None):
     argparser.add_argument('--hdr', help="[Experimental] Enable HDR rendering", action="store_true")
     argparser.add_argument('--rgb', help="[Experimental] Enable RGB->UVI rendering for stars", action="store_true")
 
-    argparser.add_argument("--load-sphere", nargs=4, help="Load a sphere of particles with the given "
-                                                          "radius and centre in simulation units, "
-                                                          "e.g. --load-sphere 0.2 0.3 0.4 0.5 to load a sphere of "
-                                                          "particles centre (0.3, 0.4, 0.5), radius 0.2. " 
-                                                          "Supported only for swift simulations",
+    argparser.add_argument("--load-sphere", nargs='+', help="Load a sphere of particles with the given "
+                                                          "radius and, optionally, centre in simulation units. "
+                                                          "e.g. --load-sphere 5.0 to load a sphere of radius 5.0 about"
+                                                          "the centre of the simulation, or 5.0 3.0 1.0 2.0 to load a "
+                                                          "sphere of radius 5.0 about the point (3.0, 1.0, 2.0)."
+                                                          "Supported only for swift simulations. Units are simulation units.",
+                            metavar=("_"),
                             default=None, type=float)
 
     if args is None:
@@ -54,10 +56,16 @@ def parse_args(args=None):
             split_index = args.index("+")
         except ValueError:
             split_index = len(args)
-        arg_batches.append(args[:split_index])
+
+        this_args = argparser.parse_args(args[:split_index])
+
+        if this_args.load_sphere is not None and len(this_args.load_sphere) != 1 and len(this_args.load_sphere) != 4:
+                argparser.error("Invalid number of arguments for --load-sphere. Must be 1 or 4.")
+        arg_batches.append(this_args)
         args = args[split_index+1:]
 
-    return [argparser.parse_args(batch) for batch in arg_batches]
+
+    return arg_batches
 
 def setup_logging():
     global logger
@@ -89,8 +97,16 @@ def main():
             import pynbody
             loader_class = loader.PynbodyDataLoader
             if args.load_sphere is not None:
-                loader_args = (args.filename, args.center, args.particle,
-                               pynbody.filt.Sphere(args.load_sphere[0], args.load_sphere[1:]))
+                match args.load_sphere:
+                    case (r,):
+                        loader_args = (args.filename, args.center, args.particle, pynbody.filt.Sphere(r))
+                    case (r, x, y, z):
+                        loader_args = (args.filename, args.center, args.particle,
+                                       pynbody.filt.Sphere(r, (x, y, z)))
+                    case _:
+                        argparser.error("Invalid number of arguments for --load-sphere. Must be 1 or 4.")
+
+
             else:
                 loader_args = (args.filename, args.center, args.particle)
 

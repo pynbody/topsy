@@ -10,14 +10,13 @@ This package visualises simulations, and is an add-on to the [pynbody](https://g
 Its name nods to the [TIPSY](https://github.com/N-BodyShop/tipsy) project.
 It is built using [wgpu](https://wgpu.rs), which is a future-facing GPU standard (with thanks to the [python wgpu bindings](https://wgpu-py.readthedocs.io/en/stable/guide.html)).
 
-At the moment, `topsy` is a bit of a toy project, but it already works quite well with zoom 
-(or low resolution) simulations. The future development path will depend on the level
+At the moment, `topsy` is a bit of a toy project, but it already works quite well. The future development path will depend on the level
 of interest from the community.
 
 Installing
 ----------
 
-You will need python 3.10 or later, running in a UNIX variant (basically MacOS, Linux or if you're on Windows you need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)). You can then install `topsy` using `pip` 
+You will need python 3.11 or later, running in a UNIX variant (basically MacOS, Linux or if you're on Windows you need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)). You can then install `topsy` using `pip` 
 as usual:
 
 ```
@@ -25,7 +24,7 @@ pip install topsy
 ```
 
 This will install topsy and its dependencies (including `pynbody` itself) into
-your current python environment. (If it fails, check that you have python 3.10
+your current python environment. (If it fails, check that you have python 3.11
 or later, and `pip` is itself up-to-date using `pip install -U pip`.)
 
 ### Alternative 1: install into isolated environment using pipx
@@ -121,6 +120,20 @@ topsy -c halo-1 -p gas my_simulation + -c halo-1 -p dm my_simulation
 
 You can choose to link the rotation/zoom of multiple views using the toolbar (see below).
 
+Using SSPs
+----------
+
+If you have stars in your simulation, you can try rendering using pynbody's SSP tables, using the command-line
+flag `--rgb`, e.g.
+
+```
+topsy -c halo-1 -p s --rgb my_simulation 
+```
+
+Even better, if you have an HDR display (e.g. recent Macbook Pros), you can use the `--hdr` flag to render in HDR mode. 
+When surface brightnesses exceed the apparent 'maximum', in HDR mode these will continue to 
+
+
 Controls in the main window
 ---------------------------
 
@@ -145,7 +158,8 @@ There is also a toolbar at the bottom of the window with some buttons:
   - save a snapshot of the current view to an image file.
 * <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/linked.png?raw=true" style="width: 1em;">
   - link this window to other topsy windows, so that rotating, scaling or moving one does the same to the other
-* A dropdown menu is provided for choosing a colormap, and an editable dropdown for choosing what quantity to visualise. You can type in any `pynbody`-derivable quantity.
+* A colormap control pane pops up when you click 'color'; this lets you select the min/max values, the quantity to visualise, 
+and the matplotlib colormap. (When in RGB mode, you just get to set the surface brightness range and a gamma value.) 
 
 Using from jupyter
 ------------------
