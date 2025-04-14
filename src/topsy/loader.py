@@ -99,7 +99,7 @@ class AbstractDataLoader(ABC):
 class PynbodyDataInMemory(AbstractDataLoader):
     """Base class for data loaders that use pynbody."""
 
-    _name_smooth_array = 'topsy_smooth'
+    _name_smooth_array = 'smooth'
 
     def __init__(self, device: wgpu.GPUDevice, snapshot: pynbody.snapshot.SimSnap):
         super().__init__(device)
@@ -159,6 +159,8 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
 class PynbodyDataLoader(PynbodyDataInMemory):
     """Literal data loader for pynbody (starts from just a filename)"""
+
+    _name_smooth_array = 'topsy_smooth'
 
     def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str,
                  take_region: Optional[pynbody.filt.Filter] = None):
