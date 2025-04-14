@@ -376,8 +376,9 @@ class VisualizerBase:
         elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
             self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
-            if self._sph.downsample_factor > 1:
-                self._status.text += f", downsample={self._sph.downsample_factor:d}"
+            factor = np.round(self._sph.last_render_mass_scale, 1)
+            if factor>1.1:
+                self._status.text += f" (/{factor:.1f} ds)"
 
             self._status.update()
 

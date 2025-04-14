@@ -3,8 +3,6 @@ struct TransformParams {
     scale_factor: f32,
     clipspace_size_min: f32,
     clipspace_size_max: f32,
-    downsample_factor: u32,
-    downsample_offset: u32,
     boxsize_by_2_clipspace: f32
 };
 
@@ -80,7 +78,6 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     [[WEIGHTED]] output.weight = input.mass/(smooth_length*smooth_length);
     [[WEIGHTED]] output.quantity = input.quantity;
 
-    // [[DEPTH]] output.weight *= pow(input.mass/(smooth_length*smooth_length*smooth_length), 3.0); // local density weight
     [[DEPTH]] output.quantity = output.pos.z;
 
     [[CHANNELED]] output.channel_weights = vec4<f32>(input.rgb_mass,0) /(smooth_length*smooth_length);

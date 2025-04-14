@@ -60,8 +60,6 @@ class SPH:
         self.scale = config.DEFAULT_SCALE
         self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
-        self.downsample_factor = 1 # number of particles to increment
-        self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
 
@@ -283,15 +281,11 @@ class SPH:
         transform_params_dtype = [("transform", np.float32, (4, 4)),
                                   ("scale_factor", np.float32, (1,)),
                                   ("min_max_size", np.float32, (2,)),
-                                  ("downsample_factor", np.uint32, (1,)),
-                                  ("downsample_offset", np.uint32, (1,)),
                                   ("boxsize_by_2_clipspace", np.float32, (1,)),
                                   ("padding", np.int32, (1,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        # transform_params["mass_scale"] = self._get_mass_scale()
-        # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
 
@@ -300,8 +294,6 @@ class SPH:
 
         # min_max_size to be sent in viewport coordinates
         transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
-        transform_params["downsample_factor"] = self.downsample_factor
-        transform_params["downsample_offset"] = self.downsample_offset
 
         self.last_transform_params = transform_params
 
