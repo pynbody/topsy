@@ -376,31 +376,20 @@ class VisualizerBase:
         elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
             self._last_status_update = now
             self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
-            if self._sph.downsample_factor > 1:
-                self._status.text += f", downsample={self._sph.downsample_factor:d}"
+            factor = np.round(self._sph.last_render_mass_scale, 1)
+            if factor>1.1:
+                self._status.text += f" (/{factor:.1f} ds)"
 
             self._status.update()
 
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
-        nchannels = self._sph._nchannels_output
-        np_dtype = self._sph._output_dtype
-        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
+        return self._sph.get_image(self.averaging)
 
-        im = self.device.queue.read_texture({'texture':self.render_texture, 'origin':(0, 0, 0)},
-                                            {'bytes_per_row':bytes_per_pixel * self._render_resolution},
-                                            (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
+    def get_depth_image(self) -> np.ndarray:
+        return self._sph.get_depth_image()
 
-        if nchannels == 4:
-            np_im = np_im[:,:,:3] * self._sph.last_render_mass_scale
-        elif self.averaging:
-            np_im = np_im[:,:,1]/np_im[:,:,0]
-        else:
-            np_im = np_im[:,:,0] * self._sph.last_render_mass_scale
-
-        return np_im
 
     def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
         texture: wgpu.GPUTexture = self.device.create_texture(

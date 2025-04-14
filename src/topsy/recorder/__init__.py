@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import time
 import tqdm
 import wgpu
@@ -46,13 +47,13 @@ class VisualizationRecorder:
         if key in self._record_properties:
             self._view_synchronizer.update_completed(self)  # this marks the update as done
             if self._recording:
-                self._timestream[key].append((self._time_elapsed(), value))
+                self._timestream[key].append((self._time_elapsed(), copy.copy(value)))
 
     def _time_elapsed(self):
         return time.time() - self._t0
 
     def _reset_timestream(self):
-        self._timestream = {r: [(0.0, getattr(self._visualizer, r))] for r in self._record_properties}
+        self._timestream = {r: [(0.0, copy.copy(getattr(self._visualizer, r)))] for r in self._record_properties}
 
     def record(self):
         self._t0 = time.time()
@@ -128,7 +129,7 @@ class VisualizationRecorder:
                         if val is not Interpolator.no_value:
                             setattr(self._visualizer, p, val)
 
-                self._visualizer.display_status("github.com/pynbody/topsy/")
+                self._visualizer.display_status("github.com/pynbody/topsy/", timeout=1e6)
                 self._visualizer.draw(DrawReason.EXPORT, render_texture.create_view())
                 im = device.queue.read_texture({'texture': render_texture, 'origin': (0, 0, 0)},
                                                {'bytes_per_row': 4 * resolution[0]},
@@ -141,6 +142,7 @@ class VisualizationRecorder:
         finally:
             self._visualizer.show_colorbar = True
             self._visualizer.show_scalebar = True
+            self._visualizer.display_status("Complete", timeout=1.0)
 
     def save_mp4(self, filename, fps, resolution, *args, **kwargs):
         import cv2

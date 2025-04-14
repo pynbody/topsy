@@ -190,7 +190,7 @@ class ColorMapControls(MapControlsBase):
             self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
             if self._first_update:
                 self._quantity_menu.addItem(self._default_quantity_name)
-                self._quantity_menu.addItems(sorted(self._visualizer.data_loader.get_quantity_names()))
+                self._quantity_menu.addItems(sorted(self._visualizer.data_loader.get_quantity_names(), key = lambda s: s.lower()))
                 self._first_update = False
             self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
             self._quantity_menu.adjustSize()

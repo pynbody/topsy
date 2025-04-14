@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import numpy as np
 import wgpu
 import pynbody
@@ -25,7 +26,7 @@ class SPH:
     _output_dtype = np.float32
 
     def __init__(self, visualizer: Visualizer, render_resolution,
-                 wrapping = False):
+                 wrapping = False, share_render_progression=None):
         self._visualizer = visualizer
 
         logger.info(f"Creating SPH renderer with resolution {render_resolution}")
@@ -38,12 +39,18 @@ class SPH:
             label="sph_render_texture",
         )
 
+        self._render_resolution = render_resolution
+
         self._device : wgpu.GPUDevice = visualizer.device
         self._wrapping = wrapping
         self._kernel = None
 
         self._render_timer = TimeGpuOperation(self._device)
-        self._render_progression = RenderProgression(len(self._visualizer.data_loader))
+
+        if share_render_progression is not None:
+            self._render_progression = share_render_progression
+        else:
+            self._render_progression = RenderProgression(len(self._visualizer.data_loader))
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -53,19 +60,64 @@ class SPH:
         self.scale = config.DEFAULT_SCALE
         self.min_pixels = 0.0    # minimum size of softening, in pixels, to qualify for rendering
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
-        self.downsample_factor = 1 # number of particles to increment
-        self.downsample_offset = 0  # offset to start skipping particles
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
+
+    def _get_depth_renderer(self) -> SPH:
+        """Returns a SPH renderer that will generate the depth in the scene"""
+        renderer = DepthSPH(self._visualizer, self._render_resolution, wrapping=self._wrapping,
+                   share_render_progression=copy.copy(self._render_progression))
+        renderer.rotation_matrix = self.rotation_matrix
+        renderer.position_offset = self.position_offset
+        renderer.scale = self.scale
+        return renderer
+
+        #return DepthSPH(self._visualizer, self._render_texture.width, wrapping=self._wrapping,
+        #                share_render_progression=RenderProgression(len(self._visualizer.data_loader),
+        #                                                           len(self._visualizer.data_loader)))
+
+    def get_depth_image(self) -> np.ndarray:
+        """Returns the weighted depth image in the scene"""
+        depth_renderer = self._get_depth_renderer()
+        depth_renderer.render(DrawReason.CHANGE) # a rough render should be good enough
+        depth_viewport = depth_renderer.get_image(averaging=True)
+
+        # transform from viewport to simulation units
+        return (depth_viewport - 0.5)*self.scale*2.0
+
+    def get_image(self, averaging) -> np.ndarray:
+        nchannels = self._nchannels_output
+        np_dtype = self._output_dtype
+        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
+
+        im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
+                                            {'bytes_per_row': bytes_per_pixel * self._render_resolution},
+                                            (self._render_resolution, self._render_resolution, 1))
+        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
+
+        if nchannels == 4:
+            if averaging:
+                raise ValueError("Averaging not supported for RGBA output images")
+            np_im = np_im[:, :, :3] * self.last_render_mass_scale
+        elif averaging:
+            np_im = np_im[:, :, 1] / np_im[:, :, 0]
+        else:
+            np_im = np_im[:, :, 0] * self.last_render_mass_scale
+
+        return np_im
+
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
 
 
-    def _setup_shader_module(self):
+    def _setup_shader_module(self, flags=None):
+        if flags is None:
+            flags = []
         wrap_flag = "WRAPPING" if self._wrapping else "NO_WRAPPING"
         type_flag = "CHANNELED" if self._nchannels_input == 3 else "WEIGHTED"
-        code = preprocess_shader(load_shader("sph.wgsl"), [wrap_flag, type_flag])
+        flags += [wrap_flag, type_flag]
+        code = preprocess_shader(load_shader("sph.wgsl"), flags)
 
         self._shader = self._device.create_shader_module(code=code, label="sph")
 
@@ -229,15 +281,11 @@ class SPH:
         transform_params_dtype = [("transform", np.float32, (4, 4)),
                                   ("scale_factor", np.float32, (1,)),
                                   ("min_max_size", np.float32, (2,)),
-                                  ("downsample_factor", np.uint32, (1,)),
-                                  ("downsample_offset", np.uint32, (1,)),
                                   ("boxsize_by_2_clipspace", np.float32, (1,)),
                                   ("padding", np.int32, (1,))]
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        # transform_params["mass_scale"] = self._get_mass_scale()
-        # logger.info(f"downsample_factor: {self.downsample_factor}; mass_scale: {transform_params['mass_scale']}")
         transform_params["boxsize_by_2_clipspace"] = 0.5 * \
                                                      self._visualizer.periodicity_scale / self.scale
 
@@ -246,8 +294,6 @@ class SPH:
 
         # min_max_size to be sent in viewport coordinates
         transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
-        transform_params["downsample_factor"] = self.downsample_factor
-        transform_params["downsample_offset"] = self.downsample_offset
 
         self.last_transform_params = transform_params
 
@@ -381,3 +427,10 @@ class RGBSPH(SPH):
     _nchannels_input = 3
     _nchannels_output = 4
     _output_dtype = np.float32
+
+class DepthSPH(SPH):
+    """Renders a map of the depth of the particles in the scene."""
+    def _setup_shader_module(self, flags=None):
+        if flags is None:
+            flags = []
+        super()._setup_shader_module(flags+["DEPTH"])
