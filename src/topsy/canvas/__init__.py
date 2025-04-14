@@ -130,11 +130,9 @@ class VisualizerCanvasBase:
         #    return original_position + (final_position - original_position) * t
 
         def interpolate_position(t):
-            t2 = t * t
-            t3 = t2 * t
-            h00 = 2 * t3 - 3 * t2 + 1
-            h01 = -2 * t3 + 3 * t2
-            return h00 * original_position + h01 * final_position
+            w1 = np.arctan(5*(t*2-1))/np.pi+0.5
+            w2 = 1-w1
+            return w2 * original_position + w1 * final_position
 
         start = time.time()
 
