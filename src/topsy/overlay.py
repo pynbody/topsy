@@ -114,12 +114,6 @@ class Overlay(metaclass=ABCMeta):
         self._device.queue.write_buffer(self._overlay_params_buffer, 0,
                                         np.array([x,y,w,h,x_t,y_t,w_t,h_t], dtype=np.float32).tobytes())
     def _setup_render_pipeline(self):
-
-
-        # bind group layout for:
-        # 0: uniform buffer
-        # 1: texture
-        # 2: sampler
         self._bind_group_layout = self._device.create_bind_group_layout(
             label="overlay_bind_group_layout",
             entries=[

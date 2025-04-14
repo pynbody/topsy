@@ -97,6 +97,12 @@ class VisualizerCanvasBase:
         self.height_physical = int(height*pixel_ratio)
         self.pixel_ratio = pixel_ratio
 
+        if isinstance(self, jupyter.RenderCanvas):
+            # this should be handled by rendercanvas but seemingly isn't
+            self._pixel_ratio = pixel_ratio
+            self._logical_size = width, height
+
+
     def double_click(self, x, y):
         original_position = copy.copy(self._visualizer.position_offset)
 
