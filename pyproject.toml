@@ -19,7 +19,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "numpy >=1.16.0",
-    "pynbody >=2.0.0",
+    "pynbody >=2.1.1",
     "matplotlib >=3.6.0",
     "pillow >=9.5.0", # 9.5.0 needed for Image.frombytes accepting memoryview
     "wgpu >= 0.21, <0.22",
