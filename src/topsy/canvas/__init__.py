@@ -25,9 +25,9 @@ class VisualizerCanvasBase:
 
         super().__init__(*args, **kwargs)
 
-        self.add_event_handler(self.handle_event, "*")
+        self.add_event_handler(self.event_handler, "*")
 
-    def handle_event(self, event):
+    def event_handler(self, event):
         if event['event_type']=='pointer_move':
             if len(event['buttons'])>0:
                 if len(event['modifiers'])==0:
@@ -96,12 +96,6 @@ class VisualizerCanvasBase:
         self.width_physical = int(width*pixel_ratio)
         self.height_physical = int(height*pixel_ratio)
         self.pixel_ratio = pixel_ratio
-
-        if isinstance(self, jupyter.RenderCanvas):
-            # this should be handled by rendercanvas but seemingly isn't
-            self._pixel_ratio = pixel_ratio
-            self._logical_size = width, height
-
 
     def double_click(self, x, y):
         original_position = copy.copy(self._visualizer.position_offset)
