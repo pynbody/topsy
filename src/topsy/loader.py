@@ -17,6 +17,7 @@ class AbstractDataLoader(ABC):
     def __init__(self, device: wgpu.GPUDevice):
         self._device = device
         self.quantity_name = None
+        self._named_quantity_buffer = None
         self._quantity_buffer_is_for_name = None
 
     @abstractmethod
@@ -75,11 +76,10 @@ class AbstractDataLoader(ABC):
         if self.quantity_name is None:
             return self.get_mass_buffer()
         elif self._quantity_buffer_is_for_name != self.quantity_name:
-            logger.info(f"Creating {self.quantity_name} buffer")
-            data = self.get_named_quantity(self.quantity_name)
-            self._named_quantity_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
+            self._create_quantity_buffer_if_needed()
+            logger.info(f"Transferring {self.quantity_name} into buffer")
+            data = self.get_named_quantity(self.quantity_name).view(np.float32)
+            self._device.queue.write_buffer(self._named_quantity_buffer, 0, data)
             self._quantity_buffer_is_for_name = self.quantity_name
         return self._named_quantity_buffer
 
@@ -91,6 +91,16 @@ class AbstractDataLoader(ABC):
                 data=data,
                 usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
         return self._rgb_masses_buffer
+
+    def _create_quantity_buffer_if_needed(self):
+        if self._named_quantity_buffer is not None:
+            return
+        logger.info("Creating quantity buffer")
+        self._named_quantity_buffer: wgpu.GPUBuffer = self._device.create_buffer(
+            size=len(self) * 4,
+            usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST,
+            mapped_at_creation=False
+        )
 
     def get_periodicity_scale(self):
         return np.inf
@@ -189,10 +199,12 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         self._family_name = fam.name
         logger.info("Loading position data...")
         _ = snapshot['pos'] # just trigger the load
+        self.snapshot = snapshot
 
         self._perform_centering(center)
 
         super().__init__(device, snapshot)
+
         self._perform_smoothing()
 
     @property
