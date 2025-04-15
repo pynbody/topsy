@@ -15,3 +15,7 @@ COLORBAR_ASPECT_RATIO = 0.15
 COLORMAP_NUM_SAMPLES = 1000
 
 TEST_DATA_NUM_PARTICLES_DEFAULT = int(1e6)
+
+MAX_PARTICLES_PER_BUFFER = 256**3
+# arbitrary number, but small enough that GPU memory fragmentation not a huge issue hopefully, while
+# large enough to not cause too much overhead
