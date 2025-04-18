@@ -16,9 +16,6 @@ logger = logging.getLogger(__name__)
 class AbstractDataLoader(ABC):
     def __init__(self, device: wgpu.GPUDevice):
         self._device = device
-        self.quantity_name = None
-        self._named_quantity_buffer = None
-        self._quantity_buffer_is_for_name = None
 
     @abstractmethod
     def __len__(self):
@@ -41,7 +38,7 @@ class AbstractDataLoader(ABC):
         pass
 
     @abstractmethod
-    def get_quantity_label(self):
+    def get_quantity_label(self, quantity_name):
         pass
 
     @abstractmethod
@@ -53,54 +50,6 @@ class AbstractDataLoader(ABC):
         pos_smooth[:, :3] = self.get_positions()
         pos_smooth[:, 3] = self.get_smooth()
         return pos_smooth
-
-    def get_pos_smooth_buffer(self):
-        if not hasattr(self, "_pos_smooth_buffer"):
-            logger.info("Creating position+smoothing buffer")
-            data = self.get_pos_smooth()
-            self._pos_smooth_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._pos_smooth_buffer
-
-    def get_mass_buffer(self):
-        if not hasattr(self, "_mass_buffer"):
-            logger.info("Creating mass buffer")
-            data = self.get_mass()
-            self._mass_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._mass_buffer
-
-    def get_quantity_buffer(self):
-        if self.quantity_name is None:
-            return self.get_mass_buffer()
-        elif self._quantity_buffer_is_for_name != self.quantity_name:
-            self._create_quantity_buffer_if_needed()
-            logger.info(f"Transferring {self.quantity_name} into buffer")
-            data = self.get_named_quantity(self.quantity_name).view(np.float32)
-            self._device.queue.write_buffer(self._named_quantity_buffer, 0, data)
-            self._quantity_buffer_is_for_name = self.quantity_name
-        return self._named_quantity_buffer
-
-    def get_rgb_masses_buffer(self):
-        if not hasattr(self, "_rgb_masses_buffer"):
-            logger.info("Creating RGB masses buffer")
-            data = self.get_rgb_masses()
-            self._rgb_masses_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._rgb_masses_buffer
-
-    def _create_quantity_buffer_if_needed(self):
-        if self._named_quantity_buffer is not None:
-            return
-        logger.info("Creating quantity buffer")
-        self._named_quantity_buffer: wgpu.GPUBuffer = self._device.create_buffer(
-            size=len(self) * 4,
-            usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST,
-            mapped_at_creation=False
-        )
 
     def get_periodicity_scale(self):
         return np.inf
@@ -157,14 +106,14 @@ class PynbodyDataInMemory(AbstractDataLoader):
     def get_quantity_names(self):
         return self.snapshot.loadable_keys()
 
-    def get_quantity_label(self):
-        if self.quantity_name is None:
+    def get_quantity_label(self, quantity_name):
+        if quantity_name is None:
             return r"density / $M_{\odot} / \mathrm{kpc}^2$"
         else:
-            lunit = self.snapshot[self.quantity_name].units.latex()
+            lunit = self.snapshot[quantity_name].units.latex()
             if lunit != "":
                 lunit = "$/" + lunit + "$"
-            return self.quantity_name + lunit
+            return quantity_name + lunit
 
     def __len__(self):
         return len(self.snapshot)
@@ -315,10 +264,10 @@ class TestDataLoader(AbstractDataLoader):
     def get_quantity_names(self):
         return ["test-quantity"]
 
-    def get_quantity_label(self):
-        if self.quantity_name is None:
+    def get_quantity_label(self, quantity_name):
+        if quantity_name is None:
             return r"test density / $M_{\odot} / \mathrm{kpc}^2$"
-        elif self.quantity_name == "test-quantity":
+        elif quantity_name == "test-quantity":
             return "test quantity"
         else:
             return "unknown"

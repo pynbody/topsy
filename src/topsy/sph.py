@@ -342,21 +342,21 @@ class SPH:
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-
-
-        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
+        vb_assignment = ['pos_smooth']
         if self._nchannels_input == 2:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
-            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer())
+            vb_assignment += ['mass', 'quantity']
         elif self._nchannels_input == 3:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer())
+            vb_assignment += ['rgb_masses']
         else:
             raise ValueError("Unexpected number of channels")
 
-        sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
+        self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
+        sph_render_pass.set_bind_group(0, self._bind_group, [],
+                                       0, 99)
 
-        for start_particle, num_particles_to_render in zip(start_particles, num_particles_to_renders):
-            sph_render_pass.draw(6, num_particles_to_render, 0, start_particle)
+        for local_start, local_len in self._visualizer.particle_buffers.iter_particle_ranges(
+                start_particles, num_particles_to_renders, sph_render_pass):
+            sph_render_pass.draw(6, local_len, 0, local_start)
 
         sph_render_pass.end()
 
