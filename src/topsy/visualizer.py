@@ -19,6 +19,7 @@ from . import util
 from . import line
 from . import simcube
 from . import view_synchronizer
+from . import particle_buffers
 from .drawreason import DrawReason
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ class VisualizerBase:
     show_status = True
     device = None # device will be shared across all instances
 
-    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (),
+    def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
                  hdr = False, rgb=False):
@@ -50,7 +51,8 @@ class VisualizerBase:
 
         self._setup_wgpu()
 
-        self.data_loader = data_loader_class(self.device, *data_loader_args)
+        self.data_loader = data_loader_class(self.device, *data_loader_args, **data_loader_kwargs)
+        self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device)
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
@@ -170,12 +172,12 @@ class VisualizerBase:
     @property
     def quantity_name(self):
         """The name of the quantity being visualised, or None if density projection."""
-        return self.data_loader.quantity_name
+        return self.particle_buffers.quantity_name
 
     @property
     def averaging(self):
         """True if the quantity being visualised is a weighted average, False if it is a mass projection."""
-        return self.data_loader.quantity_name is not None
+        return self.particle_buffers.quantity_name is not None
 
     @quantity_name.setter
     def quantity_name(self, value):
@@ -187,7 +189,7 @@ class VisualizerBase:
             except Exception as e:
                 raise ValueError(f"Unable to get quantity named '{value}'") from e
 
-        self.data_loader.quantity_name = value
+        self.particle_buffers.quantity_name = value
         self.vmin_vmax_is_set = False
         self._reinitialize_colormap_and_bar()
         self.invalidate()
@@ -220,7 +222,7 @@ class VisualizerBase:
 
 
     def _get_colorbar_label(self):
-        label = self.data_loader.get_quantity_label()
+        label = self.data_loader.get_quantity_label(self.quantity_name)
         if self._colormap.log_scale:
             label = r"$\log_{10}$ " + label
         return label
@@ -378,7 +380,10 @@ class VisualizerBase:
             self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
             factor = np.round(self._sph.last_render_mass_scale, 1)
             if factor>1.1:
-                self._status.text += f" (/{factor:.1f} ds)"
+                self._status.text += f" /{factor:.1f}ds"
+            geom_factor = self._sph._render_progression.get_fraction_volume_selected()
+            if geom_factor<0.9:
+                self._status.text += f" /{1./geom_factor:.1f}gf"
 
             self._status.update()
 

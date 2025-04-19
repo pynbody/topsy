@@ -41,7 +41,7 @@ class RGBMapControls(MapControlsBase):
 
         self._mag_range = QLabeledDoubleRangeSlider()
         self._mag_range.setWindowTitle("Star rendering map")
-        self._mag_range.setRange(5, 35)
+        self._mag_range.setRange(15, 40)
         self._mag_range.setValue((15,32))
         self._mag_range.valueChanged.connect(self._mag_range_changed)
         self._mag_label = QtWidgets.QLabel("mag/arcsec^2")
