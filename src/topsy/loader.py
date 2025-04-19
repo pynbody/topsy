@@ -6,7 +6,7 @@ import pickle
 
 from typing import Optional
 
-from . import config
+from . import config, cell_layout
 
 from abc import ABC, abstractmethod
 
@@ -16,8 +16,6 @@ logger = logging.getLogger(__name__)
 class AbstractDataLoader(ABC):
     def __init__(self, device: wgpu.GPUDevice):
         self._device = device
-        self.quantity_name = None
-        self._quantity_buffer_is_for_name = None
 
     @abstractmethod
     def __len__(self):
@@ -40,7 +38,7 @@ class AbstractDataLoader(ABC):
         pass
 
     @abstractmethod
-    def get_quantity_label(self):
+    def get_quantity_label(self, quantity_name):
         pass
 
     @abstractmethod
@@ -53,47 +51,15 @@ class AbstractDataLoader(ABC):
         pos_smooth[:, 3] = self.get_smooth()
         return pos_smooth
 
-    def get_pos_smooth_buffer(self):
-        if not hasattr(self, "_pos_smooth_buffer"):
-            logger.info("Creating position+smoothing buffer")
-            data = self.get_pos_smooth()
-            self._pos_smooth_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._pos_smooth_buffer
-
-    def get_mass_buffer(self):
-        if not hasattr(self, "_mass_buffer"):
-            logger.info("Creating mass buffer")
-            data = self.get_mass()
-            self._mass_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._mass_buffer
-
-    def get_quantity_buffer(self):
-        if self.quantity_name is None:
-            return self.get_mass_buffer()
-        elif self._quantity_buffer_is_for_name != self.quantity_name:
-            logger.info(f"Creating {self.quantity_name} buffer")
-            data = self.get_named_quantity(self.quantity_name)
-            self._named_quantity_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-            self._quantity_buffer_is_for_name = self.quantity_name
-        return self._named_quantity_buffer
-
-    def get_rgb_masses_buffer(self):
-        if not hasattr(self, "_rgb_masses_buffer"):
-            logger.info("Creating RGB masses buffer")
-            data = self.get_rgb_masses()
-            self._rgb_masses_buffer = self._device.create_buffer_with_data(
-                data=data,
-                usage=wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM)
-        return self._rgb_masses_buffer
-
     def get_periodicity_scale(self):
         return np.inf
+
+    def get_render_progression(self):
+        from . import progressive_render
+        if hasattr(self, '_cell_layout'):
+            return progressive_render.RenderProgressionWithCells(self._cell_layout, len(self))
+        else:
+            return progressive_render.RenderProgression(len(self))
 
 
 class PynbodyDataInMemory(AbstractDataLoader):
@@ -106,20 +72,22 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
         self.snapshot = snapshot
 
-        # randomize order to avoid artifacts when downsampling number of particles on display
-        self._random_order = np.random.permutation(len(self.snapshot))
+        boxmin = self.snapshot['pos'].min()-1e-6
+        boxmax = self.snapshot['pos'].max()+1e-6
+        self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax, 16)
+        self._particle_order = ordering[self._cell_layout.randomize_within_cells()]
 
     def get_positions(self):
-        return self.snapshot['pos'].astype(np.float32)[self._random_order]
+        return self.snapshot['pos'].astype(np.float32)[self._particle_order]
 
     def get_smooth(self):
-        return self.snapshot[self._name_smooth_array].astype(np.float32)[self._random_order]
+        return self.snapshot[self._name_smooth_array].astype(np.float32)[self._particle_order]
 
     def get_mass(self):
-        return self.snapshot['mass'].astype(np.float32)[self._random_order]
+        return self.snapshot['mass'].astype(np.float32)[self._particle_order]
 
     def _effective_mass_for_band(self, band):
-        return (10 ** (-0.4 * self.snapshot[band + "_mag"]))[self._random_order]
+        return (10 ** (-0.4 * self.snapshot[band + "_mag"]))[self._particle_order]
 
     def get_rgb_masses(self):
         rgb = np.empty((len(self.snapshot), 3), dtype=np.float32)
@@ -133,19 +101,19 @@ class PynbodyDataInMemory(AbstractDataLoader):
         qty = self.snapshot[name]
         if len(qty.shape) == 2:
             qty = qty[:, 0]
-        return qty.astype(np.float32)[self._random_order]
+        return qty.astype(np.float32)[self._particle_order]
 
     def get_quantity_names(self):
         return self.snapshot.loadable_keys()
 
-    def get_quantity_label(self):
-        if self.quantity_name is None:
+    def get_quantity_label(self, quantity_name):
+        if quantity_name is None:
             return r"density / $M_{\odot} / \mathrm{kpc}^2$"
         else:
-            lunit = self.snapshot[self.quantity_name].units.latex()
+            lunit = self.snapshot[quantity_name].units.latex()
             if lunit != "":
                 lunit = "$/" + lunit + "$"
-            return self.quantity_name + lunit
+            return quantity_name + lunit
 
     def __len__(self):
         return len(self.snapshot)
@@ -178,11 +146,14 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         snapshot = snapshot[fam]
 
         self._family_name = fam.name
+        logger.info("Loading position data...")
+        _ = snapshot['pos'] # just trigger the load
+        self.snapshot = snapshot
+
+        self._perform_centering(center)
 
         super().__init__(device, snapshot)
 
-        self._perform_centering(center)
-        snapshot.wrap()
         self._perform_smoothing()
 
     @property
@@ -199,10 +170,11 @@ class PynbodyDataLoader(PynbodyDataInMemory):
             halo_number = int(center[5:])
             h = self.snapshot.ancestor.halos()
             pynbody.analysis.halo.center(h[halo_number], vel=False)
-
+            self.snapshot.wrap()
         elif center == 'zoom':
             f_dm = self.snapshot.ancestor.dm
             pynbody.analysis.halo.center(f_dm[f_dm['mass'] < 1.01 * f_dm['mass'].min()])
+            self.snapshot.wrap()
         elif center == 'all':
             pynbody.analysis.halo.center(self.snapshot)
         elif center == 'none':
@@ -227,7 +199,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
 
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = config.TEST_DATA_NUM_PARTICLES_DEFAULT,
-                 seed: int = 1337):
+                 n_cells = 10, seed: int = 1337, with_cells = False):
         self._n_particles = n_particles
         self._gmm_weights = [0.5, 0.4, 0.1]  # should sum to 1
         self._gmm_means = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [6.0, 10.0, 0.0]])
@@ -235,6 +207,13 @@ class TestDataLoader(AbstractDataLoader):
 
         self._gmm_pos = self._generate_samples(seed)
         self._gmm_den = self._evaluate_density(self._gmm_pos)
+
+        if with_cells:
+            self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self._gmm_pos, self._gmm_pos.min()-1e-3,
+                                                                                self._gmm_pos.max()+1, n_cells)
+            self._gmm_pos = self._gmm_pos[ordering]
+            self._gmm_den = self._gmm_den[ordering]
+
         super().__init__(device)
 
     def __len__(self):
@@ -267,7 +246,6 @@ class TestDataLoader(AbstractDataLoader):
         return np.random.permutation(pos)
 
     def get_positions(self):
-
         return self._gmm_pos
 
     def get_smooth(self):
@@ -286,10 +264,10 @@ class TestDataLoader(AbstractDataLoader):
     def get_quantity_names(self):
         return ["test-quantity"]
 
-    def get_quantity_label(self):
-        if self.quantity_name is None:
+    def get_quantity_label(self, quantity_name):
+        if quantity_name is None:
             return r"test density / $M_{\odot} / \mathrm{kpc}^2$"
-        elif self.quantity_name == "test-quantity":
+        elif quantity_name == "test-quantity":
             return "test quantity"
         else:
             return "unknown"

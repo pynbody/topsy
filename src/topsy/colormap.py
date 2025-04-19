@@ -321,7 +321,7 @@ class RGBColormap(Colormap):
     max_percentile = 99.9
     dynamic_range = 3.0
 
-    _pc2_to_sqarcsec = 2.3504430539466191e-09
+    _sterrad_to_arcsec2 = 2.3504430539466191e-11
 
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._gamma = 3.0
@@ -336,22 +336,30 @@ class RGBColormap(Colormap):
         self._gamma = value
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
+    @classmethod
+    def _log_output_to_mag_per_arcsec2(cls, val):
+        return -2.5 * (val + np.log10(cls._sterrad_to_arcsec2) - 4) # +4 for (10pc->kpc)^2
+
+    @classmethod
+    def _mag_per_arcsec2_to_log_output(cls, val):
+        return val/-2.5 + 4 - np.log10(cls._sterrad_to_arcsec2)
+
     @property
     def max_mag(self):
-        return -2.5 * (self.vmin + np.log10(self._pc2_to_sqarcsec))
+        return self._log_output_to_mag_per_arcsec2(self.vmin)
 
     @max_mag.setter
     def max_mag(self, value):
-        self.vmin = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self.vmin = self._mag_per_arcsec2_to_log_output(value)
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @property
     def min_mag(self):
-        return -2.5 * (self.vmax + np.log10(self._pc2_to_sqarcsec))
+        return self._log_output_to_mag_per_arcsec2(self.vmax)
 
     @min_mag.setter
     def min_mag(self, value):
-        self.vmax = value/-2.5 - np.log10(self._pc2_to_sqarcsec)
+        self.vmax = self._mag_per_arcsec2_to_log_output(value)
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     def autorange_vmin_vmax(self):

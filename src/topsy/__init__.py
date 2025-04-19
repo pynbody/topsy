@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 import argparse
 import logging
@@ -137,6 +137,7 @@ def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
     from . import visualizer, loader, drawreason
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
+                                data_loader_kwargs={'with_cells': kwargs.pop('with_cells', False)},
                                 **kwargs)
     vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis

@@ -50,7 +50,7 @@ class SPH:
         if share_render_progression is not None:
             self._render_progression = share_render_progression
         else:
-            self._render_progression = RenderProgression(len(self._visualizer.data_loader))
+            self._render_progression = self._visualizer.data_loader.get_render_progression()
 
         self._setup_shader_module()
         self._setup_transform_buffer()
@@ -299,8 +299,8 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-    def _render_block(self, start, number):
-        encoded_render_pass = self.encode_render_pass(start, number, clear=(start==0))
+    def _render_block(self, start_indices, block_lens, clear=False):
+        encoded_render_pass = self.encode_render_pass(start_indices, block_lens, clear=clear)
         self._device.queue.submit([encoded_render_pass])
 
     def render(self, draw_reason=DrawReason.CHANGE):
@@ -308,13 +308,16 @@ class SPH:
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
             return
 
-        self._update_transform_buffer()
+        if draw_reason != DrawReason.REFINE:
+            self._render_progression.select_sphere(-self.position_offset, self.scale)
+            self._update_transform_buffer()
 
-        self._render_progression.start_frame(draw_reason)
+        clear = self._render_progression.start_frame(draw_reason)
 
         with self._render_timer:
             while (block := self._render_progression.get_block(self._render_timer.time_elapsed())) is not None:
-                self._render_block(*block)
+                self._render_block(*block, clear=clear)
+                clear = False
                 self._render_progression.end_block(self._render_timer.time_elapsed())
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
@@ -323,7 +326,7 @@ class SPH:
     def needs_refine(self):
         return self._render_progression.needs_refine()
 
-    def encode_render_pass(self, start_particle, num_particles_to_render, clear=True) -> wgpu.GPUCommandBuffer:
+    def encode_render_pass(self, start_particles: list[int], num_particles_to_renders: list[int], clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()
         sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
@@ -339,21 +342,22 @@ class SPH:
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-
-
-        sph_render_pass.set_vertex_buffer(0, self._visualizer.data_loader.get_pos_smooth_buffer())
+        vb_assignment = ['pos_smooth']
         if self._nchannels_input == 2:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_mass_buffer())
-            sph_render_pass.set_vertex_buffer(2, self._visualizer.data_loader.get_quantity_buffer())
+            vb_assignment += ['mass', 'quantity']
         elif self._nchannels_input == 3:
-            sph_render_pass.set_vertex_buffer(1, self._visualizer.data_loader.get_rgb_masses_buffer())
+            vb_assignment += ['rgb_masses']
         else:
             raise ValueError("Unexpected number of channels")
 
-        sph_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
+        self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
+        sph_render_pass.set_bind_group(0, self._bind_group, [],
+                                       0, 99)
 
+        for local_start, local_len in self._visualizer.particle_buffers.iter_particle_ranges(
+                start_particles, num_particles_to_renders, sph_render_pass):
+            sph_render_pass.draw(6, local_len, 0, local_start)
 
-        sph_render_pass.draw(6, num_particles_to_render, 0, start_particle)
         sph_render_pass.end()
 
         return command_encoder.finish()

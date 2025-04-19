@@ -17,9 +17,9 @@ def folder():
     folder.mkdir(exist_ok=True)
     return folder
 
-@pytest.fixture
-def vis():
-    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas)
+@pytest.fixture(params=[False, True])
+def vis(request):
+    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, with_cells=request.param)
     vis.scale = 200.0
     return vis
 
@@ -43,6 +43,8 @@ def test_hdr_render(vis):
 
 def test_particle_pos_smooth(vis):
     # this is testing the test data
+    if hasattr(vis.data_loader, '_cell_layout'):
+        return # skip this test if we are using cells
     xyzw = vis.data_loader.get_pos_smooth()
     npt.assert_allclose(xyzw[::100],
        [[ 1.6189760e+01, -4.0728635e-01, -1.8409515e+01,  2.0848181e+01],
