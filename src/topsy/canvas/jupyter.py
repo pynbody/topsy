@@ -19,6 +19,28 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def call_later(cls, delay, fn, *args):
         loop.call_later(delay, fn, *args)
 
+    def ipython_display_with_widgets(self):
+        """Display the canvas in a Jupyter notebook with widgets."""
+        from IPython.display import display
+        import ipywidgets as widgets
 
+        # an un‑wired dropdown
+        dropdown = widgets.Dropdown(
+            options=['Option A', 'Option B', 'Option C'],
+            value='Option A',
+            description='Choice:',
+        )
 
+        # a two‑handle range slider
+        range_slider = widgets.FloatRangeSlider(
+            value=(0.2, 0.8),
+            min=0.0,
+            max=1.0,
+            step=0.01,
+            description='Range:',
+        )
+
+        # stack canvas, dropdown and range slider
+        display(widgets.VBox([self, dropdown, range_slider]))
+    
 

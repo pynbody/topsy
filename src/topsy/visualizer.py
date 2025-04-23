@@ -475,6 +475,12 @@ class VisualizerBase:
         #else:
         #    raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
 
+    def _ipython_display_(self):
+        if isinstance(self.canvas, canvas.jupyter.VisualizerCanvas):
+            self.canvas.ipython_display_with_widgets()
+        else:
+            from IPython.display import display
+            display(repr(self))
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
     pass
