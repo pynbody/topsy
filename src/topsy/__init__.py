@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from . import config
 
+logger = None
 
 def parse_args(args=None):
     """Create arguments and kwargs to pass to the visualizer, from sys.argv"""
@@ -69,6 +70,8 @@ def parse_args(args=None):
 
 def setup_logging():
     global logger
+    if logger is not None:
+        return
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -79,7 +82,6 @@ def setup_logging():
     logger.addHandler(ch)
 
 def main():
-    setup_logging()
     all_args = parse_args()
 
     for args in all_args:
@@ -147,7 +149,8 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
 
     """
     from . import visualizer, loader, drawreason
-
+    setup_logging()
+    
     if "test://" in filename:
         loader_class = loader.TestDataLoader
         try:
@@ -174,7 +177,7 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
                                 render_resolution=resolution,
                                 rgb=rgb)
 
-    vis.draw(reason=drawreason.DrawReason.INITIAL_UPDATE) # ensure things are initialised before presenting
+    vis.draw(reason=drawreason.DrawReason.EXPORT) # ensure things are initialised before presenting
 
     return vis
 

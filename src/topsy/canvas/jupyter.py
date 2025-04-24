@@ -26,6 +26,8 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         super().request_draw(function)
 
+
+
     @classmethod
     def call_later(cls, delay, fn, *args):
         loop.call_later(delay, fn, *args)
@@ -36,6 +38,9 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         # stack canvas, dropdown and range slider
         display(widgets.VBox([self, color_controls]))
+
+    
+
 
     def build_color_controls(self) -> widgets.Widget:
         """
@@ -57,17 +62,24 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def _callback_then_update_ui(self, callback: Callable[[Any], None], value: Any):
         if not self._allow_events:
             return
-        callback(value)
-        self._allow_events = False
+        self._callback(callback, value)
         self._refresh_ui()
 
-        # re-enable events after a delay, to allow the UI to settle (eugh!)
-        self.call_later(JUPYTER_UI_LAG*2, lambda: setattr(self, "_allow_events", True))
+    def _callback(self, callback: Callable[[Any], None], value: Any):
+        if not self._allow_events:
+            return
+        callback(value)
+       
     
     def _refresh_ui(self):
         """Walk the layout and update all values, including slider ranges."""
+        if not hasattr(self, "_controller"):
+            return
         root_spec = self._controller.get_layout()
+        self._allow_events = False
         self.update_widget(root_spec, self._controls)
+         # re-enable events after a delay, to allow the UI to settle (eugh!)
+        self.call_later(JUPYTER_UI_LAG*2, lambda: setattr(self, "_allow_events", True))
 
     def convert_layout_to_widget(self, spec) -> widgets.Widget:
         children = []
@@ -107,7 +119,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
                 description=spec.label or "",
                 layout=widgets.Layout(width="400px")
             )
-            w.observe(lambda change, cb=spec.callback: cb(change["new"]), names="value")
+            w.observe(lambda change, cb=spec.callback: self._callback(cb,change["new"]), names="value")
 
         elif spec.type == "slider":
             lo, hi = spec.range or (0.0, 1.0)
@@ -118,7 +130,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
                 description=spec.label or "",
                 layout=widgets.Layout(width="400px")
             )
-            w.observe(lambda change, cb=spec.callback: cb(change["new"]), names="value")
+            w.observe(lambda change, cb=spec.callback: self._callback(cb, change["new"]), names="value")
 
         elif spec.type == "button":
             w = widgets.Button(description=spec.label or "")

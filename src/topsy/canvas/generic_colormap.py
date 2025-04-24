@@ -85,8 +85,6 @@ class ColorMapController(GenericController):
             ],
         )
 
-
-
 class RGBMapController(GenericController):
     """Controller description for RGB (stellar rendering) outputs"""
 
@@ -132,57 +130,3 @@ class RGBMapController(GenericController):
             ],
         )
     
-"""
-class RGBMapController(GenericController):
-    def __init__(self, parent: BaseRenderCanvas):
-        super().__init__(parent)
-
-        self._layout = QtWidgets.QVBoxLayout()
-        self.setLayout(self._layout)
-
-        self._mag_range = QLabeledDoubleRangeSlider()
-        self._mag_range.setWindowTitle("Star rendering map")
-        self._mag_range.setRange(15, 40)
-        self._mag_range.setValue((15,32))
-        self._mag_range.valueChanged.connect(self._mag_range_changed)
-        self._mag_label = QtWidgets.QLabel("mag/arcsec^2")
-        self._mag_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-
-        self._gamma_label = QtWidgets.QLabel("gamma")
-        self._gamma_slider = QLabeledDoubleSlider()
-        self._gamma_slider.setRange(0.25, 8.0)
-        self._gamma_slider.setValue(1.0)
-        self._gamma_slider.valueChanged.connect(self._gamma_changed)
-
-
-        self._layout.addWidget(self._mag_range)
-        self._layout.addWidget(self._mag_label)
-        self._layout.addSpacing(10)
-        self._layout.addWidget(self._gamma_label)
-        self._layout.addWidget(self._gamma_slider)
-
-    def open(self):
-        self._colormap = self._parent._visualizer._colormap # EEK!
-        self._mag_range.setValue((self._colormap.min_mag, self._colormap.max_mag))
-        self._gamma_slider.setValue(self._colormap.gamma)
-
-        super().open()
-
-    def _mag_range_changed(self, vmin: float, vmax: float):
-        self._colormap.min_mag, self._colormap.max_mag = vmin, vmax
-
-    def _gamma_changed(self, gamma: float):
-        self._colormap.gamma = gamma
-
-    def get_layout(self) -> LayoutSpec:
-        return LayoutSpec(
-            type="vbox",
-            children=[
-                ControlSpec("mag_range", "range_slider", label="Magnitude range",
-                            value=(self._colormap.min_mag, self._colormap.max_mag),
-                            range=(15, 40), callback=self._mag_range_changed),
-                ControlSpec("gamma", "slider", label="Gamma",
-                            value=self._colormap.gamma, range=(0.25, 8.0), callback=self._gamma_changed),
-            ],
-        )
-"""

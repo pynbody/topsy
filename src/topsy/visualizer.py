@@ -88,6 +88,7 @@ class VisualizerBase:
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
+        logger.info(f"GPU device: {self.adapter.info['adapter_type']} ({self.adapter.info['device']})")
         if self.device is None:
             max_buffer_size = self.adapter.limits['max-buffer-size']
             # on some systems, this is 2^64 which can lead to overflows
@@ -109,6 +110,8 @@ class VisualizerBase:
                 self.canvas_format = self.canvas_format[:-5]
 
         self.context.configure(device=self.device, format=self.canvas_format)
+
+        logger.info(f"Canvas format {self.canvas_format}")
 
     def invalidate(self, reason=DrawReason.CHANGE):
         # NB no need to check if we're already pending a draw - rendercanvas does that for us
