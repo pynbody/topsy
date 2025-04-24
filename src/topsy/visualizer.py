@@ -239,11 +239,6 @@ class VisualizerBase:
                          [0, 1, 0],
                          [-np.sin(angle), 0, np.cos(angle)]])
 
-    def _check_whether_inactive(self):
-        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.95:
-            self._last_lores_draw_time = np.inf # prevent this from being called again
-            self.invalidate(reason=DrawReason.REFINE)
-
     @contextmanager
     def prevent_sph_rendering(self):
         self._prevent_sph_rendering = True
