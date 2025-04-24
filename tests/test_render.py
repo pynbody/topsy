@@ -19,7 +19,7 @@ def folder():
 
 @pytest.fixture(params=[False, True])
 def vis(request):
-    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, with_cells=request.param)
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, with_cells=request.param)
     vis.scale = 200.0
     return vis
 
@@ -35,7 +35,7 @@ def test_render(vis, folder):
 
 @pytest.mark.skip("Disabled until https://github.com/pygfx/wgpu-py/pull/701 is released")
 def test_hdr_render(vis):
-    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
     result = vis.get_presentation_image()
 
     assert result.dtype == np.float16
@@ -104,7 +104,7 @@ def test_sph_output(vis, folder):
     assert (test/expect).std() < 0.015
 
 def test_periodic_sph_output(vis, folder):
-    vis2 = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, periodic_tiling=True)
+    vis2 = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, periodic_tiling=True)
     vis2.scale = 200.0
     vis2.render_sph(DrawReason.EXPORT)
     result = vis2.get_sph_image()
@@ -157,12 +157,12 @@ def test_rotated_sph_output(vis):
 
 
 def test_rgb_sph_output():
-    vis = topsy._test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, rgb=True)
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, rgb=True)
     result = vis.get_sph_image()
     assert result.shape == (200,200,3)
 
 def test_depth_output(vis, folder):
-    vis = topsy._test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas)
+    vis = topsy.test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas)
     vis.scale = 20.0
     vis.rotation_matrix = np.array([[1.0, 0.0, 0.0],
                                     [0.0, 0.0, 1.0],

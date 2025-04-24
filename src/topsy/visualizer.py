@@ -71,7 +71,7 @@ class VisualizerBase:
         self._reinitialize_colormap_and_bar(0.0, 1.0, True)
 
         self._last_status_update = 0.0
-        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
+        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 40, color=(1, 1, 1, 1))
 
         self._scalebar = scalebar.ScalebarOverlay(self)
 

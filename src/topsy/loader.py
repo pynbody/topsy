@@ -178,7 +178,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         elif center == 'all':
             pynbody.analysis.halo.center(self.snapshot)
         elif center == 'none':
-            pass
+            self.snapshot['pos']-=(self.snapshot['pos'].max(axis=0) + self.snapshot['pos'].min(axis=0))/2.0
         else:
             raise ValueError("Unknown centering type")
 

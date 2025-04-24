@@ -35,7 +35,7 @@ class BarOverlay(overlay.Overlay):
 
 class ScalebarOverlay:
     def __init__(self, visualizer: Visualizer):
-        self._label = text.TextOverlay(visualizer, "Scalebar", (-0.9, -0.85), 80, color=(1, 1, 1, 1))
+        self._label = text.TextOverlay(visualizer, "Scalebar", (-0.9, -0.85), 40, color=(1, 1, 1, 1))
         self._bar = BarOverlay(visualizer, x0=-0.9, y0=-0.9, height_pixels=10, color=(1, 1, 1, 1))
         self._visualizer = visualizer
 

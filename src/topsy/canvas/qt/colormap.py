@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Union
 
-import matplotlib as mpl
 from PySide6 import QtWidgets, QtCore
 from superqt import QLabeledDoubleRangeSlider, QLabeledDoubleSlider
 from rendercanvas import BaseRenderCanvas
@@ -30,51 +29,6 @@ class MapControlsBase(QtWidgets.QDialog):
         super().show()
         self.move(popoverPosition - QtCore.QPoint(self.width()//2, self.height()))
 
-
-
-class RGBMapControls(MapControlsBase):
-    def __init__(self, parent: BaseRenderCanvas):
-        super().__init__(parent)
-
-        self._layout = QtWidgets.QVBoxLayout()
-        self.setLayout(self._layout)
-
-        self._mag_range = QLabeledDoubleRangeSlider()
-        self._mag_range.setWindowTitle("Star rendering map")
-        self._mag_range.setRange(15, 40)
-        self._mag_range.setValue((15,32))
-        self._mag_range.valueChanged.connect(self._mag_range_changed)
-        self._mag_label = QtWidgets.QLabel("mag/arcsec^2")
-        self._mag_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-
-        self._gamma_label = QtWidgets.QLabel("gamma")
-        self._gamma_slider = QLabeledDoubleSlider()
-        self._gamma_slider.setRange(0.25, 8.0)
-        self._gamma_slider.setValue(1.0)
-        self._gamma_slider.valueChanged.connect(self._gamma_changed)
-
-
-        self._layout.addWidget(self._mag_range)
-        self._layout.addWidget(self._mag_label)
-        self._layout.addSpacing(10)
-        self._layout.addWidget(self._gamma_label)
-        self._layout.addWidget(self._gamma_slider)
-
-
-
-
-    def open(self):
-        self._colormap = self._parent._visualizer._colormap # EEK!
-        self._mag_range.setValue((self._colormap.min_mag, self._colormap.max_mag))
-        self._gamma_slider.setValue(self._colormap.gamma)
-
-        super().open()
-
-    def _mag_range_changed(self):
-        self._colormap.min_mag, self._colormap.max_mag = self._mag_range.value()
-
-    def _gamma_changed(self):
-        self._colormap.gamma = self._gamma_slider.value()
 
 class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -125,131 +79,143 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
 
 
 
-class ColorMapControls(MapControlsBase):
-    _default_quantity_name = "Projected density"
+from ..generic_colormap import (
+    GenericController, ColorMapController, RGBMapController, ControlSpec, LayoutSpec
+)
+
+class ColorMapControlsBase(QtWidgets.QDialog):
+    controller_class : GenericController = None
 
     def __init__(self, canvas: BaseRenderCanvas):
         super().__init__(canvas)
+        self.setWindowTitle("Color controls")
+        self.setWindowFlags(QtCore.Qt.WindowType.Popup
+                            | QtCore.Qt.WindowType.FramelessWindowHint)
+        self.resize(400, 0)
 
-        self._visualizer = canvas._visualizer # EEK!
-
-        self._layout = QtWidgets.QVBoxLayout()
-        self.setLayout(self._layout)
-
-        self._menu_layout = QtWidgets.QHBoxLayout()
-        self._colormap_menu = QtWidgets.QComboBox()
-        self._colormap_menu.addItems(mpl.colormaps.keys())
-        self._colormap_menu.currentTextChanged.connect(self._colormap_menu_changed_action)
-
-        self._quantity_menu = QtWidgets.QComboBox()
-        self._quantity_menu.setEditable(True)
-        self._quantity_menu.setLineEdit(MyLineEdit())
-        self._quantity_menu.lineEdit().editingFinished.connect(self._quantity_menu_changed_action)
-        self._quantity_menu.currentIndexChanged.connect(self._quantity_menu_changed_action)
-
-        self._first_update = True
-        self._disable_updates = True
-
-        self._log_checkbox = QtWidgets.QCheckBox("Log scale")
-        self._log_checkbox.stateChanged.connect(self._log_checkbox_changed)
-
-        self._menu_layout.addWidget(self._colormap_menu)
-        self._menu_layout.addWidget(self._quantity_menu)
-        self._menu_layout.addWidget(self._log_checkbox)
-
-        self._range_layout = QtWidgets.QHBoxLayout()
-        self._slider = QLabeledDoubleRangeSliderWithAutoscale()
-        self._slider.setRange(0, 100)
-        self._slider.setValue((10,50))
-        self._slider.valueChanged.connect(self._slider_changed)
-
-        self._auto_button = QtWidgets.QPushButton("Auto")
-        self._auto_button.setStyleSheet("color: black;") # unclear why this is necessary
-        self._auto_button.pressed.connect(self._auto)
-
-
-        self._range_layout.addWidget(self._slider)
-        self._range_layout.addWidget(self._auto_button)
-
-
-        self._layout.addLayout(self._menu_layout)
-        self._layout.addLayout(self._range_layout)
-
+        self.controller = self.controller_class(canvas._visualizer)
+        # build UI
+        self._widgets: Dict[str, QtWidgets.QWidget] = {}
+        root_spec = self.controller.get_layout()
+        self.setLayout(self._build_layout(root_spec))
 
     def open(self):
-        self._update_ui()
-        super().open()
+        # position next to toolbar
+        action_rect = self.parent()._toolbar.actionGeometry(
+            self.parent()._open_cmap
+        )
+        pos = self.parent()._toolbar.mapToGlobal(action_rect.topLeft())
+        self._refresh_ui()
+        super().show()
+        self.move(pos - QtCore.QPoint(self.width()//2, self.height()))
 
-    def _auto(self):
-        self._visualizer._colormap.autorange_vmin_vmax()
-        self._update_ui()
-
-    def _update_ui(self):
-        self._disable_updates = True
-        try:
-            self._colormap_menu.setCurrentText(self._visualizer.colormap_name)
-            if self._first_update:
-                self._quantity_menu.addItem(self._default_quantity_name)
-                self._quantity_menu.addItems(sorted(self._visualizer.data_loader.get_quantity_names(), key = lambda s: s.lower()))
-                self._first_update = False
-            self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
-            self._quantity_menu.adjustSize()
-            self._slider.setRange(*self._visualizer._colormap.get_ui_range())
-            self._log_checkbox.setChecked(self._visualizer.log_scale)
-            self._slider.setValue((self._visualizer.vmin, self._visualizer.vmax))
-        finally:
-            self._disable_updates = False
-
-    def _colormap_menu_changed_action(self):
-        if self._disable_updates:
-            return
-        logger.info("Colormap changed to %s", self._colormap_menu.currentText())
-        self._visualizer.colormap_name = self._colormap_menu.currentText()
-        self._update_ui()
-
-    def _log_checkbox_changed(self):
-        if self._disable_updates:
-            return
-        if self._visualizer.log_scale == self._log_checkbox.isChecked():
-            return
-        logger.info("Log scale changed to %s", self._log_checkbox.isChecked())
-
-        self._visualizer.log_scale = self._log_checkbox.isChecked()
-        self._visualizer.vmin, self._visualizer.vmax = self._visualizer._colormap.get_ui_range()
-        self._update_ui()
-
-    def _slider_changed(self):
-        if self._disable_updates:
-            return
-        self._visualizer.vmin, self._visualizer.vmax = self._slider.value()
-
-    def _quantity_menu_changed_action(self):
-        if self._disable_updates:
-            return
-
-        if self._quantity_menu.currentText() == self._default_quantity_name:
-            new_quantity_name = None
+    def _build_layout(self, spec: LayoutSpec) -> QtWidgets.QLayout:
+        if spec.type == "vbox":
+            layout = QtWidgets.QVBoxLayout()
         else:
-            new_quantity_name = self._quantity_menu.currentText()
+            layout = QtWidgets.QHBoxLayout()
 
-        if self._visualizer.quantity_name == new_quantity_name:
-            return
+        for child in spec.children:
+            if isinstance(child, ControlSpec):
+                label_layout = self._make_widget(child)
+                self._widgets[child.name] = label_layout
 
-        logger.info("Quantity changed to %s", new_quantity_name)
+                if child.label is not None and child.type != "button" and child.type != "checkbox":
+                    w_inner = label_layout
+                    label_layout = QtWidgets.QHBoxLayout()
+                    label_layout.addWidget(QtWidgets.QLabel(child.label))
+                    label_layout.addWidget(w_inner)
+                    label_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                    layout.addLayout(label_layout)
+                else:
+                    layout.addWidget(label_layout)
+            else:
+                layout.addLayout(self._build_layout(child))
+        return layout
 
-        try:
-            self._visualizer.quantity_name = new_quantity_name
-        except ValueError as e:
-            self._qt_errorbox(e)
+    def _make_widget(self, spec: ControlSpec) -> QtWidgets.QWidget:
+        if spec.type == "combo" or spec.type == "combo-edit":
+            w = QtWidgets.QComboBox()
+            w.setEditable(spec.name == "quantity")
 
-        self._visualizer.render_sph()
-        self._auto()
+            w.addItems(spec.options or [])
+            w.setCurrentText(spec.value)
+            edited_callback = lambda: self._on_changed(spec.callback, w.currentText())
+            w.currentIndexChanged.connect(edited_callback)
+            if spec.type == "combo-edit":
+                w.setLineEdit(MyLineEdit())
+                w.lineEdit().editingFinished.connect(edited_callback)
 
-    def _qt_errorbox(self, e):
-        message = QtWidgets.QMessageBox(self)
-        message.setWindowTitle("Invalid quantity")
-        message.setText(str(e))
-        message.setIcon(QtWidgets.QMessageBox.Icon.Critical)
-        message.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
-        self._quantity_menu.setCurrentText(self._visualizer.quantity_name or self._default_quantity_name)
-        message.exec()
+        elif spec.type == "checkbox":
+            w = QtWidgets.QCheckBox(spec.label or "")
+            w.setChecked(bool(spec.value))
+            w.stateChanged.connect(
+                lambda st, cb=spec.callback: self._on_changed(cb, bool(st))
+            )
+        elif spec.type == "range_slider":
+            w = QLabeledDoubleRangeSliderWithAutoscale()
+            w.setRange(*(spec.range or (0.0, 1.0)))
+            w.setValue(tuple(spec.value))
+            w.valueChanged.connect(
+                lambda _, cb=spec.callback, widget=w:
+                    self._on_changed(cb, widget.value())
+            )
+        elif spec.type == "slider":
+            w = QLabeledDoubleSlider()
+            w.setRange(*(spec.range or (0.0, 1.0)))
+            w.setValue(spec.value)
+            w.valueChanged.connect(
+                lambda _, cb=spec.callback, widget=w:
+                    self._on_changed(cb, widget.value())
+            )
+        elif spec.type == "button":
+            w = QtWidgets.QPushButton(spec.label or "")
+            w.setStyleSheet("color: black;")  # unclear why this is necessary
+            w.pressed.connect(lambda cb=spec.callback: self._on_changed(cb, None))
+        else:
+            w = QtWidgets.QLabel(f"Unknown control {spec.name}")
+
+        return w
+
+    def _on_changed(self, callback: Callable[[Any], None], value: Any):
+        callback(value)
+        self._refresh_ui()
+
+    def _refresh_ui(self):
+        # re-fetch specs and update every widget
+        def walk(spec: Union[LayoutSpec, ControlSpec]):
+            if isinstance(spec, ControlSpec):
+                w = self._widgets.get(spec.name)
+                if not w:
+                    return
+                if spec.type == "combo" or spec.type == 'combo-edit':
+                    w.blockSignals(True)
+                    w.setCurrentText(spec.value)
+                    w.blockSignals(False)
+                elif spec.type == "checkbox":
+                    w.blockSignals(True)
+                    w.setChecked(spec.value)
+                    w.blockSignals(False)
+                elif spec.type == "range_slider":
+                    w.blockSignals(True)
+                    w.setRange(*(spec.range or (0, 1)))
+                    w.setValue(tuple(spec.value))
+                    w.blockSignals(False)
+                elif spec.type == "slider":
+                    w.blockSignals(True)
+                    w.setRange(*(spec.range or (0, 1)))
+                    w.setValue(spec.value)
+                    w.blockSignals(False)
+            else:
+                for c in spec.children:
+                    walk(c)
+
+        root = self.controller.get_layout()
+        walk(root)
+
+class ColorMapControls(ColorMapControlsBase):
+    controller_class = ColorMapController
+
+class RGBColorControls(ColorMapControlsBase):
+    controller_class = RGBMapController
+

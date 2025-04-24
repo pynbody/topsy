@@ -326,6 +326,10 @@ class SPH:
     def needs_refine(self):
         return self._render_progression.needs_refine()
 
+    def has_ever_rendered(self):
+        """Check if the render has been called at least once"""
+        return self._render_progression.has_ever_rendered()
+
     def encode_render_pass(self, start_particles: list[int], num_particles_to_renders: list[int], clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()

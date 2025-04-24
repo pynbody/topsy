@@ -19,3 +19,8 @@ TEST_DATA_NUM_PARTICLES_DEFAULT = int(1e6)
 MAX_PARTICLES_PER_BUFFER = 2**27
 # arbitrary number, but small enough that GPU memory fragmentation not a huge issue hopefully, while
 # large enough to not cause too much overhead
+
+
+JUPYTER_UI_LAG = 0.05
+# time over which to spread jupyter UI updates, notably for sliders where updating the range and value
+# simultaneously seems to lead to problems
