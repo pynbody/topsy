@@ -31,7 +31,7 @@ jobs:
       run: |
         pip install .[test]
         playwright install
-        sudo playwright install-deps
+        sudo $(which playwright) install-deps
     - name: Run all tests
       working-directory: tests
       run: python -m pytest
