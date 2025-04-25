@@ -282,7 +282,7 @@ class VisualizerBase:
 
         self.device.queue.submit([command_encoder.finish()])
 
-        if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
+        if reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
             if self._sph.needs_refine():
                 self.invalidate(DrawReason.REFINE)
 
