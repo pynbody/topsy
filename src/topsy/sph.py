@@ -309,7 +309,7 @@ class SPH:
             return
 
         if draw_reason != DrawReason.REFINE:
-            self._render_progression.select_sphere(-self.position_offset, self.scale)
+            self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
             self._update_transform_buffer()
 
         clear = self._render_progression.start_frame(draw_reason)
