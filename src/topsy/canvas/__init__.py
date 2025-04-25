@@ -167,22 +167,7 @@ class VisualizerCanvasBase:
 # be any way to distinguish this, so we live with it for now.
 
 
-def is_jupyter():
-    """Determine whether the user is executing in a Jupyter Notebook / Lab.
-
-    This has been pasted from an old version of wgpu.gui.auto.is_jupyter; the function was removed"""
-    from IPython import get_ipython
-    try:
-        ip = get_ipython()
-        if ip is None:
-            return False
-        if ip.has_trait("kernel"):
-            return True
-        else:
-            return False
-    except NameError:
-        return False
-
+from .. import is_jupyter
 
 if is_jupyter():
     from .jupyter import VisualizerCanvas

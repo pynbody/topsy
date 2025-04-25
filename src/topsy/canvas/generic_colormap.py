@@ -3,6 +3,8 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import matplotlib as mpl
 import abc
 
+from .. import config
+
 @dataclass
 class ControlSpec:
     name: str
@@ -29,7 +31,7 @@ class GenericController(abc.ABC):
 class ColorMapController(GenericController):
     """Controller description for standard color maps"""
 
-    default_quantity_name = "Projected density"
+    default_quantity_name = config.PROJECTED_DENSITY_NAME
 
     def __init__(self, visualizer):
         super().__init__(visualizer)
@@ -42,14 +44,14 @@ class ColorMapController(GenericController):
         return [self.default_quantity_name] + names
 
     def apply_auto(self) -> None:
-        self.visualizer._colormap.autorange_vmin_vmax()
+        self.visualizer.colormap.autorange_vmin_vmax()
 
     def apply_colormap(self, name: str) -> None:
         self.visualizer.colormap_name = name
 
     def apply_log_scale(self, state: bool) -> None:
         self.visualizer.log_scale = state
-        self.visualizer.vmin, self.visualizer.vmax = self.visualizer._colormap.get_ui_range()
+        self.visualizer.vmin, self.visualizer.vmax = self.visualizer.colormap.get_ui_range()
 
     def apply_quantity(self, name: str) -> None:
         new = None if name == self.default_quantity_name else name
@@ -63,7 +65,7 @@ class ColorMapController(GenericController):
     def get_layout(self) -> LayoutSpec:
         cmap = self.visualizer.colormap_name
         qty = self.visualizer.quantity_name or self.default_quantity_name
-        ui_range = self.visualizer._colormap.get_ui_range()
+        ui_range = self.visualizer.colormap.get_ui_range()
 
         return LayoutSpec(
             type="vbox",
@@ -92,7 +94,7 @@ class RGBMapController(GenericController):
         super().__init__(visualizer)
 
     def get_state(self) -> dict:
-        cmap = self.visualizer._colormap
+        cmap = self.visualizer.colormap
         return {
             "mag_range": (cmap.min_mag, cmap.max_mag),
             "gamma": cmap.gamma,
@@ -100,11 +102,11 @@ class RGBMapController(GenericController):
 
     def apply_mag_range(self, mag_pair: Tuple[float, float]) -> None:
         lo, hi = mag_pair
-        cmap = self.visualizer._colormap
+        cmap = self.visualizer.colormap
         cmap.min_mag, cmap.max_mag = lo, hi
 
     def apply_gamma(self, g: float) -> None:
-        self.visualizer._colormap.gamma = g
+        self.visualizer.colormap.gamma = g
 
     def get_layout(self) -> LayoutSpec:
         st = self.get_state()

@@ -189,3 +189,32 @@ def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
                                 **kwargs)
     vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis
+
+
+
+
+_force_is_jupyter = False
+
+def is_jupyter():
+    """Determine whether the user is executing in a Jupyter Notebook / Lab.
+
+    This has been pasted from an old version of wgpu.gui.auto.is_jupyter; the function was removed"""
+    global _force_is_jupyter
+    if _force_is_jupyter:
+        return True
+    from IPython import get_ipython
+    try:
+        ip = get_ipython()
+        if ip is None:
+            return False
+        if ip.has_trait("kernel"):
+            return True
+        else:
+            return False
+    except NameError:
+        return False
+    
+def force_jupyter():
+    """Force the return from is_jupyter() to be True; used in testing"""
+    global _force_is_jupyter
+    _force_is_jupyter = True

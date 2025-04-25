@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Callable
 
 from PySide6 import QtWidgets, QtCore
 from superqt import QLabeledDoubleRangeSlider, QLabeledDoubleSlider

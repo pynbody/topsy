@@ -79,7 +79,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self._allow_events = False
         self.update_widget(root_spec, self._controls)
          # re-enable events after a delay, to allow the UI to settle (eugh!)
-        self.call_later(JUPYTER_UI_LAG*2, lambda: setattr(self, "_allow_events", True))
+        self.call_later(JUPYTER_UI_LAG, lambda: setattr(self, "_allow_events", True))
 
     def convert_layout_to_widget(self, spec) -> widgets.Widget:
         children = []
@@ -155,7 +155,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
                 # seemingly need to set this after the range update has gone through, otherwise get
                 # nonsense results in some cases
-                self.call_later(JUPYTER_UI_LAG, lambda: setattr(widget, "value", (wlo, whi)))
+                self.call_later(JUPYTER_UI_LAG/2, lambda: setattr(widget, "value", (wlo, whi)))
 
             elif spec.type == "slider":
                 lo, hi = spec.range or (0.0, 1.0)
@@ -163,7 +163,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
                 # seemingly need to set this after the range update has gone through, otherwise get
                 # nonsense results in some cases
-                self.call_later(JUPYTER_UI_LAG, lambda: setattr(widget, "value", spec.value))
+                self.call_later(JUPYTER_UI_LAG/2, lambda: setattr(widget, "value", spec.value))
         else:
             for child_spec, child_widget in zip(spec.children, widget.children):
                 self.update_widget(child_spec, child_widget)

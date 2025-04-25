@@ -24,3 +24,6 @@ MAX_PARTICLES_PER_BUFFER = 2**27
 JUPYTER_UI_LAG = 0.05
 # time over which to spread jupyter UI updates, notably for sliders where updating the range and value
 # simultaneously seems to lead to problems
+
+# special name for  projected density in UI
+PROJECTED_DENSITY_NAME = "Projected density"
