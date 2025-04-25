@@ -148,7 +148,7 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
         A visualizer object that can be used to render the simulation data.
 
     """
-    from . import visualizer, loader, drawreason
+    from . import visualizer, loader
     setup_logging()
     
     if "test://" in filename:
@@ -177,17 +177,14 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
                                 render_resolution=resolution,
                                 rgb=rgb)
 
-    vis.draw(reason=drawreason.DrawReason.EXPORT) # ensure things are initialised before presenting
-
     return vis
 
 def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
-    from . import visualizer, loader, drawreason
+    from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
                                 data_loader_kwargs={'with_cells': kwargs.pop('with_cells', False)},
                                 **kwargs)
-    vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis
 
 

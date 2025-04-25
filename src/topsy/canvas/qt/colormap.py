@@ -93,7 +93,7 @@ class ColorMapControlsBase(QtWidgets.QDialog):
                             | QtCore.Qt.WindowType.FramelessWindowHint)
         self.resize(400, 0)
 
-        self.controller = self.controller_class(canvas._visualizer)
+        self.controller = self.controller_class(canvas._visualizer, self._refresh_ui)
         # build UI
         self._widgets: Dict[str, QtWidgets.QWidget] = {}
         root_spec = self.controller.get_layout()
@@ -179,7 +179,6 @@ class ColorMapControlsBase(QtWidgets.QDialog):
 
     def _on_changed(self, callback: Callable[[Any], None], value: Any):
         callback(value)
-        self._refresh_ui()
 
     def _refresh_ui(self):
         # re-fetch specs and update every widget

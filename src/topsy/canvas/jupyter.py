@@ -47,9 +47,9 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         Return a nested ipywidget (HBox/VBox) tree driven by the generic ColorMapController.get_layout() spec.
         """
         if isinstance(self._visualizer.colormap, colormap.RGBColormap):
-            self._controller = RGBMapController(self._visualizer)
+            self._controller = RGBMapController(self._visualizer, self._refresh_ui)
         elif isinstance(self._visualizer.colormap, colormap.Colormap):
-            self._controller = ColorMapController(self._visualizer)
+            self._controller = ColorMapController(self._visualizer, self._refresh_ui)
         else:
             self._controller = None
 
@@ -58,12 +58,6 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         else:
             self._controls = widgets.HTML("<b>No colormap controls available</b>")
         return self._controls
-
-    def _callback_then_update_ui(self, callback: Callable[[Any], None], value: Any):
-        if not self._allow_events:
-            return
-        self._callback(callback, value)
-        self._refresh_ui()
 
     def _callback(self, callback: Callable[[Any], None], value: Any):
         if not self._allow_events:
@@ -77,9 +71,11 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
             return
         root_spec = self._controller.get_layout()
         self._allow_events = False
-        self.update_widget(root_spec, self._controls)
-         # re-enable events after a delay, to allow the UI to settle (eugh!)
-        self.call_later(JUPYTER_UI_LAG, lambda: setattr(self, "_allow_events", True))
+        try:
+            self.update_widget(root_spec, self._controls)
+        finally:
+             # re-enable events after a delay, to allow the UI to settle (eugh! surely must be a better way?)
+            self.call_later(JUPYTER_UI_LAG, lambda: setattr(self, "_allow_events", True))
 
     def convert_layout_to_widget(self, spec) -> widgets.Widget:
         children = []
@@ -101,14 +97,14 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
                 description=spec.label or "",
                 layout=widgets.Layout(width="200px")
             )
-            w.observe(lambda change, cb=spec.callback: self._callback_then_update_ui(cb, change["new"]), names="value")
+            w.observe(lambda change, cb=spec.callback: self._callback(cb, change["new"]), names="value")
 
         elif spec.type == "checkbox":
             w = widgets.Checkbox(
                 value=bool(spec.value),
                 description=spec.label or ""
             )
-            w.observe(lambda change, cb=spec.callback: self._callback_then_update_ui(cb, change["new"]), names="value")
+            w.observe(lambda change, cb=spec.callback: self._callback(cb, change["new"]), names="value")
 
         elif spec.type == "range_slider":
             lo, hi = spec.range or (0.0, 1.0)
@@ -134,7 +130,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         elif spec.type == "button":
             w = widgets.Button(description=spec.label or "")
-            w.on_click(lambda btn, cb=spec.callback: self._callback_then_update_ui(cb, None))
+            w.on_click(lambda btn, cb=spec.callback: self._callback(cb, None))
 
         else:
             w = widgets.HTML(f"<b>Unknown control {spec.name}</b>")

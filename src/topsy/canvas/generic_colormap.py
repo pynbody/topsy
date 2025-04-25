@@ -21,20 +21,25 @@ class LayoutSpec:
     children: List[Union['LayoutSpec', ControlSpec]]
 
 class GenericController(abc.ABC):
-    def __init__(self, visualizer):
+    def __init__(self, visualizer, refresh_ui_callback: Optional[Callable] = None):
         self.visualizer = visualizer
+        self._refresh_ui_callback = refresh_ui_callback
 
     @abc.abstractmethod
     def get_layout(self) -> LayoutSpec:
         pass
+
+    def refresh_ui(self) -> None:
+        if self._refresh_ui_callback is not None:
+            self._refresh_ui_callback()
 
 class ColorMapController(GenericController):
     """Controller description for standard color maps"""
 
     default_quantity_name = config.PROJECTED_DENSITY_NAME
 
-    def __init__(self, visualizer):
-        super().__init__(visualizer)
+    def __init__(self, visualizer, refresh_ui_callback: Optional[Callable] = None):
+        super().__init__(visualizer, refresh_ui_callback)
 
     def get_colormap_list(self) -> List[str]:
         return list(mpl.colormaps.keys())
@@ -45,6 +50,7 @@ class ColorMapController(GenericController):
 
     def apply_auto(self) -> None:
         self.visualizer.colormap.autorange_vmin_vmax()
+        self.refresh_ui()
 
     def apply_colormap(self, name: str) -> None:
         self.visualizer.colormap_name = name
@@ -56,8 +62,8 @@ class ColorMapController(GenericController):
     def apply_quantity(self, name: str) -> None:
         new = None if name == self.default_quantity_name else name
         self.visualizer.quantity_name = new
-        self.visualizer.render_sph()
-        self.apply_auto()
+        # other elements of the UI may need to be updated
+        self.refresh_ui()
 
     def apply_slider(self, vmin: float, vmax: float) -> None:
         self.visualizer.vmin, self.visualizer.vmax = vmin, vmax
@@ -90,8 +96,8 @@ class ColorMapController(GenericController):
 class RGBMapController(GenericController):
     """Controller description for RGB (stellar rendering) outputs"""
 
-    def __init__(self, visualizer):
-        super().__init__(visualizer)
+    def __init__(self, visualizer, refresh_ui_callback: Optional[Callable] = None):
+        super().__init__(visualizer, refresh_ui_callback)
 
     def get_state(self) -> dict:
         cmap = self.visualizer.colormap

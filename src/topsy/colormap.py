@@ -287,7 +287,7 @@ class Colormap:
             self.vmin, self.vmax = 0.0, 1.0
 
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
-        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+        logger.info(f"Autoscale: log_scale={self.log_scale}, vmin={self.vmin}, vmax={self.vmax}")
 
 
     def _update_parameter_buffer(self, width, height, mass_scale):
