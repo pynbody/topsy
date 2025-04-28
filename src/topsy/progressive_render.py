@@ -77,8 +77,8 @@ class RenderProgression:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
 
-        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 1.0:
-            # substantial (factor 2) difference between what could be achieved and what was achieved
+        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.5:
+            # substantial (40%) difference between what could be achieved and what was achieved
             self._recommended_num_particles_to_render = num_achievable
             self._recommendation_based_on_num_particles = num_rendered
 
@@ -108,43 +108,43 @@ class RenderProgressionWithCells(RenderProgression):
 
 
     def _map_logical_range_to_actual_ranges(self, start, length):
-        """Map from logical range to actual ranges in the cell layout"""
+        """Map from logical range to actual ranges in the cell layout.
+
+        Performance critical - called during rendering. Optimized into numpy array operations but could
+        probably be usefully optimized further based on profiling. (Although should double check
+        in the profile that it really is *this* routine that is taking the time.)
+        """
         num_particles = self._cell_layout.get_num_particles()
         fractional_start = start / num_particles
         fractional_length = length / num_particles
 
-        starts = []
-        lens = []
-
         num_cells = self._cell_layout.get_num_cells()
+        offset_per_cell = self._cell_layout._offsets
 
-        for i in self._selected_cells:
-            # the 'phase shift' ensures that if a very low number of particles are selected such that the mean
-            # number of particles per cell is less than one, some particles still get selected when we are
-            # starting at zero. Otherwise quantization effects would make it impossible to select any particles
-            # until a much later block. Also the phase shift must be evenly distributed across cell so that
-            # we don't get differential spatial effects
+        # the 'phase shift' ensures that if a very low number of particles are selected such that the mean
+        # number of particles per cell is less than one, some particles still get selected when we are
+        # starting at zero. Otherwise quantization effects would make it impossible to select any particles
+        # until a much later block. Also the phase shift must be evenly distributed across cell so that
+        # we don't get differential spatial effects
+        cell_phase_shifts = self._cell_phase_shifts/num_cells
+        total_particles_in_cells = self._cell_layout._lengths
 
-            cell_phase_shift = self._cell_phase_shifts[i]/num_cells
-            total_particles_in_cell = self._cell_layout.get_cell_length(i)
+        ideal_start_per_cell = fractional_start*total_particles_in_cells.astype(np.float64)
+        ideal_len_per_cell = fractional_length*total_particles_in_cells.astype(np.float64)
 
-            ideal_start_this_cell = fractional_start * total_particles_in_cell
-            ideal_len_this_cell = fractional_length * total_particles_in_cell
-            # the above are floating point numbers, but we can actually only take an integer, so round
+        # the above are floating point numbers, but we can actually only take an integer, so floor it
+        start_per_cell = (ideal_start_per_cell+cell_phase_shifts).astype(np.intp)
+        end_per_cell = (ideal_start_per_cell+ideal_len_per_cell+cell_phase_shifts).astype(np.intp)
+        len_per_cell = end_per_cell-start_per_cell
 
-            start_this_cell = int(ideal_start_this_cell + cell_phase_shift)
-            end = int(ideal_start_this_cell + ideal_len_this_cell+cell_phase_shift)
-            len_this_cell = end - start_this_cell
+        start_global = (start_per_cell + offset_per_cell)[self._selected_cells]
+        len_global = len_per_cell[self._selected_cells]
 
-            #if i<10:
-            #    print(f"{i} {cell_phase_shift} {start_this_cell}, {ideal_len_this_cell:.2f}, {len_this_cell} of {total_particles_in_cell}")
+        mask = len_global>0
 
-            if len_this_cell>0:
-                starts.append(start_this_cell + self._cell_layout.get_cell_offset(i))
-                lens.append(len_this_cell)
+        return start_global[mask], len_global[mask]
 
 
-        return starts, lens
 
     def get_block(self, time_elapsed_in_frame: float) -> tuple[list[int], list[int]] | None:
         result = super().get_block(time_elapsed_in_frame)

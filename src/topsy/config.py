@@ -19,6 +19,11 @@ MAX_PARTICLES_PER_BUFFER = 2**27
 # arbitrary number, but small enough that GPU memory fragmentation not a huge issue hopefully, while
 # large enough to not cause too much overhead
 
+DEFAULT_CELLS_NSIDE = 16
+# To provide a quick way to remove unneeded verticies, the simulation is ordered into cells
+# by default, use this number of cells on a side (so DEFAULT_CELLS_NSIDE^3 in total).
+# High numbers enable more precise geometric selections, but at a general performance penalty
+# due to the complexity of the GPU buffer organization.
 
 JUPYTER_UI_LAG = 0.05
 # time over which to spread jupyter UI updates, notably for sliders where updating the range and value

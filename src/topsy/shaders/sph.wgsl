@@ -34,28 +34,28 @@ struct FragmentOutput {
     [[CHANNELED]] @location(0) output: vec4<f32>
 }
 
+// triangle position offsets for making a square of 2 units side length
+const posOffset = array<vec2<f32>, 6>(
+            vec2(-1.0, -1.0),
+            vec2(-1.0, 1.0),
+            vec2(1.0, 1.0),
+            vec2(1.0, -1.0),
+            vec2(-1.0, -1.0),
+            vec2(1.0, 1.0)
+          );
+
+// corresponding texture coordinates
+const texCoords = array<vec2<f32>, 6>(
+            vec2(0.0, 0.0),
+            vec2(0.0, 1.0),
+            vec2(1.0, 1.0),
+            vec2(1.0, 0.0),
+            vec2(0.0, 0.0),
+            vec2(1.0, 1.0)
+          );
+
 @vertex
 fn vertex_main(input: VertexInput) -> VertexOutput {
-    // triangle position offsets for making a square of 2 units side length
-    var posOffset = array<vec2<f32>, 6>(
-                vec2(-1.0, -1.0),
-                vec2(-1.0, 1.0),
-                vec2(1.0, 1.0),
-                vec2(1.0, -1.0),
-                vec2(-1.0, -1.0),
-                vec2(1.0, 1.0)
-              );
-
-    // corresponding texture coordinates
-    var texCoords = array<vec2<f32>, 6>(
-                vec2(0.0, 0.0),
-                vec2(0.0, 1.0),
-                vec2(1.0, 1.0),
-                vec2(1.0, 0.0),
-                vec2(0.0, 0.0),
-                vec2(1.0, 1.0)
-              );
-
     var output: VertexOutput;
 
     var smooth_length: f32 = input.pos.w;
@@ -63,11 +63,11 @@ fn vertex_main(input: VertexInput) -> VertexOutput {
     // factor 2: going out to 2h.
     var clipspace_size = trans_params.scale_factor*smooth_length*2.0;
 
-    if(clipspace_size<trans_params.clipspace_size_min || clipspace_size>trans_params.clipspace_size_max) {
-        output.pos.w = 1.0;
-        output.pos.z = 100.0; // discard the vertex
-        return output;
-    }
+    //if(clipspace_size<trans_params.clipspace_size_min || clipspace_size>trans_params.clipspace_size_max) {
+    //    output.pos.w = 1.0;
+    //    output.pos.z = 100.0; // discard the vertex
+    //    return output;
+    //}
 
     // perform transformation
     output.pos = input.pos;

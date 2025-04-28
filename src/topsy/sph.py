@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 
 logger = getLogger(__name__)
 
+from os_signpost import Signposter
+signposter = Signposter("com.pynbody.topsy", Signposter.Category.PointsOfInterest)
+
 class SPH:
     render_format = wgpu.TextureFormat.rg32float
     _nchannels_input = 2
@@ -304,7 +307,6 @@ class SPH:
         self._device.queue.submit([encoded_render_pass])
 
     def render(self, draw_reason=DrawReason.CHANGE):
-
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
             return
 
@@ -314,11 +316,16 @@ class SPH:
 
         clear = self._render_progression.start_frame(draw_reason)
 
+        start_indices, block_lens = self._render_progression.get_block(0.0)
+
+        encoded_render_pass = self.encode_render_pass(start_indices, block_lens, clear=clear)
+
         with self._render_timer:
-            while (block := self._render_progression.get_block(self._render_timer.time_elapsed())) is not None:
-                self._render_block(*block, clear=clear)
-                clear = False
-                self._render_progression.end_block(self._render_timer.time_elapsed())
+            self._device.queue.submit([encoded_render_pass])
+
+
+        self._render_progression.end_block(self._render_timer.time_elapsed())
+        # don't get any more blocks for this frame, too expensive on CPU.
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration

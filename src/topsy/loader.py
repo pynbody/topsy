@@ -74,7 +74,8 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
         boxmin = self.snapshot['pos'].min()-1e-6
         boxmax = self.snapshot['pos'].max()+1e-6
-        self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax, 16)
+        self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax,
+                                                                            config.DEFAULT_CELLS_NSIDE)
         self._particle_order = ordering[self._cell_layout.randomize_within_cells()]
 
     def get_positions(self):

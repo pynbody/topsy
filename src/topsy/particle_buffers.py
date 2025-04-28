@@ -45,7 +45,13 @@ class ParticleBuffers:
         self._last_bufnum = bufnum
 
     def iter_particle_ranges(self, particle_mins: list[int], particle_lens: list[int], render_pass: wgpu.GPURenderPassEncoder):
-        """Iterate over logical particle ranges yielding local starts/lengths for each buffer, setting vertex buffers as needed."""
+        """Iterate over logical particle ranges yielding local starts/lengths for each buffer, setting vertex buffers as needed.
+
+        **Performance critical** -- needs optimizing
+        """
+        self.set_vertex_buffers(0, render_pass)
+        yield from zip(particle_mins, particle_lens)
+        return
         per_buf_start_lens = self._split_buffers.global_to_split_monotonic(particle_mins, particle_lens)
         for i, (this_buf_starts, this_buf_lens) in enumerate(per_buf_start_lens):
             self.set_vertex_buffers(i, render_pass)
