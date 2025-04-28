@@ -62,7 +62,8 @@ class VisualizerBase:
         self._setup_wgpu()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args, **data_loader_kwargs)
-        self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device)
+        self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device,
+                                                                 self.data_loader.get_render_progression().get_max_particle_regions_per_block())
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
@@ -105,7 +106,7 @@ class VisualizerBase:
                 max_buffer_size = 2**63
             type(self).device: wgpu.GPUDevice = self.adapter.request_device_sync(
                 required_features=["texture-adapter-specific-format-features", "float32-filterable",
-                                  ],
+                                  "multi-draw-indirect"],
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
 
@@ -272,8 +273,6 @@ class VisualizerBase:
             self._prevent_sph_rendering = False
 
     def _encode_draw(self, target_texture_view):
-        signposter.emit_event("st-en")
-
         command_encoder = self.device.create_command_encoder()
 
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
@@ -290,7 +289,6 @@ class VisualizerBase:
             self._update_and_display_status(command_encoder, target_texture_view)
 
         result = command_encoder.finish()
-        signposter.emit_event("fin-en")
         return result
 
     def draw(self, reason, target_texture_view=None):

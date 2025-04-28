@@ -17,6 +17,9 @@ class RenderProgression:
         self._current_draw_reason = None
         self._last_num_to_render = 1
 
+    def get_max_particle_regions_per_block(self):
+        """Get the maximum number of particle regions that will be returned by get_block"""
+        return 1
 
     def start_frame(self, draw_reason: drawreason.DrawReason):
         """Called at the start of a frame to reset the start index if needed
@@ -36,7 +39,7 @@ class RenderProgression:
         return self._max_num_particles / self._start_index
 
     def get_block(self, time_elapsed_in_frame: float) -> tuple[list[int], list[int]] | None:
-        """Recommends the starting index and number of particles to render, or None if no rendering should be undertaken"""
+        """Returns a list of starting indicies and lengths from the particle buffer to render"""
         if self._current_draw_reason is None:
             raise RuntimeError("get_block called without a current frame")
         draw_reason = self._current_draw_reason
@@ -106,6 +109,8 @@ class RenderProgressionWithCells(RenderProgression):
         self._cell_phase_shifts = random_state.permutation(self._cell_layout.get_num_cells())
         self.select_all()
 
+    def get_max_particle_regions_per_block(self):
+        return self._cell_layout.get_num_cells()
 
     def _map_logical_range_to_actual_ranges(self, start, length):
         """Map from logical range to actual ranges in the cell layout.

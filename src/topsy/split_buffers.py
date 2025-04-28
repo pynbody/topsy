@@ -43,6 +43,11 @@ class SplitBuffers:
         bufnum = np.searchsorted(self._buffer_particle_starts, address, side='right')-1
         return bufnum, address - self._buffer_particle_starts[bufnum]
 
+    @property
+    def num_buffers(self) -> int:
+        """Number of buffers per global buffer"""
+        return self._num_buffers
+
     def global_to_split(self, start: int, length: int) -> tuple[list[int], list[int], list[int]]:
         """Map global start and length to split buffer numbers, starts and lengths."""
         bufs = []
@@ -72,7 +77,9 @@ class SplitBuffers:
 
     def global_to_split_monotonic(self, start: list[int], length: list[int]) -> list[tuple[list[int], list[int]]]:
         """Map global start and length to starts and lengths for each buffer. Addressing must be monotonically increasing."""
+        from .visualizer import signposter
 
+        signposter.emit_event("ST")
         starts = []
         lengths = []
 
@@ -107,6 +114,8 @@ class SplitBuffers:
         if cur_buf < self._num_buffers-1:
             for bufnum in range(cur_buf+1, self._num_buffers):
                 all_buf_results.append(([], []))
+
+        signposter.emit_event("FIN")
 
         return all_buf_results
 

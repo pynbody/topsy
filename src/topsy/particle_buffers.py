@@ -6,8 +6,9 @@ from . import loader, split_buffers
 
 logger = logging.getLogger(__name__)
 
+
 class ParticleBuffers:
-    def __init__(self, loader: loader.AbstractDataLoader, device: wgpu.GPUDevice):
+    def __init__(self, loader: loader.AbstractDataLoader, device: wgpu.GPUDevice, max_draw_calls_per_buffer: int):
         self.buffers = {}
         self._split_buffers = split_buffers.SplitBuffers(len(loader))
         self._device = device
@@ -18,7 +19,30 @@ class ParticleBuffers:
         self._quantity_buffer_is_for_name = None
         self._current_vertex_buffers = []
 
+        self._create_indirect_draw_buffers(max_draw_calls_per_buffer)
+
         self._last_bufnum = -1
+
+    def _create_indirect_draw_buffers(self, max_draw_calls_per_buffer: int):
+        self._indirect_buffers = [] # for indirect draw calls, one needed per physical buffer
+        self._indirect_count_buffers = []
+        self._indirect_buffers_npy = []
+        self._indirect_count_buffers_npy = []
+        self._max_draw_calls_per_buffer = max_draw_calls_per_buffer
+
+        for i in range(self._split_buffers.num_buffers):
+            self._indirect_buffers.append(
+                self._device.create_buffer(size=max_draw_calls_per_buffer * 4 * np.dtype(np.uint32).itemsize,
+                                           usage = wgpu.BufferUsage.INDIRECT | wgpu.BufferUsage.COPY_DST)
+            )
+            #self._indirect_count_buffers.append(
+            #    self._device.create_buffer(size=np.dtype(np.uint32).itemsize,
+            #                               usage=wgpu.BufferUsage.INDIRECT | wgpu.BufferUsage.COPY_DST)
+            #)
+            self._indirect_buffers_npy.append(np.zeros((max_draw_calls_per_buffer, 4), dtype=np.uint32))
+            #self._indirect_count_buffers_npy.append(np.zeros((1,), dtype=np.uint32))
+            self._indirect_buffers_npy[-1][:, 0] = 6 # vertex count
+
 
     def specify_vertex_buffer_assignment(self, buffer_names):
         buffers = []
@@ -44,19 +68,30 @@ class ParticleBuffers:
             render_pass.set_vertex_buffer(i, buffers[bufnum])
         self._last_bufnum = bufnum
 
+    def issue_draw_indirect(self, sph_render_pass: wgpu.GPURenderPassEncoder):
+
+        for bufnum in range(self._split_buffers.num_buffers):
+            self.set_vertex_buffers(bufnum, sph_render_pass)
+            sph_render_pass._multi_draw_indirect(self._indirect_buffers[bufnum], 0, self._max_draw_calls_per_buffer)
+
+    def update_particle_ranges(self, particle_mins: list[int], particle_lens: list[int]):
+        per_buf_start_lens = self._split_buffers.global_to_split_monotonic(particle_mins, particle_lens)
+        for bufnum, (particle_min, particle_len) in enumerate(per_buf_start_lens):
+            self._indirect_buffers_npy[bufnum][len(particle_min):,1] = 0
+            self._indirect_buffers_npy[bufnum][:len(particle_min), 1] = particle_len # instance count
+            self._indirect_buffers_npy[bufnum][:len(particle_min), 3] = particle_min # first instance
+            self._device.queue.write_buffer(self._indirect_buffers[bufnum], 0, self._indirect_buffers_npy[bufnum])
+
+
     def iter_particle_ranges(self, particle_mins: list[int], particle_lens: list[int], render_pass: wgpu.GPURenderPassEncoder):
         """Iterate over logical particle ranges yielding local starts/lengths for each buffer, setting vertex buffers as needed.
 
         **Performance critical** -- needs optimizing
         """
-        self.set_vertex_buffers(0, render_pass)
-        yield from zip(particle_mins, particle_lens)
-        return
         per_buf_start_lens = self._split_buffers.global_to_split_monotonic(particle_mins, particle_lens)
         for i, (this_buf_starts, this_buf_lens) in enumerate(per_buf_start_lens):
             self.set_vertex_buffers(i, render_pass)
-            for start, length in zip(this_buf_starts, this_buf_lens):
-                yield start, length
+            yield this_buf_starts, this_buf_lens
 
     def get_pos_smooth_buffers(self):
         if not hasattr(self, "_pos_smooth_buffers"):

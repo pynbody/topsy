@@ -302,9 +302,7 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-    def _render_block(self, start_indices, block_lens, clear=False):
-        encoded_render_pass = self.encode_render_pass(start_indices, block_lens, clear=clear)
-        self._device.queue.submit([encoded_render_pass])
+
 
     def render(self, draw_reason=DrawReason.CHANGE):
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
@@ -318,8 +316,12 @@ class SPH:
 
         start_indices, block_lens = self._render_progression.get_block(0.0)
 
-        encoded_render_pass = self.encode_render_pass(start_indices, block_lens, clear=clear)
-
+        from .visualizer import signposter
+        signposter.emit_event("RP")
+        encoded_render_pass = self.encode_render_pass(clear=clear)
+        signposter.emit_event("RP2")
+        self._visualizer.particle_buffers.update_particle_ranges(start_indices, block_lens)
+        signposter.emit_event("RP3")
         with self._render_timer:
             self._device.queue.submit([encoded_render_pass])
 
@@ -337,7 +339,7 @@ class SPH:
         """Check if the render has been called at least once"""
         return self._render_progression.has_ever_rendered()
 
-    def encode_render_pass(self, start_particles: list[int], num_particles_to_renders: list[int], clear=True) -> wgpu.GPUCommandBuffer:
+    def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()
         sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
@@ -365,10 +367,7 @@ class SPH:
         sph_render_pass.set_bind_group(0, self._bind_group, [],
                                        0, 99)
 
-        for local_start, local_len in self._visualizer.particle_buffers.iter_particle_ranges(
-                start_particles, num_particles_to_renders, sph_render_pass):
-            sph_render_pass.draw(6, local_len, 0, local_start)
-
+        self._visualizer.particle_buffers.issue_draw_indirect(sph_render_pass)
         sph_render_pass.end()
 
         return command_encoder.finish()
