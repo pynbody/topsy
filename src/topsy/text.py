@@ -8,11 +8,11 @@ from .overlay import Overlay
 
 
 class TextOverlay(Overlay):
-    def __init__(self, visualizer, text, clipspace_origin, pixelspace_height, *, dpi=200, **kwargs):
+    def __init__(self, visualizer, text, clipspace_origin, logical_pixels_height, *, dpi=200, **kwargs):
         self.text = text
         self.dpi = dpi
         self.clipspace_origin = clipspace_origin
-        self.pixelspace_height = pixelspace_height
+        self.pixelspace_height = logical_pixels_height
         self.kwargs = kwargs
 
         super().__init__(visualizer)
@@ -20,8 +20,8 @@ class TextOverlay(Overlay):
     def get_clipspace_coordinates(self, width, height):
         im = self.get_contents()
         x,y = self.clipspace_origin
-        height = self.pixelspace_height/height
-        width = self.pixelspace_height*im.shape[1]/im.shape[0]/width
+        height = self.pixelspace_height*self._visualizer.canvas.pixel_ratio/height
+        width = self.pixelspace_height*self._visualizer.canvas.pixel_ratio*im.shape[1]/im.shape[0]/width
         return x, y, width, height
 
     def render_contents(self):

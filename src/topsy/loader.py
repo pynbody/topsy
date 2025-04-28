@@ -178,7 +178,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         elif center == 'all':
             pynbody.analysis.halo.center(self.snapshot)
         elif center == 'none':
-            pass
+            self.snapshot['pos']-=(self.snapshot['pos'].max(axis=0) + self.snapshot['pos'].min(axis=0))/2.0
         else:
             raise ValueError("Unknown centering type")
 
@@ -194,7 +194,11 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         except:
             logger.info("Generating smoothing data - this can take a while but will be cached for future runs")
             self.snapshot[self._name_smooth_array] = pynbody.sph.smooth(self.snapshot)
-            pickle.dump(self.snapshot[self._name_smooth_array], open(self._smooth_cache_filename, 'wb'))
+            try:
+                pickle.dump(self.snapshot[self._name_smooth_array], open(self._smooth_cache_filename, 'wb'))
+                logger.info("Smoothing data saved successfully")
+            except IOError:
+                logger.warning("Unable to save smoothing data to disk")
 
 
 class TestDataLoader(AbstractDataLoader):

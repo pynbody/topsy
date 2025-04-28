@@ -5,7 +5,6 @@ DEFAULT_SCALE = 200.0 # viewport width in kpc
 
 TARGET_FPS = 30 # will use downsampling to achieve this
 INITIAL_PARTICLES_TO_RENDER = 1e5 # number of particles to render at first
-FULL_RESOLUTION_RENDER_AFTER = 0.3 # inactivity seconds to wait before rendering without downs
 STATUS_LINE_UPDATE_INTERVAL = 0.2 # seconds
 STATUS_LINE_UPDATE_INTERVAL_RAPID = 0.05 # when time-critical information is being displayed
 
@@ -19,3 +18,11 @@ TEST_DATA_NUM_PARTICLES_DEFAULT = int(1e6)
 MAX_PARTICLES_PER_BUFFER = 2**27
 # arbitrary number, but small enough that GPU memory fragmentation not a huge issue hopefully, while
 # large enough to not cause too much overhead
+
+
+JUPYTER_UI_LAG = 0.05
+# time over which to spread jupyter UI updates, notably for sliders where updating the range and value
+# simultaneously seems to lead to problems
+
+# special name for  projected density in UI
+PROJECTED_DENSITY_NAME = "Projected density"

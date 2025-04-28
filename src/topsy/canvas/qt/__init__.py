@@ -6,7 +6,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 
 from rendercanvas.qt import RenderCanvas, loop
 
-from .colormap import RGBMapControls, ColorMapControls
+from .colormap import RGBColorControls, ColorMapControls
 from .lineedit import MyLineEdit
 from .recording import RecordingSettingsDialog, VisualizationRecorderWithQtProgressbar
 from .. import VisualizerCanvasBase
@@ -67,14 +67,11 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self._link_action.triggered.connect(self.on_click_link)
 
 
-        if not self._visualizer._hdr and not self._visualizer._rgb:
-            self._colormap_controls = ColorMapControls(self)
-        elif self._visualizer._rgb:
-            self._colormap_controls = RGBMapControls(self)
+
 
         self._cmap_icon = _get_icon("rgb.png")
         self._open_cmap = QtGui.QAction(self._cmap_icon, "Color", self)
-        self._open_cmap.triggered.connect(self._colormap_controls.open)
+
 
 
         self._toolbar.addAction(self._load_script_action)
@@ -112,6 +109,15 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self._toolbar_update_timer.start(100)
 
         layout.addLayout(our_layout)
+        self.call_later(0, self._on_ready_callback)
+
+    def _on_ready_callback(self):
+        if not self._visualizer._hdr and not self._visualizer._rgb:
+            self._colormap_controls = ColorMapControls(self)
+        elif self._visualizer._rgb:
+            self._colormap_controls = RGBColorControls(self)
+        self._open_cmap.triggered.connect(self._colormap_controls.open)
+
 
     def __del__(self):
         try:

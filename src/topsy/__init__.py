@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from . import config
 
+logger = None
 
 def parse_args(args=None):
     """Create arguments and kwargs to pass to the visualizer, from sys.argv"""
@@ -69,6 +70,8 @@ def parse_args(args=None):
 
 def setup_logging():
     global logger
+    if logger is not None:
+        return
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
@@ -79,50 +82,18 @@ def setup_logging():
     logger.addHandler(ch)
 
 def main():
-    setup_logging()
     all_args = parse_args()
 
-    from . import visualizer, loader
-
     for args in all_args:
-        if "test://" in args.filename:
-            loader_class = loader.TestDataLoader
-            try:
-                n_part = int(float(args.filename[7:])) # going through float allows scientific notation
-            except ValueError:
-                n_part = config.TEST_DATA_NUM_PARTICLES_DEFAULT
-            logger.info(f"Using test data with {n_part} particles")
-            loader_args = (n_part,)
-        else:
-            import pynbody
-            loader_class = loader.PynbodyDataLoader
-            if args.load_sphere is not None:
-                match args.load_sphere:
-                    case (r,):
-                        loader_args = (args.filename, args.center, args.particle, pynbody.filt.Sphere(r))
-                    case (r, x, y, z):
-                        loader_args = (args.filename, args.center, args.particle,
-                                       pynbody.filt.Sphere(r, (x, y, z)))
-                    case _:
-                        argparser.error("Invalid number of arguments for --load-sphere. Must be 1 or 4.")
-
-
-            else:
-                loader_args = (args.filename, args.center, args.particle)
-
-
-        vis = visualizer.Visualizer(data_loader_class=loader_class,
-                                    data_loader_args=loader_args,
-                                    colormap_name=args.colormap,
-                                    hdr=args.hdr,
-                                    periodic_tiling=args.tile,
-                                    render_resolution=args.resolution,
-                                    rgb=args.rgb)
-
+        vis = load(args.filename, center=args.center, resolution=args.resolution,
+                    particle=args.particle, tile=args.tile, rgb=args.rgb,
+                    sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
+                    sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
+                    hdr=args.hdr)
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
-    from rendercanvas import qt
+    from rendercanvas import qt # has to be imported here so that underlying qt toolkit has been autoselected
     qt.loop.run()
 
 def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
@@ -133,11 +104,114 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
     vis.quantity_name = quantity
     return vis
 
-def _test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
-    from . import visualizer, loader, drawreason
+def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool = False,
+         resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
+         sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
+         hdr: bool = False) :
+    """
+    Load a simulation file (currently using pynbody) and return a visualizer object.
+
+    Parameters
+    ----------
+
+    filename : str
+        Path to the simulation file. You can also specify test://<N> to generate a test dataset with N particles.
+
+    center : str
+        Centering method. Can be 'halo-<N>', 'all', 'zoom' or 'none'.
+
+    particle : str
+        Particle type to visualize. Default is 'gas'; other options include 'dm' and 'star'.
+
+    resolution : int
+        Resolution of the visualization in pixels.
+
+    sphere_radius : float | None
+        If specified, load a sphere of particles with the given radius. Units are simulation units.
+
+    sphere_center : tuple[float, float, float] | None
+        If specified, load a sphere of particles with the given center. Units are simulation units.
+        Must be a tuple of three floats (x, y, z).
+
+    rgb : bool
+        If True, enable RGB->UVI rendering for stars. Default is False.
+
+    hdr : bool
+        If True, try enabling HDR rendering (only valid when rgb=True). Default is False.
+
+    tile : bool
+        If True, wrap and tile the simulation box using its periodicity. Default is False.
+
+    Returns
+    -------
+    visualizer.Visualizer
+        A visualizer object that can be used to render the simulation data.
+
+    """
+    from . import visualizer, loader
+    setup_logging()
+    
+    if "test://" in filename:
+        loader_class = loader.TestDataLoader
+        try:
+            n_part = int(float(filename[7:]))  # going through float allows scientific notation
+        except ValueError:
+            n_part = config.TEST_DATA_NUM_PARTICLES_DEFAULT
+        logger.info(f"Using test data with {n_part} particles")
+        loader_args = (n_part,)
+    else:
+        import pynbody
+        loader_class = loader.PynbodyDataLoader
+        if sphere_radius is not None:
+            if sphere_center is not None:
+                loader_args = (filename, center, particle, pynbody.filt.Sphere(sphere_radius, sphere_center))
+            else:
+                loader_args = (filename, center, particle, pynbody.filt.Sphere(sphere_radius))
+        else:
+            loader_args = (filename, center, particle)
+
+    vis = visualizer.Visualizer(data_loader_class=loader_class,
+                                data_loader_args=loader_args,
+                                hdr=hdr,
+                                periodic_tiling=tile,
+                                render_resolution=resolution,
+                                rgb=rgb)
+
+    return vis
+
+def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
+    from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
                                 data_loader_kwargs={'with_cells': kwargs.pop('with_cells', False)},
                                 **kwargs)
-    vis.draw(reason=drawreason.DrawReason.EXPORT)
     return vis
+
+
+
+
+_force_is_jupyter = False
+
+def is_jupyter():
+    """Determine whether the user is executing in a Jupyter Notebook / Lab.
+
+    This has been pasted from an old version of wgpu.gui.auto.is_jupyter; the function was removed"""
+    global _force_is_jupyter
+    if _force_is_jupyter:
+        return True
+    from IPython import get_ipython
+    try:
+        ip = get_ipython()
+        if ip is None:
+            return False
+        if ip.has_trait("kernel"):
+            return True
+        else:
+            return False
+    except NameError:
+        return False
+    
+def force_jupyter():
+    """Force the return from is_jupyter() to be True; used in testing"""
+    global _force_is_jupyter
+    _force_is_jupyter = True

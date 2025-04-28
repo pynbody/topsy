@@ -38,11 +38,12 @@ class VisualizerBase:
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
+        self._colorbar = None
+        self._colormap = None
 
         self.crosshairs_visible = False
 
         self._prevent_sph_rendering = False # when True, prevents the sph from rendering, to ensure quick screen updates
-        self.vmin_vmax_is_set = False
 
         self.show_colorbar = True
         self.show_scalebar = True
@@ -68,10 +69,12 @@ class VisualizerBase:
 
         self.render_texture = self._sph.get_output_texture()
 
-        self._reinitialize_colormap_and_bar(0.0, 1.0, True)
+        self.reset_view()
+
+        self._reinitialize_colormap_and_bar()
 
         self._last_status_update = 0.0
-        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 80, color=(1, 1, 1, 1))
+        self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 40, color=(1, 1, 1, 1))
 
         self._scalebar = scalebar.ScalebarOverlay(self)
 
@@ -83,11 +86,9 @@ class VisualizerBase:
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
-        self.reset_view()
-        self.invalidate(DrawReason.INITIAL_UPDATE)
-
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
+        logger.info(f"GPU device: {self.adapter.info['adapter_type']} ({self.adapter.info['device']})")
         if self.device is None:
             max_buffer_size = self.adapter.limits['max-buffer-size']
             # on some systems, this is 2^64 which can lead to overflows
@@ -109,6 +110,8 @@ class VisualizerBase:
                 self.canvas_format = self.canvas_format[:-5]
 
         self.context.configure(device=self.device, format=self.canvas_format)
+
+        logger.info(f"Canvas format {self.canvas_format}")
 
     def invalidate(self, reason=DrawReason.CHANGE):
         # NB no need to check if we're already pending a draw - rendercanvas does that for us
@@ -139,7 +142,7 @@ class VisualizerBase:
     @colormap_name.setter
     def colormap_name(self, value):
         self._colormap_name = value
-        self._reinitialize_colormap_and_bar()
+        self._reinitialize_colormap_and_bar(keep_scale=True)
         self.invalidate(reason=DrawReason.PRESENTATION_CHANGE)
 
     @property
@@ -164,6 +167,7 @@ class VisualizerBase:
     def scale(self):
         """Return the scalefactor from kpc to viewport coordinates. Viewport will therefore be 2*scale wide."""
         return self._sph.scale
+    
     @scale.setter
     def scale(self, value):
         self._sph.scale = value
@@ -181,6 +185,8 @@ class VisualizerBase:
 
     @quantity_name.setter
     def quantity_name(self, value):
+        if value == self.particle_buffers.quantity_name:
+            return
 
         if value is not None:
             # see if we can get it. Assume it'll be cached, so this won't waste time.
@@ -190,35 +196,44 @@ class VisualizerBase:
                 raise ValueError(f"Unable to get quantity named '{value}'") from e
 
         self.particle_buffers.quantity_name = value
-        self.vmin_vmax_is_set = False
+        
         self._reinitialize_colormap_and_bar()
-        self.invalidate()
+        
 
-    def _reinitialize_colormap_and_bar(self, vmin = None, vmax = None, log_scale = None):
-        if vmin is None:
-            vmin = self.vmin
-        if vmax is None:
-            vmax = self.vmax
-        if log_scale is None:
-            log_scale = self.log_scale
+    def _reinitialize_colormap_and_bar(self, keep_scale=False):
+        """Reinitialize the colormap and colorbar.
+        
+        If keep_scale is False, render and figure out the min/max values for the colormap too.
+        """
+        if self._colormap is not None:
+            old_vmin, old_vmax, old_log = self._colormap.vmin, self._colormap.vmax, self._colormap.log_scale
+        else:
+            if keep_scale:
+                raise ValueError("Cannot keep scale if colormap not yet initialized")
 
         if self._rgb:
             if self._hdr:
                 self._colormap = colormap.RGBHDRColormap(self)
             else:
                 self._colormap = colormap.RGBColormap(self)
-            self._colorbar = None
         elif self._hdr:
             self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
-            self._colorbar = None
+
         else:
             self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
-            self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name,
-                                                      self._get_colorbar_label())
-        if self.vmin_vmax_is_set:
-            self._colormap.vmin = vmin
-            self._colormap.vmax = vmax
-            self._colormap.log_scale = log_scale
+            
+        if not keep_scale:
+            self._sph.render(DrawReason.EXPORT)
+            self._colormap.autorange_vmin_vmax()
+        else:
+            self._colormap.vmin = old_vmin
+            self._colormap.vmax = old_vmax
+            self._colormap.log_scale = old_log
+
+        if not self._rgb and not self._hdr:
+            self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name, self._get_colorbar_label())
+
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
 
     def _get_colorbar_label(self):
@@ -239,11 +254,6 @@ class VisualizerBase:
                          [0, 1, 0],
                          [-np.sin(angle), 0, np.cos(angle)]])
 
-    def _check_whether_inactive(self):
-        if time.time()-self._last_lores_draw_time>config.FULL_RESOLUTION_RENDER_AFTER*0.95:
-            self._last_lores_draw_time = np.inf # prevent this from being called again
-            self.invalidate(reason=DrawReason.REFINE)
-
     @contextmanager
     def prevent_sph_rendering(self):
         self._prevent_sph_rendering = True
@@ -256,12 +266,6 @@ class VisualizerBase:
 
         if not self._prevent_sph_rendering:
             self.render_sph(reason)
-
-        if not self.vmin_vmax_is_set:
-            logger.info("Setting vmin/vmax")
-            self._colormap.autorange_vmin_vmax()
-            self.vmin_vmax_is_set = True
-            self._refresh_colorbar()
 
         command_encoder = self.device.create_command_encoder()
 
@@ -284,7 +288,7 @@ class VisualizerBase:
 
         self.device.queue.submit([command_encoder.finish()])
 
-        if reason != DrawReason.PRESENTATION_CHANGE and reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
+        if reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
             if self._sph.needs_refine():
                 self.invalidate(DrawReason.REFINE)
 
@@ -302,14 +306,12 @@ class VisualizerBase:
     @vmin.setter
     def vmin(self, value):
         self._colormap.vmin = value
-        self.vmin_vmax_is_set = True
         self._refresh_colorbar()
         self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @vmax.setter
     def vmax(self, value):
         self._colormap.vmax = value
-        self.vmin_vmax_is_set = True
         self._refresh_colorbar()
         self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
@@ -475,6 +477,12 @@ class VisualizerBase:
         #else:
         #    raise RuntimeError("The wgpu library is using a gui backend that topsy does not recognize")
 
+    def _ipython_display_(self):
+        if isinstance(self.canvas, canvas.jupyter.VisualizerCanvas):
+            self.canvas.ipython_display_with_widgets()
+        else:
+            from IPython.display import display
+            display(repr(self))
 
 class Visualizer(view_synchronizer.SynchronizationMixin, VisualizerBase):
     pass

@@ -30,6 +30,8 @@ jobs:
     - name: Install
       run: |
         pip install .[test]
+        playwright install
+        sudo $(which playwright) install-deps
     - name: Run all tests
       working-directory: tests
       run: python -m pytest

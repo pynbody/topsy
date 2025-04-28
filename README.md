@@ -163,25 +163,14 @@ There is also a toolbar at the bottom of the window with some buttons:
 Using from jupyter
 ------------------
 
-Thanks to [jupyter-rfb](https://jupyter-rfb.readthedocs.io/en/stable/), it is possible to use `topsy` within a jupyter notebook. This requires a little more
-knowledge than the command line version, but is still fairly straight-forward if
-you are familiar with `pynbody`. To open a topsy view within your jupyter notebook, 
-try
+Thanks to [jupyter-rfb](https://jupyter-rfb.readthedocs.io/en/stable/), it is possible to use `topsy` within a jupyter notebook. 
+
+To open a topsy view within your jupyter notebook, try
 
 ```python
-import pynbody
 import topsy 
-
-f = pynbody.load("/path/to/file")
-f.physical_units()
-h = f.halos()
-pynbody.analysis.halo.center(h[1])
-
-vis = topsy.topsy(f.dm)
-vis.canvas
+topsy.load("/path/to/simulation", particle="gas")
 ```
-
-This loads your data into `f`, performs some centering, creates the `topsy` viewer and then the final line (`vis.canvas`) instructs `jupyter` to bring up the interactive widget. 
-
-Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Additionally, you can manipulate things on the fly. For example, you can type `vis.quantity_name = 'temp'` to immediately switch to viewing temperature (compare with the `-q` flag above). To switch back to a density projection, use `vis.quantity_name = None` (_not_ `vis.quantity_name='rho'` which renders an average density rather than a projected density). 
-
+Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Most of
+the same options you can pass on the command line are also available via this `load` function (type 
+`help(topsy.load)` for details).
