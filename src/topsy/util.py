@@ -47,10 +47,6 @@ class TimeGpuOperation:
     """Context manager for timing GPU operations"""
     def __init__(self, device, n_frames_smooth=10):
         self.device = device
-        self.dummy_buffer = self.device.create_buffer(
-            size=16,
-            usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST | wgpu.BufferUsage.COPY_SRC
-        )
         self.n_frames_smooth = n_frames_smooth
         self._recent_times = []
 
@@ -59,7 +55,7 @@ class TimeGpuOperation:
         return self
 
     def time_elapsed(self):
-        self.device.queue.read_buffer(self.dummy_buffer, 0) # force sync
+        self.device.queue.on_submitted_work_done_sync()
         end = time.time()
         return end - self.start
 

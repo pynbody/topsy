@@ -305,6 +305,9 @@ class SPH:
 
 
     def render(self, draw_reason=DrawReason.CHANGE):
+        from .visualizer import signposter
+        signposter.emit_event("RP")
+
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
             return
 
@@ -312,19 +315,19 @@ class SPH:
             self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
             self._update_transform_buffer()
 
-        clear = self._render_progression.start_frame(draw_reason)
+        perform_range_update, clear = self._render_progression.start_frame(draw_reason)
 
-        start_indices, block_lens = self._render_progression.get_block(0.0)
-
-        from .visualizer import signposter
-        signposter.emit_event("RP")
         encoded_render_pass = self.encode_render_pass(clear=clear)
         signposter.emit_event("RP2")
-        self._visualizer.particle_buffers.update_particle_ranges(start_indices, block_lens)
+
+        if perform_range_update:
+            start_indices, block_lens = self._render_progression.get_block(0.0)
+            self._visualizer.particle_buffers.update_particle_ranges(start_indices, block_lens)
+
         signposter.emit_event("RP3")
         with self._render_timer:
             self._device.queue.submit([encoded_render_pass])
-
+        signposter.emit_event("FIN")
 
         self._render_progression.end_block(self._render_timer.time_elapsed())
         # don't get any more blocks for this frame, too expensive on CPU.

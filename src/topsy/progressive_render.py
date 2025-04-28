@@ -16,6 +16,7 @@ class RenderProgression:
         self._max_num_particles = total_particles
         self._current_draw_reason = None
         self._last_num_to_render = 1
+        self._update_particle_ranges = True
 
     def get_max_particle_regions_per_block(self):
         """Get the maximum number of particle regions that will be returned by get_block"""
@@ -24,14 +25,24 @@ class RenderProgression:
     def start_frame(self, draw_reason: drawreason.DrawReason):
         """Called at the start of a frame to reset the start index if needed
 
-        Returns True if the start index was reset, False otherwise"""
+        Returns
+        -------
+
+        update_particle_ranges: bool
+            Whether the particle ranges need to be updated before render command is issued
+
+        reset_start_index: bool
+            Returns True if the start index was reset (probably meaning the frame should be cleared), False otherwise
+        """
+
         self._current_draw_reason = draw_reason
         self._first_block_in_frame = True
         if draw_reason not in (drawreason.DrawReason.PRESENTATION_CHANGE, drawreason.DrawReason.REFINE):
             self._start_index = 0
-            return True
+            return self._update_particle_ranges, True
         else:
-            return False
+            self._update_particle_ranges = True
+            return True, False
 
     def end_frame_get_scalefactor(self):
         """Ends a frame and returns the scale factor for the colormap"""
@@ -80,10 +91,13 @@ class RenderProgression:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
 
-        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.5:
-            # substantial (40%) difference between what could be achieved and what was achieved
+        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.4:
+            # substantial (~fac 30%) difference between what could be achieved and what was achieved
             self._recommended_num_particles_to_render = num_achievable
             self._recommendation_based_on_num_particles = num_rendered
+            self._update_particle_ranges = True
+        else:
+            self._update_particle_ranges = False
 
     def needs_refine(self):
         """Check if the render progression is not yet complete"""
@@ -107,6 +121,7 @@ class RenderProgressionWithCells(RenderProgression):
         self._cell_layout = cell_layout
         random_state = np.random.RandomState(1337)
         self._cell_phase_shifts = random_state.permutation(self._cell_layout.get_num_cells())
+        self._selected_cells_hash = 0
         self.select_all()
 
     def get_max_particle_regions_per_block(self):
@@ -162,10 +177,18 @@ class RenderProgressionWithCells(RenderProgression):
     def select_all(self):
         """Select all cells for inclusion in next render pass"""
         self._selected_cells = np.arange(self._cell_layout.get_num_cells())
+        self._check_cells_for_update()
 
     def select_sphere(self, cen, r):
         """Select a sphere of particles for inclusion in next render pass"""
         self._selected_cells = self._cell_layout.cells_in_sphere(cen, r)
+        self._check_cells_for_update()
+
+    def _check_cells_for_update(self):
+        sc_hash = hash(self._selected_cells.tobytes())
+        if sc_hash != self._selected_cells_hash:
+            self._selected_cells_hash = sc_hash
+            self._update_particle_ranges = True
 
     def get_fraction_volume_selected(self):
         """Get the number of cells selected for inclusion in next render pass"""
