@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import wgpu
 
-from . import config
+from . import config, performance
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +77,7 @@ class SplitBuffers:
 
     def global_to_split_monotonic(self, start: list[int], length: list[int]) -> list[tuple[list[int], list[int]]]:
         """Map global start and length to starts and lengths for each buffer. Addressing must be monotonically increasing."""
-        from .visualizer import signposter
-
-        signposter.emit_event("ST")
+        performance.signposter.emit_event("global_to_split_monotonic")
         starts = []
         lengths = []
 
@@ -115,7 +113,7 @@ class SplitBuffers:
             for bufnum in range(cur_buf+1, self._num_buffers):
                 all_buf_results.append(([], []))
 
-        signposter.emit_event("FIN")
+        performance.signposter.emit_event("end global_to_split_monotonic")
 
         return all_buf_results
 

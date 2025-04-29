@@ -27,9 +27,6 @@ from .drawreason import DrawReason
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-from os_signpost import Signposter
-signposter = Signposter("com.pynbody.topsy", Signposter.Category.PointsOfInterest)
-
 
 class VisualizerBase:
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO

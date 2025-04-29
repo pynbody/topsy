@@ -98,7 +98,7 @@ class ParticleBuffers:
             logger.info("Creating position+smoothing buffer")
             data = self._loader.get_pos_smooth().astype(np.float32)
             self._pos_smooth_buffers = self._split_buffers.create_buffers(self._device, 4 * 4,
-                                                                          wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+                                                                          wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
             self._split_buffers.write_buffers(self._device, self._pos_smooth_buffers, data)
         return self._pos_smooth_buffers
 
@@ -107,7 +107,7 @@ class ParticleBuffers:
             logger.info("Creating mass buffer")
             data = self._loader.get_mass().astype(np.float32)
             self._mass_buffers = self._split_buffers.create_buffers(self._device, 4,
-                                                                     wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+                                                                     wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
             self._split_buffers.write_buffers(self._device, self._mass_buffers, data)
         return self._mass_buffers
 
@@ -127,7 +127,7 @@ class ParticleBuffers:
             logger.info("Creating RGB masses buffer")
             data = self._loader.get_rgb_masses().view(np.float32)
             self._rgb_masses_buffers = self._split_buffers.create_buffers(self._device, 4 * 3,
-                                                wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+                                                wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
             self._split_buffers.write_buffers(self._device, self._rgb_masses_buffers, data)
         return self._rgb_masses_buffers
 
@@ -136,4 +136,4 @@ class ParticleBuffers:
             return
         logger.info("Creating quantity buffer")
         self._named_quantity_buffers = self._split_buffers.create_buffers(self._device, 4,
-                                             wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
+                                             wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)

@@ -9,9 +9,8 @@ from logging import getLogger
 
 from .util import load_shader, preprocess_shader, TimeGpuOperation
 from .drawreason import DrawReason
-from .progressive_render import RenderProgression
 
-from . import config
+from . import config, performance
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -19,8 +18,6 @@ if TYPE_CHECKING:
 
 logger = getLogger(__name__)
 
-from os_signpost import Signposter
-signposter = Signposter("com.pynbody.topsy", Signposter.Category.PointsOfInterest)
 
 class SPH:
     render_format = wgpu.TextureFormat.rg32float
@@ -305,8 +302,7 @@ class SPH:
 
 
     def render(self, draw_reason=DrawReason.CHANGE):
-        from .visualizer import signposter
-        signposter.emit_event("RP")
+        performance.signposter.emit_event("Start SPH render")
 
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
             return
@@ -318,16 +314,18 @@ class SPH:
         perform_range_update, clear = self._render_progression.start_frame(draw_reason)
 
         encoded_render_pass = self.encode_render_pass(clear=clear)
-        signposter.emit_event("RP2")
+        performance.signposter.emit_event("Start range update")
 
         if perform_range_update:
             start_indices, block_lens = self._render_progression.get_block(0.0)
             self._visualizer.particle_buffers.update_particle_ranges(start_indices, block_lens)
 
-        signposter.emit_event("RP3")
+        performance.signposter.emit_event("Submit SPH render")
+
         with self._render_timer:
             self._device.queue.submit([encoded_render_pass])
-        signposter.emit_event("FIN")
+
+        performance.signposter.emit_event("SPH render complete")
 
         self._render_progression.end_block(self._render_timer.time_elapsed())
         # don't get any more blocks for this frame, too expensive on CPU.

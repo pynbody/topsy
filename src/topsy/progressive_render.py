@@ -172,7 +172,10 @@ class RenderProgressionWithCells(RenderProgression):
             return None
         starts, lens = result
         assert len(starts) == len(lens) == 1
-        return self._map_logical_range_to_actual_ranges(starts[0], lens[0])
+        if lens[0] == self._max_num_particles:
+            return starts, lens
+        else:
+            return self._map_logical_range_to_actual_ranges(starts[0], lens[0])
 
     def select_all(self):
         """Select all cells for inclusion in next render pass"""
