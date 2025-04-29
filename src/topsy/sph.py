@@ -312,22 +312,28 @@ class SPH:
             self._update_transform_buffer()
 
         perform_range_update, clear = self._render_progression.start_frame(draw_reason)
-
-        encoded_render_pass = self.encode_render_pass(clear=clear)
-        performance.signposter.emit_event("Start range update")
+        #print(f"SPH: draw_reason={draw_reason}, perform_range_update={perform_range_update}, clear={clear}")
 
         if perform_range_update:
-            start_indices, block_lens = self._render_progression.get_block(0.0)
-            self._visualizer.particle_buffers.update_particle_ranges(start_indices, block_lens)
+                while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
+                    encoded_render_pass = self.encode_render_pass(clear=clear)
+                    self._visualizer.particle_buffers.update_particle_ranges(*block)
+                    with self._render_timer:
+                        # we only time this part, because otherwise the timing is very unstable in interactive
+                        # use where most of the time we are not updating particle ranges
+                        self._device.queue.submit([encoded_render_pass])
+                    self._render_progression.end_block(self._render_timer.total_time_in_frame())
+                    clear = False
 
-        performance.signposter.emit_event("Submit SPH render")
+        else:
+            encoded_render_pass = self.encode_render_pass(clear=clear)
+            with self._render_timer:
+                self._device.queue.submit([encoded_render_pass])
+            self._render_progression.end_block(self._render_timer.total_time_in_frame())
+        #print(f"SPH: end frame, time={self._render_timer.total_time_in_frame()}")
+        self._render_timer.end_frame()
 
-        with self._render_timer:
-            self._device.queue.submit([encoded_render_pass])
 
-        performance.signposter.emit_event("SPH render complete")
-
-        self._render_progression.end_block(self._render_timer.time_elapsed())
         # don't get any more blocks for this frame, too expensive on CPU.
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()

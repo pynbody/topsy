@@ -37,9 +37,14 @@ class RenderProgression:
 
         self._current_draw_reason = draw_reason
         self._first_block_in_frame = True
+        self._last_block_start_time = 0.0
         if draw_reason not in (drawreason.DrawReason.PRESENTATION_CHANGE, drawreason.DrawReason.REFINE):
             self._start_index = 0
-            return self._update_particle_ranges, True
+            if draw_reason == drawreason.DrawReason.EXPORT:
+                # may be rendering in blocks, so always update ranges (performance penalty minimal in this context)
+                return True, True
+            else:
+                return self._update_particle_ranges, True
         else:
             self._update_particle_ranges = True
             return True, False
@@ -58,9 +63,13 @@ class RenderProgression:
         if draw_reason == drawreason.DrawReason.PRESENTATION_CHANGE:
             return None
         elif draw_reason == drawreason.DrawReason.EXPORT:
-            if self._start_index == 0:
-                self._last_num_to_render = self._max_num_particles
-                return ([0], [self._max_num_particles])
+            if self._start_index < self._max_num_particles:
+                try_rendering = self._max_num_particles - self._start_index
+                max_to_render = int(config.MAX_PARTICLES_PER_EXPORT_RENDERCALL / self.get_fraction_volume_selected())
+                if try_rendering > max_to_render:
+                    try_rendering = max_to_render
+                self._last_num_to_render = try_rendering
+                return ([self._start_index], [try_rendering])
             else:
                 return None
         else:
@@ -72,14 +81,19 @@ class RenderProgression:
                 self._first_block_in_frame = False
             else:
                 time_available = 1./config.TARGET_FPS - time_elapsed_in_frame
-            if time_available<=0.05/config.TARGET_FPS:
+
+            if time_available<=0.5/config.TARGET_FPS:
                 return None
-            else:
-                num_to_render = int(self._recommended_num_particles_to_render * time_available * config.TARGET_FPS)
-                if num_to_render + self._start_index > self._max_num_particles:
-                    num_to_render = self._max_num_particles - self._start_index
-                self._last_num_to_render = num_to_render
-                return ([self._start_index], [num_to_render])
+                # while we could set a time_available based on the time taken to render the last block here, we
+                # no longer attempt to do multiple blocks per frame in interactive context,
+                # as it leads to unpredictable frame rates and stuttering. Instead, we will just render one block per
+                # frame. We'll correct any mismatch in particle number on the next frame (possibly a REFINE frame).
+
+            num_to_render = int(self._recommended_num_particles_to_render * time_available * config.TARGET_FPS)
+            if num_to_render + self._start_index > self._max_num_particles:
+                num_to_render = self._max_num_particles - self._start_index
+            self._last_num_to_render = num_to_render
+            return ([self._start_index], [num_to_render])
 
     def end_block(self, time_elapsed_in_frame: float, actual_num_rendered: int = None):
         """Report the time taken to render a number of particles, so that the next recommendation can be made"""
@@ -87,12 +101,13 @@ class RenderProgression:
         time_taken = time_elapsed_in_frame - self._last_block_start_time
         self._start_index += num_rendered
         num_achievable = int(num_rendered / (time_taken * config.TARGET_FPS))
+        #print("end_block", time_taken, num_rendered, num_achievable)
         if num_achievable<1:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
 
-        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.4:
-            # substantial (~fac 30%) difference between what could be achieved and what was achieved
+        if (abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.6
+                and self._current_draw_reason != drawreason.DrawReason.REFINE):
             self._recommended_num_particles_to_render = num_achievable
             self._recommendation_based_on_num_particles = num_rendered
             self._update_particle_ranges = True

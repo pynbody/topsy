@@ -82,17 +82,6 @@ class ParticleBuffers:
             self._indirect_buffers_npy[bufnum][:len(particle_min), 3] = particle_min # first instance
             self._device.queue.write_buffer(self._indirect_buffers[bufnum], 0, self._indirect_buffers_npy[bufnum])
 
-
-    def iter_particle_ranges(self, particle_mins: list[int], particle_lens: list[int], render_pass: wgpu.GPURenderPassEncoder):
-        """Iterate over logical particle ranges yielding local starts/lengths for each buffer, setting vertex buffers as needed.
-
-        **Performance critical** -- needs optimizing
-        """
-        per_buf_start_lens = self._split_buffers.global_to_split_monotonic(particle_mins, particle_lens)
-        for i, (this_buf_starts, this_buf_lens) in enumerate(per_buf_start_lens):
-            self.set_vertex_buffers(i, render_pass)
-            yield this_buf_starts, this_buf_lens
-
     def get_pos_smooth_buffers(self):
         if not hasattr(self, "_pos_smooth_buffers"):
             logger.info("Creating position+smoothing buffer")

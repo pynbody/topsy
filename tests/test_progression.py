@@ -227,3 +227,24 @@ def test_spatial_limits(cell_progressive_render):
     assert (rendered_r<0.4).all()
     assert (unrendered_r>0.1).all()
 
+def test_export_very_large():
+    num_renders = 5
+    render_progression = progressive_render.RenderProgression(config.MAX_PARTICLES_PER_EXPORT_RENDERCALL * num_renders)
+    render_progression.start_frame(DrawReason.EXPORT)
+
+    for blocknum in range(num_renders):
+        # pretend we have a crazy long-running render. We should render the whole thing, but in a series
+        # of blocks
+        block = render_progression.get_block(100.0*blocknum)
+        assert block is not None
+        assert block[0][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL * blocknum
+        assert block[1][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL
+        render_progression.end_block(100.0*(blocknum+1))
+
+    assert render_progression.get_block(100.0*num_renders) is None # finished now!
+
+    update_range, clear = render_progression.start_frame(DrawReason.EXPORT)
+
+    assert update_range
+    assert clear
+
