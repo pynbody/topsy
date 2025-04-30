@@ -40,17 +40,21 @@ def test_progression():
     assert num_to_render == 100
 
     # Simulate ending the block and reporting time taken
-    render_progression.end_block(0.0005)
+    render_progression.end_block(0.5/config.TARGET_FPS)
 
-    # Check the next recommendation
-    start_index, num_to_render = _get_single_block(render_progression.get_block(0.0005))
+    # Check the next recommendation. We're half way through.
+    start_index, num_to_render = _get_single_block(render_progression.get_block(0.5/config.TARGET_FPS))
     assert start_index == 100
-    assert num_to_render == 900
+    assert num_to_render == 50 # hasn't updated the expected rendering number, just looks at time remaining
 
-    render_progression.end_block(0.0006)
+    render_progression.end_block(1./config.TARGET_FPS)
 
     # Check the end of the frame
-    assert render_progression.get_block(0.0006) is None
+    assert render_progression.get_block(1./config.TARGET_FPS) is None
+
+    # We've rendered 150 particles.
+    assert render_progression.end_frame_get_scalefactor() == 1000./150
+
 
 def test_timeout_and_progression():
     # Test the timeout and progression of recommendations
@@ -194,12 +198,12 @@ def test_blocks_with_layout(cell_progressive_render):
     # check that render_progression returns None at end of frame
 
     render_progression.start_frame(DrawReason.CHANGE)
-    for i in range(4):
-        block = render_progression.get_block(0.0)
-        if block is None:
-            break
-        render_progression.end_block(10.0)
-    assert block is None
+    npart = 0
+    while (block := render_progression.get_block(0.0)):
+        starts, lens = block
+        npart+=lens.sum()
+        render_progression.end_block(0.0)
+    assert npart == len(pos)
 
 def test_spatial_limits(cell_progressive_render):
     render_progression, pos = cell_progressive_render
@@ -208,15 +212,14 @@ def test_spatial_limits(cell_progressive_render):
 
     render_progression.start_frame(DrawReason.CHANGE)
     rendered = np.zeros(len(pos), dtype=np.int32)
-    while True:
-        block = render_progression.get_block(0.0)
+    while (block:=render_progression.get_block(0.0)):
         if block is None:
             break
 
         for start, length in zip(*block):
             rendered[start:start+length]+=1
 
-        render_progression.end_block(0.0001)
+        render_progression.end_block(0.0)
 
     assert rendered.max() == 1
 
