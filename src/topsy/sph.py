@@ -311,26 +311,19 @@ class SPH:
             self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
             self._update_transform_buffer()
 
-        perform_range_update, clear = self._render_progression.start_frame(draw_reason)
-        #print(f"SPH: draw_reason={draw_reason}, perform_range_update={perform_range_update}, clear={clear}")
+        clear = self._render_progression.start_frame(draw_reason)
 
-        if perform_range_update:
-                while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
-                    encoded_render_pass = self.encode_render_pass(clear=clear)
-                    self._visualizer.particle_buffers.update_particle_ranges(*block)
-                    with self._render_timer:
-                        # we only time this part, because otherwise the timing is very unstable in interactive
-                        # use where most of the time we are not updating particle ranges
-                        self._device.queue.submit([encoded_render_pass])
-                    self._render_progression.end_block(self._render_timer.total_time_in_frame())
-                    clear = False
-
-        else:
+        while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
             encoded_render_pass = self.encode_render_pass(clear=clear)
+            self._visualizer.particle_buffers.update_particle_ranges(*block)
             with self._render_timer:
+                # we only time this part, because otherwise the timing is very unstable in interactive
+                # use where most of the time we are not updating particle ranges
                 self._device.queue.submit([encoded_render_pass])
             self._render_progression.end_block(self._render_timer.total_time_in_frame())
-        #print(f"SPH: end frame, time={self._render_timer.total_time_in_frame()}")
+            clear = False
+
+
         self._render_timer.end_frame()
 
 

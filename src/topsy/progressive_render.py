@@ -15,7 +15,6 @@ class RenderProgression:
         self._max_num_particles = total_particles
         self._current_draw_reason = None
         self._last_num_to_render = 1
-        self._update_particle_ranges = True
 
     def get_max_particle_regions_per_block(self):
         """Get the maximum number of particle regions that will be returned by get_block"""
@@ -30,25 +29,19 @@ class RenderProgression:
         update_particle_ranges: bool
             Whether the particle ranges need to be updated before render command is issued
 
-        reset_start_index: bool
-            Returns True if the start index was reset (probably meaning the frame should be cleared), False otherwise
         """
-        print("frame starts", draw_reason)
         self._current_draw_reason = draw_reason
         self._first_block_in_frame = True
-        self._last_block_start_time = 0.0
         self._total_num_rendered_in_frame = 0
         if draw_reason not in (drawreason.DrawReason.PRESENTATION_CHANGE, drawreason.DrawReason.REFINE):
             self._start_index = 0
-            return self._update_particle_ranges, True
+            return True
         else:
-            self._update_particle_ranges = True
-            return True, False
+            return False
 
     def end_frame_get_scalefactor(self):
         """Ends a frame and returns the scale factor for the colormap"""
         self._perform_particle_number_update()
-        print("frame ends", self._time_in_frame)
         self._current_draw_reason = None
         return self._max_num_particles / self._start_index
 
@@ -57,7 +50,6 @@ class RenderProgression:
         if self._current_draw_reason is None:
             raise RuntimeError("get_block called without a current frame")
         draw_reason = self._current_draw_reason
-        self._last_block_start_time = time_elapsed_in_frame
         if draw_reason == drawreason.DrawReason.PRESENTATION_CHANGE:
             return None
         elif draw_reason == drawreason.DrawReason.EXPORT:
@@ -95,6 +87,7 @@ class RenderProgression:
 
     def _perform_particle_number_update(self):
         num_achievable = int(self._total_num_rendered_in_frame / (self._time_in_frame * config.TARGET_FPS))
+        num_achievable = min(num_achievable, self._max_num_particles)
         if num_achievable < 1:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
@@ -103,24 +96,18 @@ class RenderProgression:
             log2_change = abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render))
             if log2_change > 1.5:
                 # emergency situation, update completely
-                print("immediate update:", self._recommended_num_particles_to_render, "->", num_achievable)
                 self._recommended_num_particles_to_render = num_achievable
-                self._update_particle_ranges = True
             elif log2_change > 0.3:
                 # modest mismatch, make a more cautious update
-                print("slow update:", self._recommended_num_particles_to_render, "...", num_achievable)
                 self._recommended_num_particles_to_render = int(
                     num_achievable ** 0.3 * self._recommended_num_particles_to_render ** 0.7)
-                self._update_particle_ranges = True
-            else:
-                self._update_particle_ranges = False
+
 
     def end_block(self, time_elapsed_in_frame: float):
         """Report the time taken to render a number of particles, so that the next recommendation can be made"""
         self._start_index += self._last_num_to_render
         self._total_num_rendered_in_frame += self._last_num_to_render
         self._time_in_frame = time_elapsed_in_frame
-        print("(block end)")
 
         """ if self._current_draw_reason == drawreason.DrawReason.REFINE:
             # the next frame needs to update the GPU render particle ranges, come what may
