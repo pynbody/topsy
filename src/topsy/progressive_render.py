@@ -11,7 +11,6 @@ class RenderProgression:
         if initial_particles is None:
             initial_particles = int(config.INITIAL_PARTICLES_TO_RENDER)
         self._recommended_num_particles_to_render = min(initial_particles, total_particles)
-        self._recommendation_based_on_num_particles = 0
         self._start_index = 0
         self._max_num_particles = total_particles
         self._current_draw_reason = None
@@ -34,23 +33,22 @@ class RenderProgression:
         reset_start_index: bool
             Returns True if the start index was reset (probably meaning the frame should be cleared), False otherwise
         """
-
+        print("frame starts", draw_reason)
         self._current_draw_reason = draw_reason
         self._first_block_in_frame = True
         self._last_block_start_time = 0.0
+        self._total_num_rendered_in_frame = 0
         if draw_reason not in (drawreason.DrawReason.PRESENTATION_CHANGE, drawreason.DrawReason.REFINE):
             self._start_index = 0
-            if draw_reason == drawreason.DrawReason.EXPORT:
-                # may be rendering in blocks, so always update ranges (performance penalty minimal in this context)
-                return True, True
-            else:
-                return self._update_particle_ranges, True
+            return self._update_particle_ranges, True
         else:
             self._update_particle_ranges = True
             return True, False
 
     def end_frame_get_scalefactor(self):
         """Ends a frame and returns the scale factor for the colormap"""
+        self._perform_particle_number_update()
+        print("frame ends", self._time_in_frame)
         self._current_draw_reason = None
         return self._max_num_particles / self._start_index
 
@@ -82,7 +80,7 @@ class RenderProgression:
             else:
                 time_available = 1./config.TARGET_FPS - time_elapsed_in_frame
 
-            if time_available<=0.5/config.TARGET_FPS:
+            if time_available<=0.4/config.TARGET_FPS:
                 return None
                 # while we could set a time_available based on the time taken to render the last block here, we
                 # no longer attempt to do multiple blocks per frame in interactive context,
@@ -95,24 +93,46 @@ class RenderProgression:
             self._last_num_to_render = num_to_render
             return ([self._start_index], [num_to_render])
 
-    def end_block(self, time_elapsed_in_frame: float, actual_num_rendered: int = None):
-        """Report the time taken to render a number of particles, so that the next recommendation can be made"""
-        num_rendered = actual_num_rendered or self._last_num_to_render
-        time_taken = time_elapsed_in_frame - self._last_block_start_time
-        self._start_index += num_rendered
-        num_achievable = int(num_rendered / (time_taken * config.TARGET_FPS))
-        #print("end_block", time_taken, num_rendered, num_achievable)
-        if num_achievable<1:
+    def _perform_particle_number_update(self):
+        num_achievable = int(self._total_num_rendered_in_frame / (self._time_in_frame * config.TARGET_FPS))
+        if num_achievable < 1:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
 
-        if (abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.6
-                and self._current_draw_reason != drawreason.DrawReason.REFINE):
-            self._recommended_num_particles_to_render = num_achievable
-            self._recommendation_based_on_num_particles = num_rendered
+        if self._current_draw_reason != drawreason.DrawReason.REFINE:
+            log2_change = abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render))
+            if log2_change > 1.5:
+                # emergency situation, update completely
+                print("immediate update:", self._recommended_num_particles_to_render, "->", num_achievable)
+                self._recommended_num_particles_to_render = num_achievable
+                self._update_particle_ranges = True
+            elif log2_change > 0.3:
+                # modest mismatch, make a more cautious update
+                print("slow update:", self._recommended_num_particles_to_render, "...", num_achievable)
+                self._recommended_num_particles_to_render = int(
+                    num_achievable ** 0.3 * self._recommended_num_particles_to_render ** 0.7)
+                self._update_particle_ranges = True
+            else:
+                self._update_particle_ranges = False
+
+    def end_block(self, time_elapsed_in_frame: float):
+        """Report the time taken to render a number of particles, so that the next recommendation can be made"""
+        self._start_index += self._last_num_to_render
+        self._total_num_rendered_in_frame += self._last_num_to_render
+        self._time_in_frame = time_elapsed_in_frame
+        print("(block end)")
+
+        """ if self._current_draw_reason == drawreason.DrawReason.REFINE:
+            # the next frame needs to update the GPU render particle ranges, come what may
             self._update_particle_ranges = True
+        elif (abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.6):
+            if was_first_block_in_frame:
+                # only update based on the first block in the frame (which is the one which is most critical to
+                # get to roughly the right length)
+                self._recommended_num_particles_to_render = num_achievable
+                self._update_particle_ranges = True
         else:
-            self._update_particle_ranges = False
+            self._update_particle_ranges = False"""
 
     def needs_refine(self):
         """Check if the render progression is not yet complete"""

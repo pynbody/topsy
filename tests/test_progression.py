@@ -61,7 +61,7 @@ def test_timeout_and_progression():
     block = _get_single_block(render_progression.get_block(0.0))
     assert block is not None
 
-    render_progression.end_block(1.0) # far too long!
+    render_progression.end_block(1.0)  # far too long!
     # Check that the next recommendation is None
     block = render_progression.get_block(1.0)
     assert block is None
@@ -128,7 +128,7 @@ def test_always_one_particle():
     block = _get_single_block(render_progression.get_block(0.0))
     assert block is not None
 
-    render_progression.end_block(1.0) # far too long!
+    render_progression.end_block(1.0)  # far too long!
 
     assert render_progression.get_block(1.0) is None # end of this frame
     render_progression.end_frame_get_scalefactor()
@@ -239,7 +239,7 @@ def test_export_very_large():
         assert block is not None
         assert block[0][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL * blocknum
         assert block[1][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL
-        render_progression.end_block(100.0*(blocknum+1))
+        render_progression.end_block(100.0 * (blocknum + 1))
 
     assert render_progression.get_block(100.0*num_renders) is None # finished now!
 
