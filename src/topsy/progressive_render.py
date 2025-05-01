@@ -158,7 +158,7 @@ class RenderProgressionWithCells(RenderProgression):
         """
         num_particles = self._cell_layout.get_num_particles()
         fractional_start = start / num_particles
-        fractional_length = length / num_particles
+        fractional_end = (start + length) / num_particles
 
         num_cells = self._cell_layout.get_num_cells()
         offset_per_cell = self._cell_layout._offsets
@@ -172,11 +172,11 @@ class RenderProgressionWithCells(RenderProgression):
         total_particles_in_cells = self._cell_layout._lengths
 
         ideal_start_per_cell = fractional_start*total_particles_in_cells.astype(np.float64)
-        ideal_len_per_cell = fractional_length*total_particles_in_cells.astype(np.float64)
+        ideal_end_per_cell = fractional_end*total_particles_in_cells.astype(np.float64)
 
         # the above are floating point numbers, but we can actually only take an integer, so floor it
         start_per_cell = (ideal_start_per_cell+cell_phase_shifts).astype(np.intp)
-        end_per_cell = (ideal_start_per_cell+ideal_len_per_cell+cell_phase_shifts).astype(np.intp)
+        end_per_cell = (ideal_end_per_cell+cell_phase_shifts).astype(np.intp)
         len_per_cell = end_per_cell-start_per_cell
 
         start_global = (start_per_cell + offset_per_cell)[self._selected_cells]

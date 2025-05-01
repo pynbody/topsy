@@ -213,9 +213,6 @@ def test_spatial_limits(cell_progressive_render):
     render_progression.start_frame(DrawReason.CHANGE)
     rendered = np.zeros(len(pos), dtype=np.int32)
     while (block:=render_progression.get_block(0.0)):
-        if block is None:
-            break
-
         for start, length in zip(*block):
             rendered[start:start+length]+=1
 
@@ -246,8 +243,7 @@ def test_export_very_large():
 
     assert render_progression.get_block(100.0*num_renders) is None # finished now!
 
-    update_range, clear = render_progression.start_frame(DrawReason.EXPORT)
+    clear = render_progression.start_frame(DrawReason.EXPORT)
 
-    assert update_range
     assert clear
 

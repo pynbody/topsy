@@ -106,8 +106,6 @@ class SplitBuffers:
                 lengths.append(this_buf_length)
                 global_length -= this_buf_length
                 global_start += this_buf_length
-                #print(global_length)
-                #global_start += this_buf_length
 
         if cur_buf < self._num_buffers-1:
             for bufnum in range(cur_buf+1, self._num_buffers):
