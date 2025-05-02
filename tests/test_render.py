@@ -167,6 +167,9 @@ def test_depth_output(vis, folder):
                                     [0.0, 0.0, 1.0],
                                     [0.0, -1.0, 0.0]], dtype=np.float32)
     vis.render_sph(DrawReason.EXPORT)
+
+    np.save(folder/"test_depth_context.npy", vis.get_sph_image())
+
     result = vis._sph.get_depth_image()
 
     np.save(folder / "test_depth.npy", result)  # for debugging
