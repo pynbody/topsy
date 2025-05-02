@@ -22,13 +22,13 @@ dependencies = [
     "pynbody >=2.1.1",
     "matplotlib >=3.6.0",
     "pillow >=9.5.0", # 9.5.0 needed for Image.frombytes accepting memoryview
-    "wgpu >= 0.21, <0.22",
+    "wgpu >= 0.22, <0.23",
     "jupyter_rfb >=0.4.1",
     "tqdm >=4.62.0",
     "opencv-python >=4.8.0",
     "PySide6 >= 6.5.0", # windowing
     "superqt>=0.7.3", # rangeslider
-    "rendercanvas>=2.0.0",
+    "rendercanvas>=2.0.3",
 ]
 
 [project.optional-dependencies]

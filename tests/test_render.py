@@ -33,7 +33,6 @@ def test_render(vis, folder):
 
     plt.imsave(folder / "test.png", result) # needs manual verification
 
-@pytest.mark.skip("Disabled until https://github.com/pygfx/wgpu-py/pull/701 is released")
 def test_hdr_render(vis):
     vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
     result = vis.get_presentation_image()
