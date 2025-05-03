@@ -170,7 +170,7 @@ def test_depth_output(vis, folder):
 
     np.save(folder/"test_depth_context.npy", vis.get_sph_image())
 
-    result = vis._sph.get_depth_image()
+    result = vis._sph.get_depth_image(DrawReason.EXPORT)
 
     np.save(folder / "test_depth.npy", result)  # for debugging
 

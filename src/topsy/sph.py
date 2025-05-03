@@ -76,10 +76,10 @@ class SPH:
         #                share_render_progression=RenderProgression(len(self._visualizer.data_loader),
         #                                                           len(self._visualizer.data_loader)))
 
-    def get_depth_image(self) -> np.ndarray:
+    def get_depth_image(self, depth_renderer_reason=DrawReason.CHANGE) -> np.ndarray:
         """Returns the weighted depth image in the scene"""
         depth_renderer = self._get_depth_renderer()
-        depth_renderer.render(DrawReason.CHANGE) # a rough render should be good enough
+        depth_renderer.render(depth_renderer_reason) # CHANGE should normally be good enough; EXPORT for reliability
         depth_viewport = depth_renderer.get_image(averaging=True)
 
         # transform from viewport to simulation units
