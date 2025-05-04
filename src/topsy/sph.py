@@ -72,12 +72,15 @@ class SPH:
         renderer.scale = self.scale
         return renderer
 
-        #return DepthSPH(self._visualizer, self._render_texture.width, wrapping=self._wrapping,
-        #                share_render_progression=RenderProgression(len(self._visualizer.data_loader),
-        #                                                           len(self._visualizer.data_loader)))
 
     def get_depth_image(self, depth_renderer_reason=DrawReason.CHANGE) -> np.ndarray:
-        """Returns the weighted depth image in the scene"""
+        """Produces and returns the weighted depth image in the scene, used for finding points of interest in the UI
+
+        A renderer reason may be passed to force different quality settings. For most purposes, a rough (real-time)
+        render is sufficient, so DrawReason.CHANGE is a good choice. However, real-time rendering on test machines
+        may be slow, which leads DrawReason.CHANGE renders to use only a small fraction of particles. Therefore, for
+        testing purposes DrawReason.EXPORT may be required.
+        """
         depth_renderer = self._get_depth_renderer()
         depth_renderer.render(depth_renderer_reason) # CHANGE should normally be good enough; EXPORT for reliability
         depth_viewport = depth_renderer.get_image(averaging=True)
@@ -86,6 +89,9 @@ class SPH:
         return (depth_viewport - 0.5)*self.scale*2.0
 
     def get_image(self, averaging) -> np.ndarray:
+        """Reads and returns the last rendered SPH image.
+
+        Note that this call does not actually trigger a render. Call render() first to generate the image."""
         nchannels = self._nchannels_output
         np_dtype = self._output_dtype
         bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
@@ -323,21 +329,13 @@ class SPH:
             self._render_progression.end_block(self._render_timer.total_time_in_frame())
             clear = False
 
-
         self._render_timer.end_frame()
-
-
-        # don't get any more blocks for this frame, too expensive on CPU.
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
 
     def needs_refine(self):
         return self._render_progression.needs_refine()
-
-    def has_ever_rendered(self):
-        """Check if the render has been called at least once"""
-        return self._render_progression.has_ever_rendered()
 
     def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
@@ -372,8 +370,6 @@ class SPH:
 
         return command_encoder.finish()
 
-
-
     def _get_kernel_at_resolution(self, n_samples):
         if self._kernel is None:
             try:
@@ -388,7 +384,7 @@ class SPH:
         x, y = np.meshgrid(pixel_centres, pixel_centres)
         distance = np.sqrt(x ** 2 + y ** 2)
 
-        # TODO: the below could easily be optimized
+        # The below could easily be optimized but doesn't seem worth it
         kernel_im = np.array([self._kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
         # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
@@ -403,7 +399,7 @@ class SPH:
 
     def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
         if hasattr(SPH, "_kernel_texture"):
-            # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
+            # As things stand, the kernel texture is actually shared between instances of SPH for efficiency.
             return
 
         SPH._kernel_texture = self._device.create_texture(
@@ -415,7 +411,6 @@ class SPH:
             sample_count=1,
             usage=wgpu.TextureUsage.COPY_DST | wgpu.TextureUsage.TEXTURE_BINDING,
         )
-
 
         for i in range(0, n_mip_levels):
             self._device.queue.write_texture(
