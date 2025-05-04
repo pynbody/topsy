@@ -211,8 +211,7 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder, target_texture_view, value_scale):
-        self._update_parameter_buffer(target_texture_view.size[0], target_texture_view.size[1], value_scale)
+    def encode_render_pass(self, command_encoder, target_texture_view):
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
@@ -229,6 +228,8 @@ class Colormap:
         colormap_render_pass.draw(4, 1, 0, 0)
         colormap_render_pass.end()
 
+    def set_scaling(self, target_texture_view, scaling):
+        self._update_parameter_buffer(*target_texture_view.size[:2], scaling)
 
     def get_ui_range(self):
         """Get a range for vmin->vmax suitable for user interface sliders"""

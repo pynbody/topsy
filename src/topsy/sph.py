@@ -9,15 +9,15 @@ from logging import getLogger
 
 from .util import load_shader, preprocess_shader, TimeGpuOperation
 from .drawreason import DrawReason
-from .progressive_render import RenderProgression
 
-from . import config
+from . import config, performance
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .visualizer import Visualizer
 
 logger = getLogger(__name__)
+
 
 class SPH:
     render_format = wgpu.TextureFormat.rg32float
@@ -72,20 +72,26 @@ class SPH:
         renderer.scale = self.scale
         return renderer
 
-        #return DepthSPH(self._visualizer, self._render_texture.width, wrapping=self._wrapping,
-        #                share_render_progression=RenderProgression(len(self._visualizer.data_loader),
-        #                                                           len(self._visualizer.data_loader)))
 
-    def get_depth_image(self) -> np.ndarray:
-        """Returns the weighted depth image in the scene"""
+    def get_depth_image(self, depth_renderer_reason=DrawReason.CHANGE) -> np.ndarray:
+        """Produces and returns the weighted depth image in the scene, used for finding points of interest in the UI
+
+        A renderer reason may be passed to force different quality settings. For most purposes, a rough (real-time)
+        render is sufficient, so DrawReason.CHANGE is a good choice. However, real-time rendering on test machines
+        may be slow, which leads DrawReason.CHANGE renders to use only a small fraction of particles. Therefore, for
+        testing purposes DrawReason.EXPORT may be required.
+        """
         depth_renderer = self._get_depth_renderer()
-        depth_renderer.render(DrawReason.CHANGE) # a rough render should be good enough
+        depth_renderer.render(depth_renderer_reason) # CHANGE should normally be good enough; EXPORT for reliability
         depth_viewport = depth_renderer.get_image(averaging=True)
 
         # transform from viewport to simulation units
         return (depth_viewport - 0.5)*self.scale*2.0
 
     def get_image(self, averaging) -> np.ndarray:
+        """Reads and returns the last rendered SPH image.
+
+        Note that this call does not actually trigger a render. Call render() first to generate the image."""
         nchannels = self._nchannels_output
         np_dtype = self._output_dtype
         bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
@@ -299,11 +305,10 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-    def _render_block(self, start_indices, block_lens, clear=False):
-        encoded_render_pass = self.encode_render_pass(start_indices, block_lens, clear=clear)
-        self._device.queue.submit([encoded_render_pass])
+
 
     def render(self, draw_reason=DrawReason.CHANGE):
+        performance.signposter.emit_event("Start SPH render")
 
         if draw_reason == DrawReason.PRESENTATION_CHANGE:
             return
@@ -314,11 +319,17 @@ class SPH:
 
         clear = self._render_progression.start_frame(draw_reason)
 
-        with self._render_timer:
-            while (block := self._render_progression.get_block(self._render_timer.time_elapsed())) is not None:
-                self._render_block(*block, clear=clear)
-                clear = False
-                self._render_progression.end_block(self._render_timer.time_elapsed())
+        while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
+            encoded_render_pass = self.encode_render_pass(clear=clear)
+            self._visualizer.particle_buffers.update_particle_ranges(*block)
+            with self._render_timer:
+                # we only time this part, because otherwise the timing is very unstable in interactive
+                # use where most of the time we are not updating particle ranges
+                self._device.queue.submit([encoded_render_pass])
+            self._render_progression.end_block(self._render_timer.total_time_in_frame())
+            clear = False
+
+        self._render_timer.end_frame()
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
@@ -326,11 +337,7 @@ class SPH:
     def needs_refine(self):
         return self._render_progression.needs_refine()
 
-    def has_ever_rendered(self):
-        """Check if the render has been called at least once"""
-        return self._render_progression.has_ever_rendered()
-
-    def encode_render_pass(self, start_particles: list[int], num_particles_to_renders: list[int], clear=True) -> wgpu.GPUCommandBuffer:
+    def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
         view: wgpu.GPUTextureView = self._render_texture.create_view()
         sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
@@ -358,15 +365,10 @@ class SPH:
         sph_render_pass.set_bind_group(0, self._bind_group, [],
                                        0, 99)
 
-        for local_start, local_len in self._visualizer.particle_buffers.iter_particle_ranges(
-                start_particles, num_particles_to_renders, sph_render_pass):
-            sph_render_pass.draw(6, local_len, 0, local_start)
-
+        self._visualizer.particle_buffers.issue_draw_indirect(sph_render_pass)
         sph_render_pass.end()
 
         return command_encoder.finish()
-
-
 
     def _get_kernel_at_resolution(self, n_samples):
         if self._kernel is None:
@@ -382,7 +384,7 @@ class SPH:
         x, y = np.meshgrid(pixel_centres, pixel_centres)
         distance = np.sqrt(x ** 2 + y ** 2)
 
-        # TODO: the below could easily be optimized
+        # The below could easily be optimized but doesn't seem worth it
         kernel_im = np.array([self._kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
         # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
@@ -397,7 +399,7 @@ class SPH:
 
     def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
         if hasattr(SPH, "_kernel_texture"):
-            # we only do this once, even if multiple SPH objects (i.e. multi-resolution) is in play
+            # As things stand, the kernel texture is actually shared between instances of SPH for efficiency.
             return
 
         SPH._kernel_texture = self._device.create_texture(
@@ -409,7 +411,6 @@ class SPH:
             sample_count=1,
             usage=wgpu.TextureUsage.COPY_DST | wgpu.TextureUsage.TEXTURE_BINDING,
         )
-
 
         for i in range(0, n_mip_levels):
             self._device.queue.write_texture(

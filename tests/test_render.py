@@ -33,7 +33,6 @@ def test_render(vis, folder):
 
     plt.imsave(folder / "test.png", result) # needs manual verification
 
-@pytest.mark.skip("Disabled until https://github.com/pygfx/wgpu-py/pull/701 is released")
 def test_hdr_render(vis):
     vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
     result = vis.get_presentation_image()
@@ -168,7 +167,10 @@ def test_depth_output(vis, folder):
                                     [0.0, 0.0, 1.0],
                                     [0.0, -1.0, 0.0]], dtype=np.float32)
     vis.render_sph(DrawReason.EXPORT)
-    result = vis._sph.get_depth_image()
+
+    np.save(folder/"test_depth_context.npy", vis.get_sph_image())
+
+    result = vis._sph.get_depth_image(DrawReason.EXPORT)
 
     np.save(folder / "test_depth.npy", result)  # for debugging
 

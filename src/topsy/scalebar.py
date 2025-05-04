@@ -56,6 +56,7 @@ class ScalebarOverlay:
 
         self._label.encode_render_pass(command_encoder, target_texture_view)
         self._bar.encode_render_pass(command_encoder, target_texture_view)
+
     def _get_scalebar_label_text(self, physical_scalebar_length_kpc):
         if physical_scalebar_length_kpc < 1:
             return f"{physical_scalebar_length_kpc * 1000:.0f} pc"

@@ -11,19 +11,28 @@ class RenderProgression:
         if initial_particles is None:
             initial_particles = int(config.INITIAL_PARTICLES_TO_RENDER)
         self._recommended_num_particles_to_render = min(initial_particles, total_particles)
-        self._recommendation_based_on_num_particles = 0
         self._start_index = 0
         self._max_num_particles = total_particles
         self._current_draw_reason = None
         self._last_num_to_render = 1
 
+    def get_max_particle_regions_per_block(self):
+        """Get the maximum number of particle regions that will be returned by get_block"""
+        return 1
 
     def start_frame(self, draw_reason: drawreason.DrawReason):
         """Called at the start of a frame to reset the start index if needed
 
-        Returns True if the start index was reset, False otherwise"""
+        Returns
+        -------
+
+        update_particle_ranges: bool
+            Whether the particle ranges need to be updated before render command is issued
+
+        """
         self._current_draw_reason = draw_reason
         self._first_block_in_frame = True
+        self._total_num_rendered_in_frame = 0
         if draw_reason not in (drawreason.DrawReason.PRESENTATION_CHANGE, drawreason.DrawReason.REFINE):
             self._start_index = 0
             return True
@@ -32,21 +41,25 @@ class RenderProgression:
 
     def end_frame_get_scalefactor(self):
         """Ends a frame and returns the scale factor for the colormap"""
+        self._perform_particle_number_update()
         self._current_draw_reason = None
         return self._max_num_particles / self._start_index
 
     def get_block(self, time_elapsed_in_frame: float) -> tuple[list[int], list[int]] | None:
-        """Recommends the starting index and number of particles to render, or None if no rendering should be undertaken"""
+        """Returns a list of starting indicies and lengths from the particle buffer to render"""
         if self._current_draw_reason is None:
             raise RuntimeError("get_block called without a current frame")
         draw_reason = self._current_draw_reason
-        self._last_block_start_time = time_elapsed_in_frame
         if draw_reason == drawreason.DrawReason.PRESENTATION_CHANGE:
             return None
         elif draw_reason == drawreason.DrawReason.EXPORT:
-            if self._start_index == 0:
-                self._last_num_to_render = self._max_num_particles
-                return ([0], [self._max_num_particles])
+            if self._start_index < self._max_num_particles:
+                try_rendering = self._max_num_particles - self._start_index
+                max_to_render = int(config.MAX_PARTICLES_PER_EXPORT_RENDERCALL / self.get_fraction_volume_selected())
+                if try_rendering > max_to_render:
+                    try_rendering = max_to_render
+                self._last_num_to_render = try_rendering
+                return ([self._start_index], [try_rendering])
             else:
                 return None
         else:
@@ -58,29 +71,55 @@ class RenderProgression:
                 self._first_block_in_frame = False
             else:
                 time_available = 1./config.TARGET_FPS - time_elapsed_in_frame
-            if time_available<=0.05/config.TARGET_FPS:
-                return None
-            else:
-                num_to_render = int(self._recommended_num_particles_to_render * time_available * config.TARGET_FPS)
-                if num_to_render + self._start_index > self._max_num_particles:
-                    num_to_render = self._max_num_particles - self._start_index
-                self._last_num_to_render = num_to_render
-                return ([self._start_index], [num_to_render])
 
-    def end_block(self, time_elapsed_in_frame: float, actual_num_rendered: int = None):
-        """Report the time taken to render a number of particles, so that the next recommendation can be made"""
-        num_rendered = actual_num_rendered or self._last_num_to_render
-        time_taken = time_elapsed_in_frame - self._last_block_start_time
-        self._start_index += num_rendered
-        num_achievable = int(num_rendered / (time_taken * config.TARGET_FPS))
-        if num_achievable<1:
+            if time_available<=0.4/config.TARGET_FPS:
+                return None
+                # while we could set a time_available based on the time taken to render the last block here, we
+                # no longer attempt to do multiple blocks per frame in interactive context,
+                # as it leads to unpredictable frame rates and stuttering. Instead, we will just render one block per
+                # frame. We'll correct any mismatch in particle number on the next frame (possibly a REFINE frame).
+
+            num_to_render = int(self._recommended_num_particles_to_render * time_available * config.TARGET_FPS)
+            if num_to_render + self._start_index > self._max_num_particles:
+                num_to_render = self._max_num_particles - self._start_index
+            self._last_num_to_render = num_to_render
+            return ([self._start_index], [num_to_render])
+
+    def _perform_particle_number_update(self):
+        num_achievable = int(self._total_num_rendered_in_frame / (self._time_in_frame * config.TARGET_FPS))
+        num_achievable = min(num_achievable, self._max_num_particles)
+        if num_achievable < 1:
             # very strange edge case, but must never recommend rendering less than one particle!
             num_achievable = 1
 
-        if abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 1.0:
-            # substantial (factor 2) difference between what could be achieved and what was achieved
-            self._recommended_num_particles_to_render = num_achievable
-            self._recommendation_based_on_num_particles = num_rendered
+        if self._current_draw_reason != drawreason.DrawReason.REFINE:
+            log2_change = abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render))
+            if log2_change > 1.5:
+                # emergency situation, update completely
+                self._recommended_num_particles_to_render = num_achievable
+            elif log2_change > 0.3:
+                # modest mismatch, make a more cautious update
+                self._recommended_num_particles_to_render = int(
+                    num_achievable ** 0.3 * self._recommended_num_particles_to_render ** 0.7)
+
+
+    def end_block(self, time_elapsed_in_frame: float):
+        """Report the time taken to render a number of particles, so that the next recommendation can be made"""
+        self._start_index += self._last_num_to_render
+        self._total_num_rendered_in_frame += self._last_num_to_render
+        self._time_in_frame = time_elapsed_in_frame
+
+        """ if self._current_draw_reason == drawreason.DrawReason.REFINE:
+            # the next frame needs to update the GPU render particle ranges, come what may
+            self._update_particle_ranges = True
+        elif (abs(math.log2(num_achievable) - math.log2(self._recommended_num_particles_to_render)) > 0.6):
+            if was_first_block_in_frame:
+                # only update based on the first block in the frame (which is the one which is most critical to
+                # get to roughly the right length)
+                self._recommended_num_particles_to_render = num_achievable
+                self._update_particle_ranges = True
+        else:
+            self._update_particle_ranges = False"""
 
     def needs_refine(self):
         """Check if the render progression is not yet complete"""
@@ -104,47 +143,50 @@ class RenderProgressionWithCells(RenderProgression):
         self._cell_layout = cell_layout
         random_state = np.random.RandomState(1337)
         self._cell_phase_shifts = random_state.permutation(self._cell_layout.get_num_cells())
+        self._selected_cells_hash = 0
         self.select_all()
 
+    def get_max_particle_regions_per_block(self):
+        return self._cell_layout.get_num_cells()
 
     def _map_logical_range_to_actual_ranges(self, start, length):
-        """Map from logical range to actual ranges in the cell layout"""
+        """Map from logical range to actual ranges in the cell layout.
+
+        Performance critical - called during rendering. Optimized into numpy array operations but could
+        probably be usefully optimized further based on profiling. (Although should double check
+        in the profile that it really is *this* routine that is taking the time.)
+        """
         num_particles = self._cell_layout.get_num_particles()
         fractional_start = start / num_particles
-        fractional_length = length / num_particles
-
-        starts = []
-        lens = []
+        fractional_end = (start + length) / num_particles
 
         num_cells = self._cell_layout.get_num_cells()
+        offset_per_cell = self._cell_layout._offsets
 
-        for i in self._selected_cells:
-            # the 'phase shift' ensures that if a very low number of particles are selected such that the mean
-            # number of particles per cell is less than one, some particles still get selected when we are
-            # starting at zero. Otherwise quantization effects would make it impossible to select any particles
-            # until a much later block. Also the phase shift must be evenly distributed across cell so that
-            # we don't get differential spatial effects
+        # the 'phase shift' ensures that if a very low number of particles are selected such that the mean
+        # number of particles per cell is less than one, some particles still get selected when we are
+        # starting at zero. Otherwise quantization effects would make it impossible to select any particles
+        # until a much later block. Also the phase shift must be evenly distributed across cell so that
+        # we don't get differential spatial effects
+        cell_phase_shifts = self._cell_phase_shifts/num_cells
+        total_particles_in_cells = self._cell_layout._lengths
 
-            cell_phase_shift = self._cell_phase_shifts[i]/num_cells
-            total_particles_in_cell = self._cell_layout.get_cell_length(i)
+        ideal_start_per_cell = fractional_start*total_particles_in_cells.astype(np.float64)
+        ideal_end_per_cell = fractional_end*total_particles_in_cells.astype(np.float64)
 
-            ideal_start_this_cell = fractional_start * total_particles_in_cell
-            ideal_len_this_cell = fractional_length * total_particles_in_cell
-            # the above are floating point numbers, but we can actually only take an integer, so round
+        # the above are floating point numbers, but we can actually only take an integer, so floor it
+        start_per_cell = (ideal_start_per_cell+cell_phase_shifts).astype(np.intp)
+        end_per_cell = (ideal_end_per_cell+cell_phase_shifts).astype(np.intp)
+        len_per_cell = end_per_cell-start_per_cell
 
-            start_this_cell = int(ideal_start_this_cell + cell_phase_shift)
-            end = int(ideal_start_this_cell + ideal_len_this_cell+cell_phase_shift)
-            len_this_cell = end - start_this_cell
+        start_global = (start_per_cell + offset_per_cell)[self._selected_cells]
+        len_global = len_per_cell[self._selected_cells]
 
-            #if i<10:
-            #    print(f"{i} {cell_phase_shift} {start_this_cell}, {ideal_len_this_cell:.2f}, {len_this_cell} of {total_particles_in_cell}")
+        mask = len_global>0
 
-            if len_this_cell>0:
-                starts.append(start_this_cell + self._cell_layout.get_cell_offset(i))
-                lens.append(len_this_cell)
+        return start_global[mask], len_global[mask]
 
 
-        return starts, lens
 
     def get_block(self, time_elapsed_in_frame: float) -> tuple[list[int], list[int]] | None:
         result = super().get_block(time_elapsed_in_frame)
@@ -152,15 +194,26 @@ class RenderProgressionWithCells(RenderProgression):
             return None
         starts, lens = result
         assert len(starts) == len(lens) == 1
-        return self._map_logical_range_to_actual_ranges(starts[0], lens[0])
+        if lens[0] == self._max_num_particles:
+            return starts, lens
+        else:
+            return self._map_logical_range_to_actual_ranges(starts[0], lens[0])
 
     def select_all(self):
         """Select all cells for inclusion in next render pass"""
         self._selected_cells = np.arange(self._cell_layout.get_num_cells())
+        self._check_cells_for_update()
 
     def select_sphere(self, cen, r):
         """Select a sphere of particles for inclusion in next render pass"""
         self._selected_cells = self._cell_layout.cells_in_sphere(cen, r)
+        self._check_cells_for_update()
+
+    def _check_cells_for_update(self):
+        sc_hash = hash(self._selected_cells.tobytes())
+        if sc_hash != self._selected_cells_hash:
+            self._selected_cells_hash = sc_hash
+            self._update_particle_ranges = True
 
     def get_fraction_volume_selected(self):
         """Get the number of cells selected for inclusion in next render pass"""

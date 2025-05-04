@@ -40,17 +40,21 @@ def test_progression():
     assert num_to_render == 100
 
     # Simulate ending the block and reporting time taken
-    render_progression.end_block(0.0005)
+    render_progression.end_block(0.5/config.TARGET_FPS)
 
-    # Check the next recommendation
-    start_index, num_to_render = _get_single_block(render_progression.get_block(0.0005))
+    # Check the next recommendation. We're half way through.
+    start_index, num_to_render = _get_single_block(render_progression.get_block(0.5/config.TARGET_FPS))
     assert start_index == 100
-    assert num_to_render == 900
+    assert num_to_render == 50 # hasn't updated the expected rendering number, just looks at time remaining
 
-    render_progression.end_block(0.0006)
+    render_progression.end_block(1./config.TARGET_FPS)
 
     # Check the end of the frame
-    assert render_progression.get_block(0.0006) is None
+    assert render_progression.get_block(1./config.TARGET_FPS) is None
+
+    # We've rendered 150 particles.
+    assert render_progression.end_frame_get_scalefactor() == 1000./150
+
 
 def test_timeout_and_progression():
     # Test the timeout and progression of recommendations
@@ -61,7 +65,7 @@ def test_timeout_and_progression():
     block = _get_single_block(render_progression.get_block(0.0))
     assert block is not None
 
-    render_progression.end_block(1.0) # far too long!
+    render_progression.end_block(1.0)  # far too long!
     # Check that the next recommendation is None
     block = render_progression.get_block(1.0)
     assert block is None
@@ -128,7 +132,7 @@ def test_always_one_particle():
     block = _get_single_block(render_progression.get_block(0.0))
     assert block is not None
 
-    render_progression.end_block(1.0) # far too long!
+    render_progression.end_block(1.0)  # far too long!
 
     assert render_progression.get_block(1.0) is None # end of this frame
     render_progression.end_frame_get_scalefactor()
@@ -194,12 +198,12 @@ def test_blocks_with_layout(cell_progressive_render):
     # check that render_progression returns None at end of frame
 
     render_progression.start_frame(DrawReason.CHANGE)
-    for i in range(4):
-        block = render_progression.get_block(0.0)
-        if block is None:
-            break
-        render_progression.end_block(10.0)
-    assert block is None
+    npart = 0
+    while (block := render_progression.get_block(0.0)):
+        starts, lens = block
+        npart+=lens.sum()
+        render_progression.end_block(0.0)
+    assert npart == len(pos)
 
 def test_spatial_limits(cell_progressive_render):
     render_progression, pos = cell_progressive_render
@@ -208,15 +212,11 @@ def test_spatial_limits(cell_progressive_render):
 
     render_progression.start_frame(DrawReason.CHANGE)
     rendered = np.zeros(len(pos), dtype=np.int32)
-    while True:
-        block = render_progression.get_block(0.0)
-        if block is None:
-            break
-
+    while (block:=render_progression.get_block(0.0)):
         for start, length in zip(*block):
             rendered[start:start+length]+=1
 
-        render_progression.end_block(0.0001)
+        render_progression.end_block(0.0)
 
     assert rendered.max() == 1
 
@@ -226,4 +226,24 @@ def test_spatial_limits(cell_progressive_render):
 
     assert (rendered_r<0.4).all()
     assert (unrendered_r>0.1).all()
+
+def test_export_very_large():
+    num_renders = 5
+    render_progression = progressive_render.RenderProgression(config.MAX_PARTICLES_PER_EXPORT_RENDERCALL * num_renders)
+    render_progression.start_frame(DrawReason.EXPORT)
+
+    for blocknum in range(num_renders):
+        # pretend we have a crazy long-running render. We should render the whole thing, but in a series
+        # of blocks
+        block = render_progression.get_block(100.0*blocknum)
+        assert block is not None
+        assert block[0][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL * blocknum
+        assert block[1][0] == config.MAX_PARTICLES_PER_EXPORT_RENDERCALL
+        render_progression.end_block(100.0 * (blocknum + 1))
+
+    assert render_progression.get_block(100.0*num_renders) is None # finished now!
+
+    clear = render_progression.start_frame(DrawReason.EXPORT)
+
+    assert clear
 

@@ -223,6 +223,7 @@ class Overlay(metaclass=ABCMeta):
 
     def get_instance_offsets_and_weights(self):
         return np.array([[0.0,0.0]], dtype=np.float32), np.ones(1, dtype=np.float32)
+
     def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder,
                            target_texture_view: wgpu.GPUTextureView,
                            clear=False):

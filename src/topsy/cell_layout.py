@@ -26,7 +26,9 @@ class CellLayout:
     def cells_in_sphere(self, centre: tuple[float, float, float], radius: float) -> np.ndarray:
         """Get the indices of the cells that are within a sphere of given centre and radius"""
         expand_radius = self._cell_size*np.sqrt(3.0)
-        return np.where(geometry_selection.selection(self._centres, 'sphere', (centre[0], centre[1], centre[2], radius+expand_radius), -1.0))[0]
+        offsets = self._centres - centre
+        selection = np.linalg.norm(offsets, axis=1) < (radius + expand_radius)
+        return np.where(selection)[0]
 
     def cell_index_from_offset(self, offset: int) -> int:
         """Get the cell index from the offset of a particle"""

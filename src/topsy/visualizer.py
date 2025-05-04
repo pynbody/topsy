@@ -6,6 +6,8 @@ import time
 import wgpu
 
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 from . import config
 from . import canvas
@@ -24,6 +26,8 @@ from .drawreason import DrawReason
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
 class VisualizerBase:
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
     show_status = True
@@ -38,8 +42,10 @@ class VisualizerBase:
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
-        self._colorbar = None
-        self._colormap = None
+        self._colorbar: Optional[colorbar.ColorbarOverlay] = None
+        self._colormap: Optional[colormap.Colormap] = None
+
+        self._encoder_executor = ThreadPoolExecutor(max_workers=1) # 1 worker to prevent GIL contention
 
         self.crosshairs_visible = False
 
@@ -53,7 +59,8 @@ class VisualizerBase:
         self._setup_wgpu()
 
         self.data_loader = data_loader_class(self.device, *data_loader_args, **data_loader_kwargs)
-        self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device)
+        self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device,
+                                                                 self.data_loader.get_render_progression().get_max_particle_regions_per_block())
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
 
@@ -96,7 +103,7 @@ class VisualizerBase:
                 max_buffer_size = 2**63
             type(self).device: wgpu.GPUDevice = self.adapter.request_device_sync(
                 required_features=["texture-adapter-specific-format-features", "float32-filterable",
-                                   ],
+                                  "multi-draw-indirect"],
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
 
@@ -262,18 +269,10 @@ class VisualizerBase:
         finally:
             self._prevent_sph_rendering = False
 
-    def draw(self, reason, target_texture_view=None):
-
-        if not self._prevent_sph_rendering:
-            self.render_sph(reason)
-
+    def _encode_draw(self, target_texture_view):
         command_encoder = self.device.create_command_encoder()
 
-        if target_texture_view is None:
-            target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
-
-        color_prescale = self._sph.last_render_mass_scale if not self.averaging else 1.0
-        self._colormap.encode_render_pass(command_encoder, target_texture_view, color_prescale)
+        self._colormap.encode_render_pass(command_encoder, target_texture_view)
         if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
@@ -286,7 +285,23 @@ class VisualizerBase:
         if self.show_status:
             self._update_and_display_status(command_encoder, target_texture_view)
 
-        self.device.queue.submit([command_encoder.finish()])
+        result = command_encoder.finish()
+        return result
+
+    def draw(self, reason, target_texture_view=None):
+
+        if target_texture_view is None:
+            target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
+
+        command_buffer_future = self._encoder_executor.submit(self._encode_draw, target_texture_view)
+
+        if not self._prevent_sph_rendering:
+            self.render_sph(reason)
+
+        self._colormap.set_scaling(target_texture_view,
+                                   self._sph.last_render_mass_scale if not self.averaging else 1.0)
+
+        self.device.queue.submit([command_buffer_future.result()])
 
         if reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
             if self._sph.needs_refine():
