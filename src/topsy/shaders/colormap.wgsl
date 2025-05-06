@@ -65,11 +65,12 @@ fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
     return output;
 }
 
+fn log10(value: f32) -> f32 {
+    return log(value)/2.30258509;
+}
 
 @fragment
 fn fragment_main(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
-
     var output: FragmentOutput;
 
     var values = textureSample(image_texture, image_sampler, input.texcoord);
@@ -82,7 +83,7 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
 
     [[WEIGHTED_MEAN]] value = values.g/values.r;
     [[DENSITY]] value = values.r;
-    [[LOG_SCALE]] value = log(value)/LN_10;
+    [[LOG_SCALE]] value = log10(value);
 
     value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
     output.color = textureSample(colormap_texture, colormap_sampler, value);
@@ -92,13 +93,12 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
 
 @fragment
 fn fragment_main_mono(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
     var output: FragmentOutput;
     var value : f32;
 
     value = textureSample(image_texture, image_sampler, input.texcoord).r;
 
-    [[LOG_SCALE]] value = log(value)/LN_10;
+    [[LOG_SCALE]] value = log10(value);
 
     // clamp lower limit but not upper limit (for HDR)
     value = max((value - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
@@ -106,6 +106,10 @@ fn fragment_main_mono(input: VertexOutput) -> FragmentOutput {
     output.color = vec4<f32>(value, value, value, 1.0);
 
     return output;
+}
+
+fn gamma_map(value: f32, vmin: f32, vmax: f32, gamma: f32) -> f32 {
+    return pow(max((value - vmin)/(vmax - vmin), 0.0), gamma);
 }
 
 @fragment
@@ -120,14 +124,14 @@ fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
     value_g = textureSample(image_texture, image_sampler, input.texcoord).g;
     value_b = textureSample(image_texture, image_sampler, input.texcoord).b;
 
-    [[LOG_SCALE]] value_r = log(value_r)/LN_10;
-    [[LOG_SCALE]] value_g = log(value_g)/LN_10;
-    [[LOG_SCALE]] value_b = log(value_b)/LN_10;
+    [[LOG_SCALE]] value_r = log10(value_r);
+    [[LOG_SCALE]] value_g = log10(value_g);
+    [[LOG_SCALE]] value_b = log10(value_b);
 
     // clamp lower limit but not upper limit (for HDR)
-    value_r = pow(max((value_r - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
-    value_g = pow(max((value_g - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
-    value_b = pow(max((value_b - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
+    value_r = gamma_map(value_r, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
+    value_g = gamma_map(value_g, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
+    value_b = gamma_map(value_b, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
 
     output.color = vec4<f32>(value_r, value_g, value_b, 1.0);
 
