@@ -83,35 +83,27 @@ class SPH:
         """
         depth_renderer = self._get_depth_renderer()
         depth_renderer.render(depth_renderer_reason) # CHANGE should normally be good enough; EXPORT for reliability
-        depth_viewport = depth_renderer.get_image(averaging=True)
+
+        image = depth_renderer.get_image()
+
+        depth_viewport = image[..., 1] / image[..., 0]
 
         # transform from viewport to simulation units
         return (depth_viewport - 0.5)*self.scale*2.0
 
-    def get_image(self, averaging) -> np.ndarray:
+    def get_image(self) -> np.ndarray:
         """Reads and returns the last rendered SPH image.
 
         Note that this call does not actually trigger a render. Call render() first to generate the image."""
-        nchannels = self._nchannels_output
         np_dtype = self._output_dtype
-        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
-
+        bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
         im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
-                                            {'bytes_per_row': bytes_per_pixel * self._render_resolution},
-                                            (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
+                                             {'bytes_per_row': bytes_per_pixel * self._render_resolution},
+                                             (self._render_resolution, self._render_resolution, 1))
+        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
+                                                           self._nchannels_output))
 
-        if nchannels == 4:
-            if averaging:
-                raise ValueError("Averaging not supported for RGBA output images")
-            np_im = np_im[:, :, :3] * self.last_render_mass_scale
-        elif averaging:
-            np_im = np_im[:, :, 1] / np_im[:, :, 0]
-        else:
-            np_im = np_im[:, :, 0] * self.last_render_mass_scale
-
-        return np_im
-
+        return np_im * self.last_render_mass_scale
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
@@ -431,11 +423,17 @@ class SPH:
         SPH._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
                                                            mag_filter=wgpu.FilterMode.linear, )
 
+class BivariateSPH(SPH):
+    """Renders a density, mass-weighted-mean pair"""
+
+
 class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float
     _nchannels_input = 3
     _nchannels_output = 4
     _output_dtype = np.float32
+
+
 
 class DepthSPH(SPH):
     """Renders a map of the depth of the particles in the scene."""

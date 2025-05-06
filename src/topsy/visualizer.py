@@ -407,7 +407,7 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
-        return self._sph.get_image(self.averaging)
+        return self._colormap.postprocess_numpy_image(self._sph.get_image())
 
     def get_depth_image(self) -> np.ndarray:
         return self._sph.get_depth_image()

@@ -67,6 +67,18 @@ class Colormap:
 
         self._shader = self._device.create_shader_module(code=shader_code, label="colormap")
 
+    def postprocess_numpy_image(self, numpy_image: np.ndarray):
+        """Map from raw image to the logical content that the colormap will use
+
+        For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
+        displayed.
+        """
+        if self._weighted_average:
+            numpy_image = numpy_image[..., 0] / numpy_image[..., 1]
+        else:
+            numpy_image = numpy_image[..., 0]
+
+        return numpy_image
 
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
@@ -386,6 +398,14 @@ class RGBColormap(Colormap):
 
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+
+    def postprocess_numpy_image(self, numpy_image: np.ndarray):
+        """Map from raw image to the logical content that the colormap will use
+
+        For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
+        displayed.
+        """
+        return numpy_image[..., :3]
 
 class RGBHDRColormap(RGBColormap):
     max_percentile = 99.0
