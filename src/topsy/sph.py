@@ -24,6 +24,9 @@ class SPH:
     _nchannels_input = 2
     _nchannels_output = 2
     _output_dtype = np.float32
+    _buffer_name = "mass_and_quantity" # as defined in particle_buffers.py
+    _vertex_name = "vertex_weighting" # as defined in sph.wgsl
+    _fragment_name = "fragment_weighting"
 
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False, share_render_progression=None):
@@ -109,14 +112,8 @@ class SPH:
         return self._render_texture
 
 
-    def _setup_shader_module(self, flags=None):
-        if flags is None:
-            flags = []
-        wrap_flag = "WRAPPING" if self._wrapping else "NO_WRAPPING"
-        type_flag = "CHANNELED" if self._nchannels_input == 3 else "WEIGHTED"
-        flags += [wrap_flag, type_flag]
-        code = preprocess_shader(load_shader("sph.wgsl"), flags)
-
+    def _setup_shader_module(self):
+        code = load_shader("sph.wgsl")
         self._shader = self._device.create_shader_module(code=code, label="sph")
 
     def _setup_transform_buffer(self):
@@ -178,30 +175,17 @@ class SPH:
 
         vertex_format = wgpu.VertexFormat.float32x3
 
-        if self._nchannels_input == 3 :
-            channel_buffers = [{
-                "array_stride": 12,
-                "step_mode": wgpu.VertexStepMode.instance,
-                "attributes": [
-                    {
-                        "format": vertex_format,
-                        "offset": 0,
-                        "shader_location": 1,
-                    }
-                ]
-            } ]
-        else:
-            channel_buffers = [ {
-                                "array_stride": 4,
-                                "step_mode": wgpu.VertexStepMode.instance,
-                                "attributes": [
-                                    {
-                                        "format": wgpu.VertexFormat.float32,
-                                        "offset": 0,
-                                        "shader_location": i+1,
-                                    }
-                                ]
-                            } for i in range(self._nchannels_input)]
+        channel_buffers = [{
+            "array_stride": 12,
+            "step_mode": wgpu.VertexStepMode.instance,
+            "attributes": [
+                {
+                    "format": vertex_format,
+                    "offset": 0,
+                    "shader_location": 1,
+                }
+            ]
+        } ]
 
         self._render_pipeline = \
             self._device.create_render_pipeline(
@@ -209,7 +193,7 @@ class SPH:
                 label="sph_render_pipeline",
                 vertex = {
                     "module": self._shader,
-                    "entry_point": "vertex_main",
+                    "entry_point": self._vertex_name,
                     "buffers": [
                         {
                             "array_stride": 16,
@@ -233,7 +217,7 @@ class SPH:
                 multisample=None,
                 fragment={
                     "module": self._shader,
-                    "entry_point": "fragment_main",
+                    "entry_point": self._fragment_name,
                     "targets": [
                         {
                             "format": self.render_format,
@@ -297,8 +281,6 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-
-
     def render(self, draw_reason=DrawReason.CHANGE):
         performance.signposter.emit_event("Start SPH render")
 
@@ -345,13 +327,7 @@ class SPH:
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-        vb_assignment = ['pos_smooth']
-        if self._nchannels_input == 2:
-            vb_assignment += ['mass', 'quantity']
-        elif self._nchannels_input == 3:
-            vb_assignment += ['rgb_masses']
-        else:
-            raise ValueError("Unexpected number of channels")
+        vb_assignment = ['pos_smooth', self._buffer_name]
 
         self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
         sph_render_pass.set_bind_group(0, self._bind_group, [],
@@ -429,15 +405,17 @@ class BivariateSPH(SPH):
 
 class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float
+    _buffer_name = 'rgb'
     _nchannels_input = 3
     _nchannels_output = 4
     _output_dtype = np.float32
+    _vertex_name = "vertex_rgb"
+    _fragment_name = "fragment_rgb"
 
 
 
 class DepthSPH(SPH):
     """Renders a map of the depth of the particles in the scene."""
-    def _setup_shader_module(self, flags=None):
-        if flags is None:
-            flags = []
-        super()._setup_shader_module(flags+["DEPTH"])
+
+    _vertex_name = "vertex_depth"
+

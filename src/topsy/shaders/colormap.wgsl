@@ -114,7 +114,6 @@ fn gamma_map(value: f32, vmin: f32, vmax: f32, gamma: f32) -> f32 {
 
 @fragment
 fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
     var output: FragmentOutput;
     var value_r: f32;
     var value_g: f32;
@@ -128,7 +127,6 @@ fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
     [[LOG_SCALE]] value_g = log10(value_g);
     [[LOG_SCALE]] value_b = log10(value_b);
 
-    // clamp lower limit but not upper limit (for HDR)
     value_r = gamma_map(value_r, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
     value_g = gamma_map(value_g, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
     value_b = gamma_map(value_b, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
