@@ -87,6 +87,7 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
     // seem to be supported at present
 
     #ifdef BIVARIATE
+        FAIL(); // fail compilation for now
 
     #else // not BIVARIATE
 

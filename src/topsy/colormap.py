@@ -74,7 +74,7 @@ class Colormap:
         displayed.
         """
         if self._weighted_average:
-            numpy_image = numpy_image[..., 0] / numpy_image[..., 1]
+            numpy_image = numpy_image[..., 1] / numpy_image[..., 0]
         else:
             numpy_image = numpy_image[..., 0]
 
