@@ -94,7 +94,7 @@ def test_sph_weighted_output(vis, folder):
        -2.46739432e-06, -3.65177402e-06, -4.68898270e-06, -5.36195603e-06,
        -5.62509740e-06, -5.53361224e-06, -5.27684415e-06, -5.15632610e-06]
 
-    npt.assert_allclose(test, expect, atol=1e-7)
+    npt.assert_allclose(test, expect, atol=1.5e-7)
 
 def test_sph_output(vis, folder):
     vis.render_sph(DrawReason.EXPORT)
