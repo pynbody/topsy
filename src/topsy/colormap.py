@@ -323,11 +323,6 @@ class Colormap:
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
-class HDRColormap(Colormap):
-    input_channels = 2
-    fragment_shader = "fragment_main_mono"
-    percentile_scaling = [1.0, 90.0]
-
 class RGBColormap(Colormap):
     input_channels = 3
     fragment_shader = "fragment_main_tri"

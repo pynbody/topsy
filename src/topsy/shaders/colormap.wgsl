@@ -21,8 +21,13 @@ var image_texture: texture_2d<f32>;
 @group(0) @binding(1)
 var image_sampler: sampler;
 
+#ifdef BIVARIATE
+@group(0) @binding(2)
+var colormap_texture: texture_2d<f32>;
+#else
 @group(0) @binding(2)
 var colormap_texture: texture_1d<f32>;
+#endif
 
 @group(0) @binding(3)
 var colormap_sampler: sampler;
@@ -81,30 +86,23 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
     // ultimately, this should be possible within wgsl itself by using a const, but this doesn't
     // seem to be supported at present
 
-    [[WEIGHTED_MEAN]] value = values.g/values.r;
-    [[DENSITY]] value = values.r;
-    [[LOG_SCALE]] value = log10(value);
+    #ifdef BIVARIATE
 
-    value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
-    output.color = textureSample(colormap_texture, colormap_sampler, value);
+    #else // not BIVARIATE
 
-    return output;
-}
+        #ifdef WEIGHTED_MEAN
+            value = values.g/values.r;
+        #else
+            value = values.r;
+        #endif
 
-@fragment
-fn fragment_main_mono(input: VertexOutput) -> FragmentOutput {
-    var output: FragmentOutput;
-    var value : f32;
+        #ifdef LOG_SCALE
+            value = log10(value);
+        #endif
 
-    value = textureSample(image_texture, image_sampler, input.texcoord).r;
-
-    [[LOG_SCALE]] value = log10(value);
-
-    // clamp lower limit but not upper limit (for HDR)
-    value = max((value - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
-
-    output.color = vec4<f32>(value, value, value, 1.0);
-
+        value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
+        output.color = textureSample(colormap_texture, colormap_sampler, value);
+    #endif // not BIVARIATE
     return output;
 }
 
@@ -123,9 +121,11 @@ fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
     value_g = textureSample(image_texture, image_sampler, input.texcoord).g;
     value_b = textureSample(image_texture, image_sampler, input.texcoord).b;
 
-    [[LOG_SCALE]] value_r = log10(value_r);
-    [[LOG_SCALE]] value_g = log10(value_g);
-    [[LOG_SCALE]] value_b = log10(value_b);
+#ifdef LOG_SCALE
+    value_r = log10(value_r);
+    value_g = log10(value_g);
+    value_b = log10(value_b);
+#endif
 
     value_r = gamma_map(value_r, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
     value_g = gamma_map(value_g, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);

@@ -223,10 +223,9 @@ class VisualizerBase:
                 self._colormap = colormap.RGBHDRColormap(self)
             else:
                 self._colormap = colormap.RGBColormap(self)
-        elif self._hdr:
-            self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
-
         else:
+            if self._hdr:
+                logger.warning("HDR colormaps are not supported for non-RGB renderers")
             self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
             
         if not keep_scale:
