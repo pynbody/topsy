@@ -33,8 +33,8 @@ def test_render(vis, folder):
 
     plt.imsave(folder / "test.png", result) # needs manual verification
 
-def test_hdr_render(vis):
-    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True)
+def test_hdr_rgb_render(vis):
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True, rgb=True)
     result = vis.get_presentation_image()
 
     assert result.dtype == np.float16
