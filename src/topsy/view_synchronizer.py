@@ -62,7 +62,7 @@ class SynchronizationMixin:
     """Mixin class for Visualizer to allow it to synchronize with other views"""
     def draw(self, reason, render_texture_view=None):
         super().draw(reason, render_texture_view)
-        if hasattr(self, "_view_synchronizer") and reason != DrawReason.REFINE:
+        if hasattr(self, "_view_synchronizer") and reason not in (DrawReason.REFINE, DrawReason.PRESENTATION_CHANGE):
             self._view_synchronizer.perpetuate_update(self)
 
     def synchronize_with(self, other: Visualizer):
