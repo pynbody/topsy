@@ -154,30 +154,7 @@ class Colormap:
         self._input_interpolation = self._device.create_sampler(label="colormap_sampler",
                                                                 mag_filter=wgpu.FilterMode.linear, )
 
-        self._bind_group = \
-            self._device.create_bind_group(
-                label="colormap_bind_group",
-                layout=self._bind_group_layout,
-                entries=[
-                    {"binding": 0,
-                     "resource": self._input_texture.create_view(),
-                     },
-                    {"binding": 1,
-                     "resource": self._input_interpolation,
-                     },
-                    {"binding": 2,
-                     "resource": self._texture.create_view(),
-                     },
-                    {"binding": 3,
-                     "resource": self._input_interpolation,
-                     },
-                    {"binding": 4,
-                        "resource": {"buffer": self._parameter_buffer,
-                                     "offset": 0,
-                                     "size": self._parameter_buffer.size}
-                     }
-                ]
-            )
+        self._bind_group = self._create_bind_group(self._input_texture)
 
         self._pipeline_layout = \
             self._device.create_pipeline_layout(
@@ -223,7 +200,32 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder, target_texture_view):
+    def _create_bind_group(self, input_texture: wgpu.GPUTexture):
+        return self._device.create_bind_group(
+            label="colormap_bind_group",
+            layout=self._bind_group_layout,
+            entries=[
+                {"binding": 0,
+                 "resource": input_texture.create_view(),
+                 },
+                {"binding": 1,
+                 "resource": self._input_interpolation,
+                 },
+                {"binding": 2,
+                 "resource": self._texture.create_view(),
+                 },
+                {"binding": 3,
+                 "resource": self._input_interpolation,
+                 },
+                {"binding": 4,
+                 "resource": {"buffer": self._parameter_buffer,
+                              "offset": 0,
+                              "size": self._parameter_buffer.size}
+                 }
+            ]
+        )
+
+    def encode_render_pass(self, command_encoder, target_texture_view, bind_group = None):
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
@@ -236,7 +238,7 @@ class Colormap:
             ]
         )
         colormap_render_pass.set_pipeline(self._pipeline)
-        colormap_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
+        colormap_render_pass.set_bind_group(0, self._bind_group or bind_group, [], 0, 99)
         colormap_render_pass.draw(4, 1, 0, 0)
         colormap_render_pass.end()
 
