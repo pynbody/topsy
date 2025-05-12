@@ -450,23 +450,28 @@ class VisualizerBase:
 
 
     def save(self, filename='output.pdf'):
+        self._sph.render(DrawReason.EXPORT)
         image = self.get_sph_image()
-        import matplotlib.pyplot as p
-        fig = p.figure()
-        p.clf()
-        p.set_cmap(self.colormap_name)
-        extent = np.array([-1., 1., -1., 1.])*self.scale
-        if self._colormap.log_scale:
-            image = np.log10(image)
+        if filename.endswith(".npy"):
+            np.save(filename, image)
+            return
+        else:
+            import matplotlib.pyplot as p
+            fig = p.figure()
+            p.clf()
+            p.set_cmap(self.colormap_name)
+            extent = np.array([-1., 1., -1., 1.])*self.scale
+            if self._colormap.log_scale:
+                image = np.log10(image)
 
-        p.imshow(image,
-                 vmin=self._colormap.vmin,
-                 vmax=self._colormap.vmax,
-                 extent=extent)
-        p.xlabel("$x$/kpc")
-        p.colorbar().set_label(self._colorbar.label)
-        p.savefig(filename)
-        p.close(fig)
+            p.imshow(image,
+                     vmin=self._colormap.vmin,
+                     vmax=self._colormap.vmax,
+                     extent=extent)
+            p.xlabel("$x$/kpc")
+            p.colorbar().set_label(self._colorbar.label)
+            p.savefig(filename)
+            p.close(fig)
 
     def show(self, force=False):
         from rendercanvas import jupyter
