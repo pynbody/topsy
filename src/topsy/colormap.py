@@ -67,7 +67,7 @@ class Colormap:
 
         self._shader = self._device.create_shader_module(code=shader_code, label="colormap")
 
-    def postprocess_numpy_image(self, numpy_image: np.ndarray):
+    def sph_raw_output_to_content(self, numpy_image: np.ndarray):
         """Map from raw image to the logical content that the colormap will use
 
         For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
@@ -79,6 +79,40 @@ class Colormap:
             numpy_image = numpy_image[..., 0]
 
         return numpy_image
+
+    def sph_raw_output_to_image(self, numpy_image: np.ndarray):
+        """Map from SPH output to the colored image"""
+        # check that input image has correct number of channels
+
+        if len(numpy_image.shape) != 3:
+            raise ValueError(f"Expected a 3D array, but got shape {numpy_image.shape}")
+        if numpy_image.shape[2] != self.input_channels:
+            raise ValueError(f"Expected the last dimension to have size {self.input_channels}, but got {numpy_image.shape[2]}")
+        if numpy_image.dtype != np.float32:
+            raise ValueError(f"Expected dtype to be np.float32, but got {numpy_image.dtype}")
+
+        # create a texture to hold the logical image:
+        source_texture = self._device.create_texture(
+            size=(numpy_image.shape[1], numpy_image.shape[0], 1),
+            format=self._input_texture.format,
+            usage=wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST,
+            label="colormap_input_texture"
+        )
+
+        # copy the image data to the texture
+        self._device.queue.write_texture(
+            {
+                "texture": source_texture,
+                "mip_level": 0,
+                "origin": [0, 0, 0],
+            },
+            numpy_image.tobytes(),
+            {
+                "bytes_per_row": 4 * numpy_image.shape[1],
+                "offset": 0,
+            },
+            (numpy_image.shape[1], numpy_image.shape[0], 1)
+        )
 
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
@@ -396,7 +430,7 @@ class RGBColormap(Colormap):
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
-    def postprocess_numpy_image(self, numpy_image: np.ndarray):
+    def sph_raw_output_to_content(self, numpy_image: np.ndarray):
         """Map from raw image to the logical content that the colormap will use
 
         For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
