@@ -47,6 +47,7 @@ def parse_args(args=None):
                                                           "Supported only for swift simulations. Units are simulation units.",
                             metavar=("_"),
                             default=None, type=float)
+    argparser.add_argument('--remote', help="Read snapshot from remote server", action="store_true")
 
     if args is None:
         args = sys.argv[1:]
@@ -87,10 +88,10 @@ def main():
     for args in all_args:
         # Convert CLI args to parameters dict for cleaner interface
         vis = load(args.filename, center=args.center, resolution=args.resolution,
-                    particle=args.particle, tile=args.tile,
-                    sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
-                    sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
-                    render_mode=args.render_mode)
+                   particle=args.particle, tile=args.tile,
+                   sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
+                   sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
+                   render_mode=args.render_mode, remote=args.remote)
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
@@ -109,7 +110,7 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, param
 def load(filename: str, center: str = "none", particle: str = "gas", 
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         render_mode: str = None) -> Visualizer:
+         render_mode: str = None, remote: bool = False) -> Visualizer:
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -137,6 +138,8 @@ def load(filename: str, center: str = "none", particle: str = "gas",
 
     tile : bool
         If True, wrap and tile the simulation box using its periodicity. Default is False.
+    remote : bool
+        If true, read a snapshot using the hdfstream service rather than reading local files
 
     render_mode : str
         Visualization mode. Should be one of 'univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface', etc.
@@ -160,7 +163,10 @@ def load(filename: str, center: str = "none", particle: str = "gas",
         loader_args = (n_part,)
     else:
         import pynbody
-        loader_class = loader.PynbodyDataLoader
+        if remote:
+            loader_class = loader.PynbodyRemoteDataLoader
+        else:
+            loader_class = loader.PynbodyDataLoader
         if sphere_radius is not None:
             if sphere_center is not None:
                 loader_args = (filename, center, particle, pynbody.filt.Sphere(sphere_radius, sphere_center))
