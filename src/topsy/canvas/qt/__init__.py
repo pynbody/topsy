@@ -170,7 +170,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
     def on_click_save(self):
         fd = QtWidgets.QFileDialog(self)
-        fname, _ = fd.getSaveFileName(self, "Save snapshot", "", "PNG (*.png);; PDF (*.pdf)")
+        fname, _ = fd.getSaveFileName(self, "Save snapshot", "", "PNG (*.png);; PDF (*.pdf);; numpy (*.npy)")
         if fname:
             logger.info("Saving snapshot to %s", fname)
             self._visualizer.save(fname)

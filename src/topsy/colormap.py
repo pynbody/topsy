@@ -26,6 +26,13 @@ class Colormap:
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
 
+    parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
+                               ("vmax", np.float32, (1,)),
+                               ("density_vmin", np.float32, (1,)),
+                               ("density_vmax", np.float32, (1,)),
+                               ("window_aspect_ratio", np.float32, (1,)),
+                               ("gamma", np.float32, (1,))])
+
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._visualizer = visualizer
         self._device = visualizer.device
@@ -54,11 +61,12 @@ class Colormap:
             self._setup_shader_module()
             self._setup_render_pipeline()
 
-    def _setup_shader_module(self):
+    def _setup_shader_module(self, active_flags = None):
         shader_code = load_shader("colormap.wgsl")
-        # hack because at present we can't use const values in the shader to compile
-        mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
-        active_flags = [mode]
+
+        if active_flags is None:
+            mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
+            active_flags = [mode]
 
         if self.log_scale:
             active_flags.append("LOG_SCALE")
@@ -66,6 +74,90 @@ class Colormap:
         shader_code = preprocess_shader(shader_code, active_flags)
 
         self._shader = self._device.create_shader_module(code=shader_code, label="colormap")
+
+    def sph_raw_output_to_content(self, numpy_image: np.ndarray):
+        """Map from raw image to the logical content that the colormap will use
+
+        For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
+        displayed.
+        """
+        if self._weighted_average:
+            numpy_image = numpy_image[..., 1] / numpy_image[..., 0]
+        else:
+            numpy_image = numpy_image[..., 0]
+
+        return numpy_image
+
+    def sph_raw_output_to_image(self, numpy_image: np.ndarray):
+        """Map from SPH output to the colored image"""
+        # check that input image has correct number of channels
+
+        if len(numpy_image.shape) != 3:
+            raise ValueError(f"Expected a 3D array, but got shape {numpy_image.shape}")
+        if numpy_image.shape[2] != self.input_channels:
+            raise ValueError(f"Expected the last dimension to have size {self.input_channels}, but got {numpy_image.shape[2]}")
+        if numpy_image.dtype != np.float32:
+            raise ValueError(f"Expected dtype to be np.float32, but got {numpy_image.dtype}")
+
+        if self._output_format == wgpu.TextureFormat.rgba8unorm:
+            output_dtype = np.uint8
+        elif self._output_format == wgpu.TextureFormat.rgba32float:
+            output_dtype = np.float32
+        else:
+            raise ValueError(f"Unsupported output format: {self._output_format}")
+
+        # create a texture to hold the logical image:
+        source_texture = self._device.create_texture(
+            size=(numpy_image.shape[1], numpy_image.shape[0], 1),
+            format=self._input_texture.format,
+            usage=wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST,
+            label="colormap_input_texture"
+        )
+
+        destination_texture = self._device.create_texture(
+            size=(numpy_image.shape[1], numpy_image.shape[0], 1),
+            format=self._output_format,
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT | wgpu.TextureUsage.COPY_SRC,
+            label="colormap_output_texture"
+        )
+
+        self.set_scaling(destination_texture, 1.0)
+
+        # copy the image data to the texture
+        self._device.queue.write_texture(
+            {
+                "texture": source_texture,
+                "mip_level": 0,
+                "origin": [0, 0, 0],
+            },
+            numpy_image.tobytes(),
+            {
+                "bytes_per_row": 4 * self.input_channels * numpy_image.shape[1],
+                "offset": 0,
+            },
+            (numpy_image.shape[1], numpy_image.shape[0], 1)
+        )
+
+        # create a bind group for the input texture
+        bind_group = self._create_bind_group(source_texture)
+
+        # create a render pass to apply the colormap
+        command_encoder = self._device.create_command_encoder(label="colormap_command_encoder")
+
+        self.encode_render_pass(command_encoder, destination_texture.create_view(), bind_group)
+
+        # submit the command encoder
+        self._device.queue.submit([command_encoder.finish()])
+
+        # read back the result
+        result = np.frombuffer(
+            self._device.queue.read_texture({'texture': destination_texture, 'origin': (0, 0, 0)},
+                                            {'bytes_per_row': 4 * output_dtype().itemsize * numpy_image.shape[1]},
+                                            (numpy_image.shape[1], numpy_image.shape[0], 1)),
+            dtype=output_dtype
+        ).reshape((numpy_image.shape[0], numpy_image.shape[1], 4))
+
+        return result
 
 
 
@@ -102,7 +194,7 @@ class Colormap:
         return rgba
 
     def _setup_render_pipeline(self):
-        self._parameter_buffer = self._device.create_buffer(size =4 * 4,
+        self._parameter_buffer = self._device.create_buffer(size = self.parameter_dtype.itemsize,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -142,30 +234,7 @@ class Colormap:
         self._input_interpolation = self._device.create_sampler(label="colormap_sampler",
                                                                 mag_filter=wgpu.FilterMode.linear, )
 
-        self._bind_group = \
-            self._device.create_bind_group(
-                label="colormap_bind_group",
-                layout=self._bind_group_layout,
-                entries=[
-                    {"binding": 0,
-                     "resource": self._input_texture.create_view(),
-                     },
-                    {"binding": 1,
-                     "resource": self._input_interpolation,
-                     },
-                    {"binding": 2,
-                     "resource": self._texture.create_view(),
-                     },
-                    {"binding": 3,
-                     "resource": self._input_interpolation,
-                     },
-                    {"binding": 4,
-                        "resource": {"buffer": self._parameter_buffer,
-                                     "offset": 0,
-                                     "size": self._parameter_buffer.size}
-                     }
-                ]
-            )
+        self._bind_group = self._create_bind_group(self._input_texture)
 
         self._pipeline_layout = \
             self._device.create_pipeline_layout(
@@ -211,20 +280,45 @@ class Colormap:
                 }
             )
 
-    def encode_render_pass(self, command_encoder, target_texture_view):
+    def _create_bind_group(self, input_texture: wgpu.GPUTexture):
+        return self._device.create_bind_group(
+            label="colormap_bind_group",
+            layout=self._bind_group_layout,
+            entries=[
+                {"binding": 0,
+                 "resource": input_texture.create_view(),
+                 },
+                {"binding": 1,
+                 "resource": self._input_interpolation,
+                 },
+                {"binding": 2,
+                 "resource": self._texture.create_view(),
+                 },
+                {"binding": 3,
+                 "resource": self._input_interpolation,
+                 },
+                {"binding": 4,
+                 "resource": {"buffer": self._parameter_buffer,
+                              "offset": 0,
+                              "size": self._parameter_buffer.size}
+                 }
+            ]
+        )
+
+    def encode_render_pass(self, command_encoder, target_texture_view, bind_group = None):
         colormap_render_pass = command_encoder.begin_render_pass(
             color_attachments=[
                 {
                     "view": target_texture_view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 1.0),
-                    "load_op": wgpu.LoadOp.load,
+                    "load_op": wgpu.LoadOp.clear,
                     "store_op": wgpu.StoreOp.store,
                 }
             ]
         )
         colormap_render_pass.set_pipeline(self._pipeline)
-        colormap_render_pass.set_bind_group(0, self._bind_group, [], 0, 99)
+        colormap_render_pass.set_bind_group(0, bind_group or self._bind_group, [], 0, 99)
         colormap_render_pass.draw(4, 1, 0, 0)
         colormap_render_pass.end()
 
@@ -292,12 +386,7 @@ class Colormap:
 
 
     def _update_parameter_buffer(self, width, height, mass_scale):
-        parameter_dtype = [("vmin", np.float32, (1,)),
-                           ("vmax", np.float32, (1,)),
-                           ("window_aspect_ratio", np.float32, (1,)),
-                           ("gamma", np.float32, (1,))]
-
-        parameters = np.zeros((), dtype=parameter_dtype)
+        parameters = np.zeros((), dtype=self.parameter_dtype)
         parameters["vmin"] = self.vmin
         parameters["vmax"] = self.vmax
         if self.log_scale:
@@ -310,11 +399,6 @@ class Colormap:
         parameters["window_aspect_ratio"] = float(width)/height
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
-
-class HDRColormap(Colormap):
-    input_channels = 2
-    fragment_shader = "fragment_main_mono"
-    percentile_scaling = [1.0, 90.0]
 
 class RGBColormap(Colormap):
     input_channels = 3
@@ -387,7 +471,23 @@ class RGBColormap(Colormap):
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
+    def sph_raw_output_to_content(self, numpy_image: np.ndarray):
+        """Map from raw image to the logical content that the colormap will use
+
+        For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
+        displayed.
+        """
+        return numpy_image[..., :3]
+
 class RGBHDRColormap(RGBColormap):
     max_percentile = 99.0
     dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
+class BivariateColormap(Colormap):
+
+    def __init__(self, visualizer: Visualizer):
+        super().__init__(visualizer, False)
+
+    def _setup_shader_module(self, active_flags=None):
+        assert active_flags is None
+        super()._setup_shader_module(["BIVARIATE"])
