@@ -91,6 +91,13 @@ class Colormap:
         if numpy_image.dtype != np.float32:
             raise ValueError(f"Expected dtype to be np.float32, but got {numpy_image.dtype}")
 
+        if self._output_format == wgpu.TextureFormat.rgba8unorm:
+            output_dtype = np.uint8
+        elif self._output_format == wgpu.TextureFormat.rgba32float:
+            output_dtype = np.float32
+        else:
+            raise ValueError(f"Unsupported output format: {self._output_format}")
+
         # create a texture to hold the logical image:
         source_texture = self._device.create_texture(
             size=(numpy_image.shape[1], numpy_image.shape[0], 1),
@@ -98,6 +105,15 @@ class Colormap:
             usage=wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST,
             label="colormap_input_texture"
         )
+
+        destination_texture = self._device.create_texture(
+            size=(numpy_image.shape[1], numpy_image.shape[0], 1),
+            format=self._output_format,
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT | wgpu.TextureUsage.COPY_SRC,
+            label="colormap_output_texture"
+        )
+
+        self.set_scaling(destination_texture, 1.0)
 
         # copy the image data to the texture
         self._device.queue.write_texture(
@@ -108,11 +124,33 @@ class Colormap:
             },
             numpy_image.tobytes(),
             {
-                "bytes_per_row": 4 * numpy_image.shape[1],
+                "bytes_per_row": 4 * self.input_channels * numpy_image.shape[1],
                 "offset": 0,
             },
             (numpy_image.shape[1], numpy_image.shape[0], 1)
         )
+
+        # create a bind group for the input texture
+        bind_group = self._create_bind_group(source_texture)
+
+        # create a render pass to apply the colormap
+        command_encoder = self._device.create_command_encoder(label="colormap_command_encoder")
+
+        self.encode_render_pass(command_encoder, destination_texture.create_view(), bind_group)
+
+        # submit the command encoder
+        self._device.queue.submit([command_encoder.finish()])
+
+        # read back the result
+        result = np.frombuffer(
+            self._device.queue.read_texture({'texture': destination_texture, 'origin': (0, 0, 0)},
+                                            {'bytes_per_row': 4 * output_dtype().itemsize * numpy_image.shape[1]},
+                                            (numpy_image.shape[1], numpy_image.shape[0], 1)),
+            dtype=output_dtype
+        ).reshape((numpy_image.shape[0], numpy_image.shape[1], 4))
+
+        return result
+
 
 
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
@@ -266,13 +304,13 @@ class Colormap:
                     "view": target_texture_view,
                     "resolve_target": None,
                     "clear_value": (0.0, 0.0, 0.0, 1.0),
-                    "load_op": wgpu.LoadOp.load,
+                    "load_op": wgpu.LoadOp.clear,
                     "store_op": wgpu.StoreOp.store,
                 }
             ]
         )
         colormap_render_pass.set_pipeline(self._pipeline)
-        colormap_render_pass.set_bind_group(0, self._bind_group or bind_group, [], 0, 99)
+        colormap_render_pass.set_bind_group(0, bind_group or self._bind_group, [], 0, 99)
         colormap_render_pass.draw(4, 1, 0, 0)
         colormap_render_pass.end()
 
