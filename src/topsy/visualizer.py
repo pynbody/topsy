@@ -36,9 +36,10 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
-                 hdr = False, rgb=False):
+                 hdr = False, rgb=False, bivariate=False):
         self._hdr = hdr
         self._rgb = rgb
+        self._bivariate = bivariate
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
@@ -226,7 +227,10 @@ class VisualizerBase:
         else:
             if self._hdr:
                 logger.warning("HDR colormaps are not supported for non-RGB renderers")
-            self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+            if self._bivariate:
+                self._colormap = colormap.BivariateColormap(self)
+            else:
+                self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
             
         if not keep_scale:
             self._sph.render(DrawReason.EXPORT)

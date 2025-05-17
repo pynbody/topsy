@@ -1,6 +1,8 @@
 struct ColormapParams {
     vmin: f32,
     vmax: f32,
+    density_vmin: f32, // used only in bivariate case
+    density_vmax: f32, // used only in bivariate case
     window_aspect_ratio: f32,
     gamma: f32
 };

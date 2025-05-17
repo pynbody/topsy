@@ -26,6 +26,13 @@ class Colormap:
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
 
+    parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
+                               ("vmax", np.float32, (1,)),
+                               ("density_vmin", np.float32, (1,)),
+                               ("density_vmax", np.float32, (1,)),
+                               ("window_aspect_ratio", np.float32, (1,)),
+                               ("gamma", np.float32, (1,))])
+
     def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
         self._visualizer = visualizer
         self._device = visualizer.device
@@ -54,11 +61,12 @@ class Colormap:
             self._setup_shader_module()
             self._setup_render_pipeline()
 
-    def _setup_shader_module(self):
+    def _setup_shader_module(self, active_flags = None):
         shader_code = load_shader("colormap.wgsl")
-        # hack because at present we can't use const values in the shader to compile
-        mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
-        active_flags = [mode]
+
+        if active_flags is None:
+            mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
+            active_flags = [mode]
 
         if self.log_scale:
             active_flags.append("LOG_SCALE")
@@ -186,7 +194,7 @@ class Colormap:
         return rgba
 
     def _setup_render_pipeline(self):
-        self._parameter_buffer = self._device.create_buffer(size =4 * 4,
+        self._parameter_buffer = self._device.create_buffer(size = self.parameter_dtype.itemsize,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -378,12 +386,7 @@ class Colormap:
 
 
     def _update_parameter_buffer(self, width, height, mass_scale):
-        parameter_dtype = [("vmin", np.float32, (1,)),
-                           ("vmax", np.float32, (1,)),
-                           ("window_aspect_ratio", np.float32, (1,)),
-                           ("gamma", np.float32, (1,))]
-
-        parameters = np.zeros((), dtype=parameter_dtype)
+        parameters = np.zeros((), dtype=self.parameter_dtype)
         parameters["vmin"] = self.vmin
         parameters["vmax"] = self.vmax
         if self.log_scale:
@@ -480,3 +483,11 @@ class RGBHDRColormap(RGBColormap):
     max_percentile = 99.0
     dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
+class BivariateColormap(Colormap):
+
+    def __init__(self, visualizer: Visualizer):
+        super().__init__(visualizer, False)
+
+    def _setup_shader_module(self, active_flags=None):
+        assert active_flags is None
+        super()._setup_shader_module(["BIVARIATE"])
