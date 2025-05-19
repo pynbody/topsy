@@ -38,7 +38,7 @@ def parse_args(args=None):
                            default=False, action="store_true")
     argparser.add_argument('--hdr', help="[Experimental] Enable HDR rendering", action="store_true")
     argparser.add_argument('--rgb', help="[Experimental] Enable RGB->UVI rendering for stars", action="store_true")
-
+    argparser.add_argument("--bivariate", "-b", help="[Experimental] Enable bivariate rendering", action="store_true")
     argparser.add_argument("--load-sphere", nargs='+', help="Load a sphere of particles with the given "
                                                           "radius and, optionally, centre in simulation units. "
                                                           "e.g. --load-sphere 5.0 to load a sphere of radius 5.0 about"
@@ -89,7 +89,7 @@ def main():
                     particle=args.particle, tile=args.tile, rgb=args.rgb,
                     sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
                     sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
-                    hdr=args.hdr)
+                    hdr=args.hdr, bivariate=args.bivariate)
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
@@ -107,7 +107,7 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
 def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool = False,
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         hdr: bool = False) :
+         hdr: bool = False, bivariate: bool = False) :
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -136,11 +136,15 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
     rgb : bool
         If True, enable RGB->UVI rendering for stars. Default is False.
 
+    bivariate : bool
+        If True, enable bivariate rendering. Default is False.
+
     hdr : bool
         If True, try enabling HDR rendering (only valid when rgb=True). Default is False.
 
     tile : bool
         If True, wrap and tile the simulation box using its periodicity. Default is False.
+
 
     Returns
     -------
@@ -175,7 +179,7 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
                                 hdr=hdr,
                                 periodic_tiling=tile,
                                 render_resolution=resolution,
-                                rgb=rgb)
+                                rgb=rgb, bivariate=bivariate)
 
     return vis
 

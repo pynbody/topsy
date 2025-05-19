@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import matplotlib as mpl
 import abc
 
-from .. import config
+from .. import config, drawreason
 
 @dataclass
 class ControlSpec:
@@ -92,6 +92,28 @@ class ColorMapController(GenericController):
                 ]),
             ],
         )
+
+class BivariateColorMapController(ColorMapController):
+    def apply_denslider(self, vmin: float, vmax: float) -> None:
+        self.visualizer.colormap.density_vmin = vmin
+        self.visualizer.colormap.density_vmax = vmax
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
+
+    def get_layout(self) -> LayoutSpec:
+        layout = super().get_layout()
+
+        den_ui_range = self.visualizer.colormap.get_den_ui_range()
+
+        children = layout.children
+
+        children.append(LayoutSpec("hbox", [
+            ControlSpec("range_den", "range_slider",
+                        value=(self.visualizer.colormap.density_vmin, self.visualizer.colormap.density_vmax),
+                        range=den_ui_range, callback=lambda vv: self.apply_denslider(*vv),
+                        label="density")
+            ]))
+
+        return LayoutSpec("vbox", children=children)
 
 class RGBMapController(GenericController):
     """Controller description for RGB (stellar rendering) outputs"""

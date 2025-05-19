@@ -36,9 +36,10 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
-                 hdr = False, rgb=False):
+                 hdr = False, rgb=False, bivariate=False):
         self._hdr = hdr
         self._rgb = rgb
+        self._bivariate = bivariate
         self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
@@ -223,11 +224,13 @@ class VisualizerBase:
                 self._colormap = colormap.RGBHDRColormap(self)
             else:
                 self._colormap = colormap.RGBColormap(self)
-        elif self._hdr:
-            self._colormap = colormap.HDRColormap(self, weighted_average=self.quantity_name is not None)
-
         else:
-            self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+            if self._hdr:
+                logger.warning("HDR colormaps are not supported for non-RGB renderers")
+            if self._bivariate:
+                self._colormap = colormap.BivariateColormap(self, weighted_average=self.quantity_name is not None)
+            else:
+                self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
             
         if not keep_scale:
             self._sph.render(DrawReason.EXPORT)
@@ -298,8 +301,7 @@ class VisualizerBase:
         if not self._prevent_sph_rendering:
             self.render_sph(reason)
 
-        self._colormap.set_scaling(target_texture_view,
-                                   self._sph.last_render_mass_scale if not self.averaging else 1.0)
+        self._colormap.set_scaling(target_texture_view, self._sph.last_render_mass_scale)
 
         self.device.queue.submit([command_buffer_future.result()])
 
@@ -407,7 +409,7 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
-        return self._sph.get_image(self.averaging)
+        return self._colormap.sph_raw_output_to_content(self._sph.get_image())
 
     def get_depth_image(self) -> np.ndarray:
         return self._sph.get_depth_image()
@@ -451,23 +453,28 @@ class VisualizerBase:
 
 
     def save(self, filename='output.pdf'):
+        self._sph.render(DrawReason.EXPORT)
         image = self.get_sph_image()
-        import matplotlib.pyplot as p
-        fig = p.figure()
-        p.clf()
-        p.set_cmap(self.colormap_name)
-        extent = np.array([-1., 1., -1., 1.])*self.scale
-        if self._colormap.log_scale:
-            image = np.log10(image)
+        if filename.endswith(".npy"):
+            np.save(filename, image)
+            return
+        else:
+            import matplotlib.pyplot as p
+            fig = p.figure()
+            p.clf()
+            p.set_cmap(self.colormap_name)
+            extent = np.array([-1., 1., -1., 1.])*self.scale
+            if self._colormap.log_scale:
+                image = np.log10(image)
 
-        p.imshow(image,
-                 vmin=self._colormap.vmin,
-                 vmax=self._colormap.vmax,
-                 extent=extent)
-        p.xlabel("$x$/kpc")
-        p.colorbar().set_label(self._colorbar.label)
-        p.savefig(filename)
-        p.close(fig)
+            p.imshow(image,
+                     vmin=self._colormap.vmin,
+                     vmax=self._colormap.vmax,
+                     extent=extent)
+            p.xlabel("$x$/kpc")
+            p.colorbar().set_label(self._colorbar.label)
+            p.savefig(filename)
+            p.close(fig)
 
     def show(self, force=False):
         from rendercanvas import jupyter
