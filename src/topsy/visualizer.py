@@ -228,7 +228,7 @@ class VisualizerBase:
             if self._hdr:
                 logger.warning("HDR colormaps are not supported for non-RGB renderers")
             if self._bivariate:
-                self._colormap = colormap.BivariateColormap(self)
+                self._colormap = colormap.BivariateColormap(self, weighted_average=self.quantity_name is not None)
             else:
                 self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
             
@@ -301,8 +301,7 @@ class VisualizerBase:
         if not self._prevent_sph_rendering:
             self.render_sph(reason)
 
-        self._colormap.set_scaling(target_texture_view,
-                                   self._sph.last_render_mass_scale if not self.averaging else 1.0)
+        self._colormap.set_scaling(target_texture_view, self._sph.last_render_mass_scale)
 
         self.device.queue.submit([command_buffer_future.result()])
 

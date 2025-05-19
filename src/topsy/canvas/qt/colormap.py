@@ -80,7 +80,7 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
 
 
 from ..generic_colormap import (
-    GenericController, ColorMapController, RGBMapController, ControlSpec, LayoutSpec
+    GenericController, ColorMapController, BivariateColorMapController, RGBMapController, ControlSpec, LayoutSpec
 )
 
 class ColorMapControlsBase(QtWidgets.QDialog):
@@ -214,6 +214,9 @@ class ColorMapControlsBase(QtWidgets.QDialog):
 
 class ColorMapControls(ColorMapControlsBase):
     controller_class = ColorMapController
+
+class BivariateColorMapControls(ColorMapControlsBase):
+    controller_class = BivariateColorMapController
 
 class RGBColorControls(ColorMapControlsBase):
     controller_class = RGBMapController

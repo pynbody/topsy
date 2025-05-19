@@ -94,7 +94,15 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
         value_2d.x -= colormap_params.density_vmin;
         value_2d.x /= (colormap_params.density_vmax - colormap_params.density_vmin);
 
-        value_2d.y = values.g / values.r;
+        #ifdef WEIGHTED_MEAN
+            value_2d.y = values.g / values.r;
+        #else
+            value_2d.y = values.r;
+        #endif
+
+        #ifdef LOG_SCALE
+            value_2d.y = log10(value_2d.y);
+        #endif
 
         value_2d.y -= colormap_params.vmin;
         value_2d.y /= (colormap_params.vmax - colormap_params.vmin);

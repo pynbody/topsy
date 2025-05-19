@@ -66,8 +66,10 @@ class Colormap:
         shader_code = load_shader("colormap.wgsl")
 
         if active_flags is None:
-            mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
-            active_flags = [mode]
+            active_flags = []
+
+        mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
+        active_flags.append(mode)
 
         if self.log_scale:
             active_flags.append("LOG_SCALE")
@@ -346,12 +348,13 @@ class Colormap:
         else:
             return np.nan, np.nan
 
-    def autorange_vmin_vmax(self):
+    def autorange_vmin_vmax(self, vals):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
-        vals = self._visualizer.get_sph_image().ravel()
+        if vals is None:
+            vals = self._visualizer.get_sph_image().ravel()
 
         self._log_vals_min, self._log_vals_max = self._finite_range(np.log10(vals))
         self._vals_min, self._vals_max = self._finite_range(vals)
@@ -390,6 +393,12 @@ class Colormap:
 
     def _update_parameter_buffer(self, width, height, mass_scale):
         parameters = np.zeros((), dtype=self.parameter_dtype)
+        parameters["density_vmin"] = self.density_vmin - np.log10(mass_scale) if hasattr(self, "density_vmin") else 0.0
+        parameters["density_vmax"] = self.density_vmax - np.log10(mass_scale) if hasattr(self, "density_vmax") else 1.0
+
+        if self._weighted_average:
+            mass_scale = 1.0
+
         parameters["vmin"] = self.vmin
         parameters["vmax"] = self.vmax
         if self.log_scale:
@@ -401,9 +410,6 @@ class Colormap:
 
         parameters["window_aspect_ratio"] = float(width)/height
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
-
-        parameters["density_vmin"] = self.density_vmin - np.log10(mass_scale) if hasattr(self, "density_vmin") else 0.0
-        parameters["density_vmax"] = self.density_vmax - np.log10(mass_scale) if hasattr(self, "density_vmax") else 1.0
 
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
@@ -454,8 +460,8 @@ class RGBColormap(Colormap):
         self.vmax = self._mag_per_arcsec2_to_log_output(value)
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
-    def autorange_vmin_vmax(self):
-        vals = self._visualizer.get_sph_image().ravel()
+    def autorange_vmin_vmax(self, vals=None):
+        vals = vals or self._visualizer.get_sph_image().ravel()
 
         self.log_scale = True
 
@@ -491,17 +497,42 @@ class RGBHDRColormap(RGBColormap):
     dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
 class BivariateColormap(Colormap):
+    default_quantity_name = 'rho'
     map_dimension = wgpu.TextureViewDimension.d2
 
-    def __init__(self, visualizer: Visualizer):
-        super().__init__(visualizer, True)
-        self.density_vmin = -9.4
-        self.density_vmax = -5.6
+    def __init__(self, visualizer: Visualizer, weighted_average):
+        super().__init__(visualizer, weighted_average)
+        self.density_vmin = 0
+        self.density_vmax = 1
 
     def _setup_shader_module(self, active_flags=None):
         assert active_flags is None
         super()._setup_shader_module(["BIVARIATE"])
 
+    def sph_raw_output_to_content(self, numpy_image: np.ndarray):
+        ret_image = numpy_image.copy()
+        if self._weighted_average:
+            ret_image[..., 1] /= ret_image[..., 0]
+        else:
+            ret_image[..., 1] = ret_image[..., 0]
+        return ret_image
+
+    def autorange_vmin_vmax(self, vals = None):
+        if vals is None:
+            raw_image = self._visualizer._sph.get_image()
+            vals = self.sph_raw_output_to_content(raw_image)
+        den_vals = vals[..., 0].ravel()
+        den_vals = np.log10(den_vals)
+        den_vals = den_vals[np.isfinite(den_vals)]
+        self.density_vmin, self.density_vmax = np.percentile(den_vals, self.percentile_scaling)
+        self._density_ui_min, self._density_ui_max = self._finite_range(den_vals)
+        super().autorange_vmin_vmax(vals[..., 1])
+
+    def get_den_ui_range(self):
+        """Get a range for density suitable for user interface sliders"""
+        if not hasattr(self, "_density_ui_min"):
+            self.autorange_vmin_vmax()
+        return self._density_ui_min, self._density_ui_max
 
     def _generate_mapping_rgba_f32(self, num_points):
         cmap = matplotlib.colormaps[self._colormap_name]
@@ -511,6 +542,12 @@ class BivariateColormap(Colormap):
 
         hsv = matplotlib.colors.rgb_to_hsv(rgba[..., :3])
         hsv[..., 2] = np.linspace(0.001, 0.999, num_points)[np.newaxis, :]
+
+        reduce_saturation = np.ones(num_points)
+        reduce_saturation[3*num_points//4:] = np.linspace(1.0, 0.0, num_points//4)
+
+        hsv[..., 1] *= reduce_saturation[np.newaxis, :]
+
         rgba[..., :3] =matplotlib.colors.hsv_to_rgb(hsv)
 
         return rgba

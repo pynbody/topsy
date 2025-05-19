@@ -6,7 +6,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 
 from rendercanvas.qt import RenderCanvas, loop
 
-from .colormap import RGBColorControls, ColorMapControls
+from .colormap import RGBColorControls, ColorMapControls, BivariateColorMapControls
 from .lineedit import MyLineEdit
 from .recording import RecordingSettingsDialog, VisualizationRecorderWithQtProgressbar
 from .. import VisualizerCanvasBase
@@ -113,7 +113,10 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
     def _on_ready_callback(self):
         if not self._visualizer._hdr and not self._visualizer._rgb:
-            self._colormap_controls = ColorMapControls(self)
+            if self._visualizer._bivariate:
+                self._colormap_controls = BivariateColorMapControls(self)
+            else:
+                self._colormap_controls = ColorMapControls(self)
         elif self._visualizer._rgb:
             self._colormap_controls = RGBColorControls(self)
         self._open_cmap.triggered.connect(self._colormap_controls.open)
