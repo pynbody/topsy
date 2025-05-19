@@ -89,7 +89,18 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
     // seem to be supported at present
 
     #ifdef BIVARIATE
-        FAIL(); // fail compilation for now
+        var value_2d : vec2<f32>;
+        value_2d.x = log10(values.r);
+        value_2d.x -= colormap_params.density_vmin;
+        value_2d.x /= (colormap_params.density_vmax - colormap_params.density_vmin);
+
+        value_2d.y = values.g / values.r;
+
+        value_2d.y -= colormap_params.vmin;
+        value_2d.y /= (colormap_params.vmax - colormap_params.vmin);
+
+        value_2d = clamp(value_2d, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+        output.color = textureSample(colormap_texture, colormap_sampler, value_2d);
 
     #else // not BIVARIATE
 

@@ -25,6 +25,7 @@ class Colormap:
     input_channels = 2
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
+    map_dimension = wgpu.TextureViewDimension.d1
 
     parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
                                ("vmax", np.float32, (1,)),
@@ -164,10 +165,12 @@ class Colormap:
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
         rgba = self._generate_mapping_rgba_f32(num_points)
 
+        size = rgba.shape[:2] + (1,)
+
         self._texture = self._device.create_texture(
             label="colormap_texture",
-            size=(num_points, 1, 1),
-            dimension=wgpu.TextureDimension.d1,
+            size=size,
+            dimension=self.map_dimension,
             format=wgpu.TextureFormat.rgba32float,
             mip_level_count=1,
             sample_count=1,
@@ -185,7 +188,7 @@ class Colormap:
                 "bytes_per_row": 4 * 4 * num_points,
                 "offset": 0,
             },
-            (num_points, 1, 1)
+            size
         )
 
     def _generate_mapping_rgba_f32(self, num_points):
@@ -216,7 +219,7 @@ class Colormap:
                         "binding": 2,
                         "visibility": wgpu.ShaderStage.FRAGMENT,
                         "texture": {"sample_type": wgpu.TextureSampleType.float,
-                                    "view_dimension": wgpu.TextureViewDimension.d1},
+                                    "view_dimension": self.map_dimension},
                     },
                     {
                         "binding": 3,
@@ -398,6 +401,10 @@ class Colormap:
 
         parameters["window_aspect_ratio"] = float(width)/height
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
+
+        parameters["density_vmin"] = self.density_vmin - np.log10(mass_scale) if hasattr(self, "density_vmin") else 0.0
+        parameters["density_vmax"] = self.density_vmax - np.log10(mass_scale) if hasattr(self, "density_vmax") else 1.0
+
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
 class RGBColormap(Colormap):
@@ -484,10 +491,26 @@ class RGBHDRColormap(RGBColormap):
     dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
 class BivariateColormap(Colormap):
+    map_dimension = wgpu.TextureViewDimension.d2
 
     def __init__(self, visualizer: Visualizer):
-        super().__init__(visualizer, False)
+        super().__init__(visualizer, True)
+        self.density_vmin = -9.4
+        self.density_vmax = -5.6
 
     def _setup_shader_module(self, active_flags=None):
         assert active_flags is None
         super()._setup_shader_module(["BIVARIATE"])
+
+
+    def _generate_mapping_rgba_f32(self, num_points):
+        cmap = matplotlib.colormaps[self._colormap_name]
+
+        rgba = np.ones((num_points, num_points, 4), dtype=np.float32)
+        rgba[:, :, :] = cmap(np.linspace(0.001, 0.999, num_points))[:, np.newaxis, :]
+
+        hsv = matplotlib.colors.rgb_to_hsv(rgba[..., :3])
+        hsv[..., 2] = np.linspace(0.001, 0.999, num_points)[np.newaxis, :]
+        rgba[..., :3] =matplotlib.colors.hsv_to_rgb(hsv)
+
+        return rgba
