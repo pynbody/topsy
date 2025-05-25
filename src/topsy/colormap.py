@@ -167,7 +167,8 @@ class Colormap:
     def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
         rgba = self._generate_mapping_rgba_f32(num_points)
 
-        size = rgba.shape[:2] + (1,)
+        dim = len(rgba.shape) - 1
+        size = rgba.shape[:dim] + (1,)
 
         self._texture = self._device.create_texture(
             label="colormap_texture",
@@ -348,7 +349,7 @@ class Colormap:
         else:
             return np.nan, np.nan
 
-    def autorange_vmin_vmax(self, vals):
+    def autorange_vmin_vmax(self, vals = None):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now

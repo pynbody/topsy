@@ -4,7 +4,7 @@ import weakref
 
 from .drawreason import DrawReason
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Callable
 if TYPE_CHECKING:
     from .visualizer import Visualizer
 
@@ -21,6 +21,29 @@ class ViewSynchronizer:
         self._views : list[weakref.ReferenceType[Visualizer]] = []
         self._requires_update : list[weakref.ReferenceType[Visualizer]] = []
         self._synchronize = synchronize
+        self._setters = {}
+        self._getters = {}
+
+
+    @staticmethod
+    def _default_getter(source, var):
+        """Default getter for the variables to synchronize"""
+        # If the variable is a dot-separated path, we return the nested attributes
+        path = var.split('.')
+        value = source
+        for p in path:
+            value = getattr(value, p)
+        return value
+
+    @staticmethod
+    def _default_setter(source, var, value):
+        """Default setter for the variables to synchronize"""
+        # If the variable is a dot-separated path, we set the nested attributes
+        path = var.split('.')
+        target = source
+        for p in path[:-1]:
+            target = getattr(target, p)
+        setattr(target, path[-1], value)
 
     def perpetuate_update(self, source):
         """Called when a view has been updated and the update needs to be perpetuated to other views.
@@ -33,12 +56,15 @@ class ViewSynchronizer:
             del self._requires_update[sources_needing_update.index(source)]
             return
 
+        getter = self._getters[id(source)]
+
         for view_weakref in self._views:
             view = view_weakref()
+            setter = self._setters[id(view)]
             if (view is not source and view is not None) and (view_weakref not in self._requires_update):
                 self._requires_update.append(view_weakref)
                 for var in self._synchronize:
-                    setattr(view, var, getattr(source, var))
+                    setter(view, var, getter(source, var))
 
     def update_completed(self, view: Visualizer):
         """Called when a view knows it will not be attempting to perpetuate an update it received
@@ -50,13 +76,17 @@ class ViewSynchronizer:
         if view in sources_needing_update:
             del self._requires_update[sources_needing_update.index(view)]
 
-    def add_view(self, view: Visualizer):
+    def add_view(self, view: Visualizer, setter: Optional[Callable] = None, getter: Optional[Callable] = None):
         self._views.append(weakref.ref(view))
         view._view_synchronizer = self
+        self._setters[id(view)] = setter or self._default_setter
+        self._getters[id(view)] = getter or self._default_getter
 
     def remove_view(self, view: Visualizer):
         self._views.remove(weakref.ref(view))
         del view._view_synchronizer
+        del self._setters[id(view)]
+        del self._getters[id(view)]
 
 class SynchronizationMixin:
     """Mixin class for Visualizer to allow it to synchronize with other views"""
