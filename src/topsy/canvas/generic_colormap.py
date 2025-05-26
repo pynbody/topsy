@@ -49,7 +49,7 @@ class ColorMapController(GenericController):
         return [self.default_quantity_name] + names
 
     def apply_auto(self) -> None:
-        self.visualizer.colormap.autorange_vmin_vmax()
+        self.visualizer.colormap_autorange()
         self.refresh_ui()
 
     def apply_colormap(self, name: str) -> None:

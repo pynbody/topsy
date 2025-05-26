@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import logging
 import numpy as np
-import re
 import wgpu
 import matplotlib
 
-from . import config
+from .. import config
 
-from .drawreason import DrawReason
-from .util import load_shader, preprocess_shader
+from ..drawreason import DrawReason
+from ..util import load_shader, preprocess_shader
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .visualizer import Visualizer
+    from ..visualizer import Visualizer
 
 
 logger = logging.getLogger(__name__)
@@ -34,12 +33,11 @@ class Colormap:
                                ("window_aspect_ratio", np.float32, (1,)),
                                ("gamma", np.float32, (1,))])
 
-    def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
-        self._visualizer = visualizer
-        self._device = visualizer.device
-        self._colormap_name = visualizer.colormap_name
-        self._input_texture = visualizer.render_texture
-        self._output_format = visualizer.canvas_format
+    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average: bool = False):
+        self._device = device
+        self._colormap_name = colormap_name
+        self._input_texture = input_texture
+        self._output_format = output_format
         self._weighted_average = weighted_average
 
         self.vmin, self.vmax = 0,1
@@ -334,7 +332,7 @@ class Colormap:
     def get_ui_range(self):
         """Get a range for vmin->vmax suitable for user interface sliders"""
         if not hasattr(self, "_vals_min"):
-            self.autorange_vmin_vmax()
+            return 0, 1
         if self.log_scale:
             return self._log_vals_min, self._log_vals_max
         else:
@@ -349,48 +347,42 @@ class Colormap:
         else:
             return np.nan, np.nan
 
-    def autorange_vmin_vmax(self, vals = None):
+    def autorange_vmin_vmax(self, vals):
         """Set the vmin and vmax values for the colomap based on the most recent SPH render"""
 
         # This can and probably should be done on-GPU using a compute shader, but for now
         # we'll do it on the CPU
-        if vals is None:
-            vals = self._visualizer.get_sph_image().ravel()
 
+        vals = self.sph_raw_output_to_content(vals).ravel()
+        self._autorange_using_values(vals)
+
+    def _autorange_using_values(self, vals):
         self._log_vals_min, self._log_vals_max = self._finite_range(np.log10(vals))
         self._vals_min, self._vals_max = self._finite_range(vals)
-
         if self._log_vals_max == self._log_vals_min:
             self._log_vals_max += 1.0
             self._log_vals_min -= 1.0
-
         if self._vals_max == self._vals_min:
             self._vals_max += 1.0
             self._vals_min -= 1.0
-
-        if (vals<0).any():
+        if (vals < 0).any():
             self.log_scale = False
         else:
             self.log_scale = True
         # NB above switching of log scale will automatically rebuild the pipeline if needed
-
         if self.log_scale:
             vals = np.log10(vals)
-
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
             self.vmin, self.vmax = np.percentile(vals, self.percentile_scaling)
-        elif len(vals)>2:
+        elif len(vals) > 2:
             self.vmin, self.vmax = np.min(vals), np.max(vals)
         else:
             logger.warning(
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
             logger.warning("Press 'r' in the window to try again")
             self.vmin, self.vmax = 0.0, 1.0
-
-        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"Autoscale: log_scale={self.log_scale}, vmin={self.vmin}, vmax={self.vmax}")
-
 
     def _update_parameter_buffer(self, width, height, mass_scale):
         parameters = np.zeros((), dtype=self.parameter_dtype)
@@ -422,9 +414,9 @@ class RGBColormap(Colormap):
 
     _sterrad_to_arcsec2 = 2.3504430539466191e-11
 
-    def __init__(self, visualizer: Visualizer, weighted_average: bool = False):
+    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average: bool = False):
         self._gamma = 3.0
-        super().__init__(visualizer, weighted_average)
+        super().__init__(device, colormap_name, input_texture, output_format, weighted_average)
 
     @property
     def gamma(self):
@@ -461,8 +453,8 @@ class RGBColormap(Colormap):
         self.vmax = self._mag_per_arcsec2_to_log_output(value)
         self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
-    def autorange_vmin_vmax(self, vals=None):
-        vals = vals or self._visualizer.get_sph_image().ravel()
+    def autorange_vmin_vmax(self, vals):
+        vals = vals.ravel()
 
         self.log_scale = True
 
@@ -501,8 +493,8 @@ class BivariateColormap(Colormap):
     default_quantity_name = 'rho'
     map_dimension = wgpu.TextureViewDimension.d2
 
-    def __init__(self, visualizer: Visualizer, weighted_average):
-        super().__init__(visualizer, weighted_average)
+    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average):
+        super().__init__(device, colormap_name, input_texture, output_format, weighted_average)
         self.density_vmin = 0
         self.density_vmax = 1
 
@@ -518,21 +510,19 @@ class BivariateColormap(Colormap):
             ret_image[..., 1] = ret_image[..., 0]
         return ret_image
 
-    def autorange_vmin_vmax(self, vals = None):
-        if vals is None:
-            raw_image = self._visualizer._sph.get_image()
-            vals = self.sph_raw_output_to_content(raw_image)
+    def autorange_vmin_vmax(self, vals):
+        vals = self.sph_raw_output_to_content(vals)
         den_vals = vals[..., 0].ravel()
         den_vals = np.log10(den_vals)
         den_vals = den_vals[np.isfinite(den_vals)]
         self.density_vmin, self.density_vmax = np.percentile(den_vals, self.percentile_scaling)
         self._density_ui_min, self._density_ui_max = self._finite_range(den_vals)
-        super().autorange_vmin_vmax(vals[..., 1])
+        self._autorange_using_values(vals[..., 1])
 
     def get_den_ui_range(self):
         """Get a range for density suitable for user interface sliders"""
         if not hasattr(self, "_density_ui_min"):
-            self.autorange_vmin_vmax()
+            return 0.0, 1.0
         return self._density_ui_min, self._density_ui_max
 
     def _generate_mapping_rgba_f32(self, num_points):

@@ -206,7 +206,9 @@ class VisualizerBase:
         self.particle_buffers.quantity_name = value
         
         self._reinitialize_colormap_and_bar()
-        
+
+    def colormap_autorange(self):
+        self._colormap.autorange_vmin_vmax(self._sph.get_image())
 
     def _reinitialize_colormap_and_bar(self, keep_scale=False):
         """Reinitialize the colormap and colorbar.
@@ -219,22 +221,24 @@ class VisualizerBase:
             if keep_scale:
                 raise ValueError("Cannot keep scale if colormap not yet initialized")
 
+        args_list = self.device, self._colormap_name, self.render_texture, self.canvas_format
+
         if self._rgb:
             if self._hdr:
-                self._colormap = colormap.RGBHDRColormap(self)
+                self._colormap = colormap.RGBHDRColormap(*args_list)
             else:
-                self._colormap = colormap.RGBColormap(self)
+                self._colormap = colormap.RGBColormap(*args_list)
         else:
             if self._hdr:
                 logger.warning("HDR colormaps are not supported for non-RGB renderers")
             if self._bivariate:
-                self._colormap = colormap.BivariateColormap(self, weighted_average=self.quantity_name is not None)
+                self._colormap = colormap.BivariateColormap(*args_list, weighted_average=self.quantity_name is not None)
             else:
-                self._colormap = colormap.Colormap(self, weighted_average=self.quantity_name is not None)
+                self._colormap = colormap.Colormap(*args_list, weighted_average=self.quantity_name is not None)
             
         if not keep_scale:
             self._sph.render(DrawReason.EXPORT)
-            self._colormap.autorange_vmin_vmax()
+            self.colormap_autorange()
         else:
             self._colormap.vmin = old_vmin
             self._colormap.vmax = old_vmax
