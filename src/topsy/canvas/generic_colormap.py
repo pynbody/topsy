@@ -132,9 +132,11 @@ class RGBMapController(GenericController):
         lo, hi = mag_pair
         cmap = self.visualizer.colormap
         cmap.min_mag, cmap.max_mag = lo, hi
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def apply_gamma(self, g: float) -> None:
         self.visualizer.colormap.gamma = g
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
         st = self.get_state()

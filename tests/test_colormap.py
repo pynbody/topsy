@@ -23,7 +23,8 @@ def input_image():
 @pytest.mark.parametrize("weighted_average", [True, False])
 @pytest.mark.parametrize("log_scale", [True, False])
 def test_colormap(vis, input_image, weighted_average, log_scale):
-    cmap = topsy.colormap.Colormap(vis, weighted_average)
+    cmap = topsy.colormap.Colormap(vis.device, vis.colormap_name, vis._sph.get_output_texture(),
+                                   vis.canvas_format, weighted_average)
 
     cmap.vmin = 0
     cmap.vmax = 1

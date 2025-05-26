@@ -425,7 +425,6 @@ class RGBColormap(Colormap):
     @gamma.setter
     def gamma(self, value):
         self._gamma = value
-        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @classmethod
     def _log_output_to_mag_per_arcsec2(cls, val):
@@ -442,7 +441,6 @@ class RGBColormap(Colormap):
     @max_mag.setter
     def max_mag(self, value):
         self.vmin = self._mag_per_arcsec2_to_log_output(value)
-        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     @property
     def min_mag(self):
@@ -451,15 +449,12 @@ class RGBColormap(Colormap):
     @min_mag.setter
     def min_mag(self, value):
         self.vmax = self._mag_per_arcsec2_to_log_output(value)
-        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
 
     def autorange_vmin_vmax(self, vals):
         vals = vals.ravel()
 
         self.log_scale = True
-
-        if self.log_scale:
-            vals = np.log10(vals)
+        vals = np.log10(vals)
 
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
@@ -474,7 +469,6 @@ class RGBColormap(Colormap):
 
         self.vmin = self.vmax - self.dynamic_range
 
-        self._visualizer.invalidate(DrawReason.PRESENTATION_CHANGE)
         logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
 
     def sph_raw_output_to_content(self, numpy_image: np.ndarray):
