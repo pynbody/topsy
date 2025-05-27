@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 import argparse
 import logging
@@ -183,7 +183,8 @@ def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
     from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),
-                                data_loader_kwargs={'with_cells': kwargs.pop('with_cells', False)},
+                                data_loader_kwargs={'with_cells': kwargs.pop('with_cells', False),
+                                                    'periodic': kwargs.get('periodic_tiling', False)},
                                 **kwargs)
     return vis
 

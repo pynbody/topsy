@@ -292,8 +292,11 @@ class SPH:
         transform_params = np.zeros((), dtype=transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
-        transform_params["boxsize_by_2_clipspace"] = 0.5 * \
-                                                     self._visualizer.periodicity_scale / self.scale
+        if self._visualizer.periodicity_scale is not None:
+            transform_params["boxsize_by_2_clipspace"] = 0.5 * \
+                                                         self._visualizer.periodicity_scale / self.scale
+        else:
+            transform_params["boxsize_by_2_clipspace"] = 0.0
 
         resolution = self._render_texture.width
         assert resolution == self._render_texture.height
