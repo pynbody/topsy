@@ -18,9 +18,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+class ColormapBase:
+    def __init__(self, device, input_texture, output_format):
+        self._device = device
+        self._input_texture = input_texture
+        self._output_format = output_format
 
-
-class Colormap:
+class Colormap(ColormapBase):
     input_channels = 2
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
@@ -405,6 +409,9 @@ class Colormap:
         parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
 
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
+
+class WeightedColormap(Colormap):
+    _weighted_average = True
 
 class RGBColormap(Colormap):
     input_channels = 3
