@@ -40,12 +40,9 @@ class VisualizerBase:
         self._hdr = hdr
         self._rgb = rgb
         self._bivariate = bivariate
-        self._colormap_name = colormap_name
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
         self._colorbar: Optional[colorbar.ColorbarOverlay] = None
-        self._colormap: Optional[colormap.Colormap] = None
-
         self._encoder_executor = ThreadPoolExecutor(max_workers=1) # 1 worker to prevent GIL contention
 
         self.crosshairs_visible = False
@@ -75,10 +72,12 @@ class VisualizerBase:
         else:
             self._sph = sph.SPH(self, self._render_resolution)
 
-        self.render_texture = self._sph.get_output_texture()
-
         self.reset_view()
 
+        self.render_texture = self._sph.get_output_texture()
+        self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
+                                                                          self.canvas_format)
+        self._colormap.update_parameters({'colormap_name': colormap_name})
         self._reinitialize_colormap_and_bar()
 
         self._last_status_update = 0.0
@@ -131,27 +130,18 @@ class VisualizerBase:
         self.rotation_matrix = dx_rotation_matrix @ dy_rotation_matrix @ self.rotation_matrix
 
     @property
+    def colormap(self):
+        return self._colormap
+
+    @property
     def rotation_matrix(self):
         return self._sph.rotation_matrix
+
 
     @rotation_matrix.setter
     def rotation_matrix(self, value):
         self._sph.rotation_matrix = value
         self.invalidate()
-
-    @property
-    def colormap_name(self):
-        return self._colormap_name
-
-    @property
-    def colormap(self):
-        return self._colormap
-
-    @colormap_name.setter
-    def colormap_name(self, value):
-        self._colormap_name = value
-        self._reinitialize_colormap_and_bar(keep_scale=True)
-        self.invalidate(reason=DrawReason.PRESENTATION_CHANGE)
 
     @property
     def position_offset(self):
@@ -206,53 +196,41 @@ class VisualizerBase:
         self.particle_buffers.quantity_name = value
         
         self._reinitialize_colormap_and_bar()
+        self.invalidate(DrawReason.CHANGE)
 
     def colormap_autorange(self):
-        self._colormap.autorange_vmin_vmax(self._sph.get_image())
+        self._colormap.autorange(self._sph.get_image())
+        self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
-    def _reinitialize_colormap_and_bar(self, keep_scale=False):
+    def _reinitialize_colormap_and_bar(self):
         """Reinitialize the colormap and colorbar.
         
         If keep_scale is False, render and figure out the min/max values for the colormap too.
         """
-        if self._colormap is not None:
-            old_vmin, old_vmax, old_log = self._colormap.vmin, self._colormap.vmax, self._colormap.log_scale
-        else:
-            if keep_scale:
-                raise ValueError("Cannot keep scale if colormap not yet initialized")
-
-        args_list = self.device, self._colormap_name, self.render_texture, self.canvas_format
-
+        colormap_params = {}
         if self._rgb:
-            if self._hdr:
-                self._colormap = colormap.RGBHDRColormap(*args_list)
-            else:
-                self._colormap = colormap.RGBColormap(*args_list)
+            colormap_params['type'] = 'rgb'
+            colormap_params['hdr'] = self._hdr
+            colormap_params['log'] = True
+        elif self._bivariate:
+            colormap_params['type'] = 'bivariate'
+        elif self.quantity_name is not None:
+            colormap_params['type'] = 'weighted'
         else:
-            if self._hdr:
-                logger.warning("HDR colormaps are not supported for non-RGB renderers")
-            if self._bivariate:
-                self._colormap = colormap.BivariateColormap(*args_list, weighted_average=self.quantity_name is not None)
-            else:
-                self._colormap = colormap.Colormap(*args_list, weighted_average=self.quantity_name is not None)
-            
-        if not keep_scale:
-            self._sph.render(DrawReason.EXPORT)
-            self.colormap_autorange()
-        else:
-            self._colormap.vmin = old_vmin
-            self._colormap.vmax = old_vmax
-            self._colormap.log_scale = old_log
+            colormap_params['type'] = 'density'
 
-        if not self._rgb and not self._hdr:
-            self._colorbar = colorbar.ColorbarOverlay(self, self.vmin, self.vmax, self.colormap_name, self._get_colorbar_label())
+        self._colormap.update_parameters(colormap_params)
 
-        self.invalidate(DrawReason.PRESENTATION_CHANGE)
+        colormap_params = self._colormap.get_parameters() # this may include extra parameters
+
+        if colormap_params['type'] != 'rgb':
+            self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
+                                                      colormap_params['colormap_name'], self._get_colorbar_label())
 
 
     def _get_colorbar_label(self):
         label = self.data_loader.get_quantity_label(self.quantity_name)
-        if self._colormap.log_scale:
+        if self._colormap.get_parameter('log_scale'):
             label = r"$\log_{10}$ " + label
         return label
 
@@ -305,7 +283,7 @@ class VisualizerBase:
         if not self._prevent_sph_rendering:
             self.render_sph(reason)
 
-        self._colormap.set_scaling(target_texture_view, self._sph.last_render_mass_scale)
+        self._colormap.set_scaling(*target_texture_view.size[:2], self._sph.last_render_mass_scale)
 
         self.device.queue.submit([command_buffer_future.result()])
 
@@ -315,57 +293,6 @@ class VisualizerBase:
 
     def render_sph(self, draw_reason = DrawReason.CHANGE):
         self._sph.render(draw_reason)
-
-    @property
-    def vmin(self):
-        return self._colormap.vmin
-
-    @property
-    def vmax(self):
-        return self._colormap.vmax
-
-    @vmin.setter
-    def vmin(self, value):
-        self._colormap.vmin = value
-        self._refresh_colorbar()
-        self.invalidate(DrawReason.PRESENTATION_CHANGE)
-
-    @vmax.setter
-    def vmax(self, value):
-        self._colormap.vmax = value
-        self._refresh_colorbar()
-        self.invalidate(DrawReason.PRESENTATION_CHANGE)
-
-    @property
-    def gamma(self):
-        if hasattr(self._colormap, 'gamma'):
-            return self._colormap.gamma
-        else:
-            return None
-
-    @gamma.setter
-    def gamma(self, value):
-        if hasattr(self._colormap, 'gamma'):
-            self._colormap.gamma = value
-            self.invalidate(DrawReason.PRESENTATION_CHANGE)
-
-    @property
-    def log_scale(self):
-        return self._colormap.log_scale
-
-    @log_scale.setter
-    def log_scale(self, value):
-        self._colormap.log_scale = value
-        self._refresh_colorbar()
-        self.invalidate(DrawReason.PRESENTATION_CHANGE)
-
-    def _refresh_colorbar(self):
-        if self._colorbar is None:
-            return
-        self._colorbar.vmin = self._colormap.vmin
-        self._colorbar.vmax = self._colormap.vmax
-        self._colorbar.label = self._get_colorbar_label()
-        self._colorbar.update()
 
     def sph_clipspace_to_screen_clipspace_matrix(self):
         aspect_ratio = self.canvas.width_physical / self.canvas.height_physical
@@ -398,7 +325,7 @@ class VisualizerBase:
                 self._last_status_update = now
                 self._status.update()
 
-        elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL:
+        elif now - self._last_status_update > config.STATUS_LINE_UPDATE_INTERVAL and hasattr(self._sph,'last_render_fps'):
             self._last_status_update = now
             self._status.text = f"${self._sph.last_render_fps:.0f}$ fps"
             factor = np.round(self._sph.last_render_mass_scale, 1)
@@ -472,8 +399,8 @@ class VisualizerBase:
                 image = np.log10(image)
 
             p.imshow(image,
-                     vmin=self._colormap.vmin,
-                     vmax=self._colormap.vmax,
+                     vmin=self._colormap.get_parameter('vmin'),
+                     vmax=self._colormap.get_parameter('vmax'),
                      extent=extent)
             p.xlabel("$x$/kpc")
             p.colorbar().set_label(self._colorbar.label)

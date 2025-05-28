@@ -48,3 +48,26 @@ def test_colormap(vis, input_image, weighted_average, log_scale):
         p.imsave("test_colormap.png", image)
         p.imsave("test_colormap_mpl.png", image_via_mpl)
 
+
+def test_colormap_holder_instantiation(vis):
+    from topsy.colormap import ColormapHolder, RGBColormap, RGBHDRColormap, BivariateColormap, WeightedColormap, Colormap
+    specs = [
+        {"params": {"type": "rgb", "hdr": True},
+         "expected": RGBHDRColormap},
+        {"params": {"type": "rgb", "hdr": False},
+         "expected": RGBColormap},
+        {"params": {"type": "bivariate", "hdr": False},
+         "expected": BivariateColormap},
+        {"params": {"type": "weighted", "hdr": False},
+         "expected": WeightedColormap},
+        {"params": {"type": "density", "hdr": False},
+         "expected": Colormap}
+    ]
+
+    for spec in specs:
+        colormap_class = ColormapHolder.instance_from_parameters(spec["params"], vis.device,
+                                                                 vis._sph.get_output_texture(),
+                                                                 vis.canvas_format)
+        assert type(colormap_class) == spec["expected"]
+
+

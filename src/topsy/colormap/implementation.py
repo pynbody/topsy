@@ -19,50 +19,102 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 class ColormapBase:
-    def __init__(self, device, input_texture, output_format):
+    _default_params = {}
+
+    def __init__(self, device: wgpu.GPUDevice, input_texture: wgpu.GPUTexture, output_format: wgpu.TextureFormat, params: dict):
         self._device = device
         self._input_texture = input_texture
         self._output_format = output_format
+        self._params = self._default_params | params
+
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        """Check if the colormap accepts the given parameters"""
+        return False
+
+    def accepts_parameter_update(self, parameters: dict) -> bool:
+        """Check if the colormap accepts the given parameters for an update"""
+        return self.accepts_parameters(parameters)
+
+    def update_parameters(self, parameters: dict):
+        """Update the colormap parameters"""
+        if not self.accepts_parameter_update(parameters):
+            raise ValueError(f"Colormap {self.__class__.__name__} does not accept parameter update: {parameters}")
+        self._params.update(parameters)
+
+    def get_parameter(self, name: str):
+        """Get a parameter value by name"""
+        return self._params.get(name, None)
+
+    def get_parameter_ui_range(self, name: str) -> tuple[float, float]:
+        """Get a suggested UI range for a parameter"""
+        return (0.0, 1.0) # default range
+
+    def get_parameters(self) -> dict:
+        """Get all parameters as a dictionary"""
+        return self._params.copy()
+
+    def encode_render_pass(self, command_encoder, target_texture_view, bind_group = None):
+        """Encode the render pass for the colormap"""
+        raise NotImplementedError("Subclasses must implement encode_render_pass")
+
+    def set_scaling(self, output_width, output_height, mass_scaling):
+        """Set the scaling parameters for the colormap"""
+        raise NotImplementedError("Subclasses must implement set_scaling")
 
 class Colormap(ColormapBase):
     input_channels = 2
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
     map_dimension = wgpu.TextureViewDimension.d1
+    _weighted_average = False
 
-    parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
-                               ("vmax", np.float32, (1,)),
-                               ("density_vmin", np.float32, (1,)),
-                               ("density_vmax", np.float32, (1,)),
-                               ("window_aspect_ratio", np.float32, (1,)),
-                               ("gamma", np.float32, (1,))])
+    _default_params = {'colormap_name': 'viridis', 'vmin': 0.0, 'vmax': 1.0, 'log': True}
 
-    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average: bool = False):
-        self._device = device
-        self._colormap_name = colormap_name
-        self._input_texture = input_texture
-        self._output_format = output_format
-        self._weighted_average = weighted_average
+    shader_parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
+                                       ("vmax", np.float32, (1,)),
+                                       ("density_vmin", np.float32, (1,)),
+                                       ("density_vmax", np.float32, (1,)),
+                                       ("window_aspect_ratio", np.float32, (1,)),
+                                       ("gamma", np.float32, (1,))])
 
-        self.vmin, self.vmax = 0,1
-        self._log_scale = True
-        # all three of these will be reset by set_vmin_vmax
-
-        self._setup_texture()
+    def __init__(self, device, input_texture, output_format, params):
+        super().__init__(device, input_texture, output_format, params)
+        self._setup_map_texture()
         self._setup_shader_module()
         self._setup_render_pipeline()
 
-    @property
-    def log_scale(self):
-        return self._log_scale
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        return parameters.get("type", None) == "density"
 
-    @log_scale.setter
-    def log_scale(self, value):
-        old_value = self._log_scale
-        self._log_scale = value
-        if value != old_value:
-            self._setup_shader_module()
-            self._setup_render_pipeline()
+    def get_parameter_ui_range(self, name):
+        if name=="vmin" or name=="vmax":
+            if not hasattr(self, "_vals_min"):
+                return 0.0, 1.0
+            if self._params['log']:
+                return self._log_vals_min, self._log_vals_max
+            else:
+                return self._vals_min, self._vals_max
+        else:
+            return super().get_parameter_ui_range(name)
+
+    def accepts_parameter_update(self, parameters: dict) -> bool:
+        """Check if the colormap accepts the given parameters for an update"""
+
+        if not super().accepts_parameter_update(parameters):
+            return False
+
+        parameters_before = self.get_parameters()
+        parameters_after = parameters_before | parameters
+
+        if parameters_before['log'] != parameters_after['log']:
+            return False
+        if parameters_before['colormap_name'] != parameters_after['colormap_name']:
+            return False
+
+        return True
+
 
     def _setup_shader_module(self, active_flags = None):
         shader_code = load_shader("colormap.wgsl")
@@ -73,7 +125,7 @@ class Colormap(ColormapBase):
         mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
         active_flags.append(mode)
 
-        if self.log_scale:
+        if self._params['log']:
             active_flags.append("LOG_SCALE")
 
         shader_code = preprocess_shader(shader_code, active_flags)
@@ -126,7 +178,7 @@ class Colormap(ColormapBase):
             label="colormap_output_texture"
         )
 
-        self.set_scaling(destination_texture, 1.0)
+        self.set_scaling(*destination_texture.size[:2], 1.0)
 
         # copy the image data to the texture
         self._device.queue.write_texture(
@@ -166,7 +218,7 @@ class Colormap(ColormapBase):
 
 
 
-    def _setup_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
+    def _setup_map_texture(self, num_points=config.COLORMAP_NUM_SAMPLES):
         rgba = self._generate_mapping_rgba_f32(num_points)
 
         dim = len(rgba.shape) - 1
@@ -197,12 +249,12 @@ class Colormap(ColormapBase):
         )
 
     def _generate_mapping_rgba_f32(self, num_points):
-        cmap = matplotlib.colormaps[self._colormap_name]
+        cmap = matplotlib.colormaps[self._params['colormap_name']]
         rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
         return rgba
 
     def _setup_render_pipeline(self):
-        self._parameter_buffer = self._device.create_buffer(size = self.parameter_dtype.itemsize,
+        self._parameter_buffer = self._device.create_buffer(size = self.shader_parameter_dtype.itemsize,
                                                             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST)
 
         self._bind_group_layout = \
@@ -330,8 +382,8 @@ class Colormap(ColormapBase):
         colormap_render_pass.draw(4, 1, 0, 0)
         colormap_render_pass.end()
 
-    def set_scaling(self, target_texture_view, scaling):
-        self._update_parameter_buffer(*target_texture_view.size[:2], scaling)
+    def set_scaling(self, width, height, scaling):
+        self._update_parameter_buffer(width, height, scaling)
 
     def get_ui_range(self):
         """Get a range for vmin->vmax suitable for user interface sliders"""
@@ -378,27 +430,27 @@ class Colormap(ColormapBase):
             vals = np.log10(vals)
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
-            self.vmin, self.vmax = np.percentile(vals, self.percentile_scaling)
+            self._params['vmin'], self._params['vmax'] = np.percentile(vals, self.percentile_scaling)
         elif len(vals) > 2:
-            self.vmin, self.vmax = np.min(vals), np.max(vals)
+            self._params['vmin'], self._params['vmax'] = np.min(vals), np.max(vals)
         else:
             logger.warning(
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
             logger.warning("Press 'r' in the window to try again")
-            self.vmin, self.vmax = 0.0, 1.0
-        logger.info(f"Autoscale: log_scale={self.log_scale}, vmin={self.vmin}, vmax={self.vmax}")
+            self._params['vmin'], self._params['vmax'] = 0.0, 1.0
+        logger.info(f"Autoscale: log_scale={self.log_scale}, vmin={self._params['vmin']}, vmax={self._params['vmax']}")
 
     def _update_parameter_buffer(self, width, height, mass_scale):
-        parameters = np.zeros((), dtype=self.parameter_dtype)
+        parameters = np.zeros((), dtype=self.shader_parameter_dtype)
         parameters["density_vmin"] = self.density_vmin - np.log10(mass_scale) if hasattr(self, "density_vmin") else 0.0
         parameters["density_vmax"] = self.density_vmax - np.log10(mass_scale) if hasattr(self, "density_vmax") else 1.0
 
         if self._weighted_average:
             mass_scale = 1.0
 
-        parameters["vmin"] = self.vmin
-        parameters["vmax"] = self.vmax
-        if self.log_scale:
+        parameters["vmin"] = self._params['vmin']
+        parameters["vmax"] = self._params['vmax']
+        if self._params['log']:
             parameters["vmin"] -= np.log10(mass_scale)
             parameters["vmax"] -= np.log10(mass_scale)
         else:
@@ -406,12 +458,17 @@ class Colormap(ColormapBase):
             parameters["vmax"] /= mass_scale
 
         parameters["window_aspect_ratio"] = float(width)/height
-        parameters["gamma"] = self.gamma if hasattr(self, "gamma") else 1.0
+        parameters["gamma"] = self._params.get('gamma', 1.0)
 
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
 
 class WeightedColormap(Colormap):
     _weighted_average = True
+
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        return parameters.get("type", None) == "weighted"
+
 
 class RGBColormap(Colormap):
     input_channels = 3
@@ -421,17 +478,12 @@ class RGBColormap(Colormap):
 
     _sterrad_to_arcsec2 = 2.3504430539466191e-11
 
-    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average: bool = False):
-        self._gamma = 3.0
-        super().__init__(device, colormap_name, input_texture, output_format, weighted_average)
+    _default_params = {'vmin': 0.0, 'vmax': 1.0, 'log': True, 'hdr': False}
 
-    @property
-    def gamma(self):
-        return self._gamma
-
-    @gamma.setter
-    def gamma(self, value):
-        self._gamma = value
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        parameters = cls._default_params | parameters
+        return (parameters.get("type", None) == "rgb" and (not parameters['hdr']) and parameters['log'])
 
     @classmethod
     def _log_output_to_mag_per_arcsec2(cls, val):
@@ -441,21 +493,30 @@ class RGBColormap(Colormap):
     def _mag_per_arcsec2_to_log_output(cls, val):
         return val/-2.5 + 4 - np.log10(cls._sterrad_to_arcsec2)
 
-    @property
-    def max_mag(self):
-        return self._log_output_to_mag_per_arcsec2(self.vmin)
+    def get_parameters(self) -> dict:
+        """Get all parameters as a dictionary"""
+        params = super().get_parameters()
+        params['min_mag'] = self._log_output_to_mag_per_arcsec2(params['vmax'])
+        params['max_mag'] = self._log_output_to_mag_per_arcsec2(params['vmin'])
+        del params['vmin']
+        del params['vmax']
+        return params
 
-    @max_mag.setter
-    def max_mag(self, value):
-        self.vmin = self._mag_per_arcsec2_to_log_output(value)
+    def get_parameter(self, name: str):
+        if name == "min_mag":
+            return self._log_output_to_mag_per_arcsec2(self.get_parameter("vmax"))
+        elif name == "max_mag":
+            return self._log_output_to_mag_per_arcsec2(self.get_parameter("vmin"))
+        else:
+            return super().get_parameter(name)
 
-    @property
-    def min_mag(self):
-        return self._log_output_to_mag_per_arcsec2(self.vmax)
+    def update_parameters(self, parameters: dict):
+        if "min_mag" in parameters:
+            parameters['vmax'] = self._mag_per_arcsec2_to_log_output(parameters['min_mag'])
+        if "max_mag" in parameters:
+            parameters['vmin'] = self._mag_per_arcsec2_to_log_output(parameters['max_mag'])
 
-    @min_mag.setter
-    def min_mag(self, value):
-        self.vmax = self._mag_per_arcsec2_to_log_output(value)
+        super().update_parameters(parameters)
 
     def autorange_vmin_vmax(self, vals):
         vals = vals.ravel()
@@ -465,18 +526,21 @@ class RGBColormap(Colormap):
 
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
-            self.vmax = np.percentile(vals, self.max_percentile)
+            self._params['vmax'] = np.percentile(vals, self.max_percentile)
         elif len(vals)>2:
-            self.vmax = np.max(vals)
+            self._params['vmax'] = np.max(vals)
         else:
             logger.warning(
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
             logger.warning("Press 'r' in the window to try again")
-            self.vmax = 1.0
+            self._params['vmax'] = 1.0
 
-        self.vmin = self.vmax - self.dynamic_range
+        self._params['vmin'] = self._params['vmax'] - self.dynamic_range
 
-        logger.info(f"vmin={self.vmin}, vmax={self.vmax}")
+        logger.info(f"vmin={self._params['vmin']}, vmax={self._params['vmax']}")
+
+    def _setup_map_texture(self, num_points = config.COLORMAP_NUM_SAMPLES):
+        pass
 
     def sph_raw_output_to_content(self, numpy_image: np.ndarray):
         """Map from raw image to the logical content that the colormap will use
@@ -490,14 +554,21 @@ class RGBHDRColormap(RGBColormap):
     max_percentile = 99.0
     dynamic_range = 2.5 # nb this is the SDR-equivalent dynamic range -- HDR exceeds this.
 
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        parameters = cls._default_params | parameters
+        return (parameters.get("type", None) == "rgb" and parameters['hdr'] and parameters['log'])
+
+
 class BivariateColormap(Colormap):
     default_quantity_name = 'rho'
     map_dimension = wgpu.TextureViewDimension.d2
 
-    def __init__(self, device, colormap_name, input_texture, output_format, weighted_average):
-        super().__init__(device, colormap_name, input_texture, output_format, weighted_average)
-        self.density_vmin = 0
-        self.density_vmax = 1
+    _default_params = Colormap._default_params | {'density_vmin': 0.0, 'density_vmax': 1.0}
+
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        return parameters.get("type", None) == "bivariate" and (not parameters.get("hdr", False))
 
     def _setup_shader_module(self, active_flags=None):
         assert active_flags is None
@@ -527,7 +598,7 @@ class BivariateColormap(Colormap):
         return self._density_ui_min, self._density_ui_max
 
     def _generate_mapping_rgba_f32(self, num_points):
-        cmap = matplotlib.colormaps[self._colormap_name]
+        cmap = matplotlib.colormaps[self._params['colormap_name']]
 
         rgba = np.ones((num_points, num_points, 4), dtype=np.float32)
         rgba[:, :, :] = cmap(np.linspace(0.001, 0.999, num_points))[:, np.newaxis, :]
