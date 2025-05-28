@@ -57,14 +57,16 @@ class ColorMapController(GenericController):
         self.visualizer.colormap.update_parameters({'colormap_name': name})
 
     def apply_log_scale(self, state: bool) -> None:
-        self.visualizer.colormap.update_parameters({
-            'log': state
+        params = self.colormap.get_parameters()
+        ui_range = params['ui_range_linear'] if not state else params['ui_range_log']
+        print(f"Applying log scale: {state}, ui_range: {ui_range}")
+        self.colormap.update_parameters({
+            'log': state,
+            'vmin': ui_range[0],
+            'vmax': ui_range[1]
         })
-        vmin, vmax = self.colormap.get_parameter_ui_range('vmin')
-        self.visualizer.colormap.update_parameters({
-            'vmin': vmin,
-            'vmax': vmax,
-        })
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
+        self.refresh_ui()
 
     def apply_quantity(self, name: str) -> None:
         new = None if name == self.default_quantity_name else name
@@ -80,7 +82,7 @@ class ColorMapController(GenericController):
         params = self.visualizer._colormap.get_parameters()
         cmap = params["colormap_name"]
         qty = self.visualizer.quantity_name or self.default_quantity_name
-        ui_range = self.colormap.get_parameter_ui_range('vmin')
+        ui_range = params['ui_range_linear'] if not params['log'] else params['ui_range_log']
 
         return LayoutSpec(
             type="vbox",

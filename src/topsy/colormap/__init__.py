@@ -21,8 +21,8 @@ class ColormapHolder:
         self._colormap: Optional[ColormapBase] = self.instance_from_parameters(
             {
                 'colormap_name': config.DEFAULT_COLORMAP,
-                'vmin': 0,
-                'vmax': 1,
+                'vmin': None,
+                'vmax': None,
                 'log_scale': False,
                 'type': 'density'
             }, device, input_texture, output_format,

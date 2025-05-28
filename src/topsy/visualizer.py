@@ -121,6 +121,8 @@ class VisualizerBase:
         logger.info(f"Canvas format {self.canvas_format}")
 
     def invalidate(self, reason=DrawReason.CHANGE):
+        self._sph.invalidate(reason)
+
         # NB no need to check if we're already pending a draw - rendercanvas does that for us
         self.canvas.request_draw(lambda: self.draw(reason))
 
@@ -194,9 +196,10 @@ class VisualizerBase:
                 raise ValueError(f"Unable to get quantity named '{value}'") from e
 
         self.particle_buffers.quantity_name = value
-        
-        self._reinitialize_colormap_and_bar()
         self.invalidate(DrawReason.CHANGE)
+        self._colormap.update_parameters({'vmin': None, 'vmax': None})
+        self._reinitialize_colormap_and_bar()
+
 
     def colormap_autorange(self):
         self._colormap.autorange(self._sph.get_image())
@@ -221,7 +224,11 @@ class VisualizerBase:
 
         self._colormap.update_parameters(colormap_params)
 
-        colormap_params = self._colormap.get_parameters() # this may include extra parameters
+        colormap_params = self._colormap.get_parameters()
+
+        if colormap_params['vmin'] is None:
+            logger.info("Autorange colormap parameters")
+            self._colormap.autorange(self._sph.get_image())
 
         if colormap_params['type'] != 'rgb':
             self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
@@ -391,11 +398,13 @@ class VisualizerBase:
             return
         else:
             import matplotlib.pyplot as p
+            colormap_params = self._colormap.get_parameters()
+
             fig = p.figure()
             p.clf()
-            p.set_cmap(self.colormap_name)
+            p.set_cmap(colormap_params['colormap_name'])
             extent = np.array([-1., 1., -1., 1.])*self.scale
-            if self._colormap.log_scale:
+            if colormap_params.get('log', False):
                 image = np.log10(image)
 
             p.imshow(image,

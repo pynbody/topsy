@@ -65,6 +65,7 @@ class SPH:
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
+        self.has_rendered = False
 
     def _get_depth_renderer(self) -> SPH:
         """Returns a SPH renderer that will generate the depth in the scene"""
@@ -97,7 +98,14 @@ class SPH:
     def get_image(self) -> np.ndarray:
         """Reads and returns the last rendered SPH image.
 
-        Note that this call does not actually trigger a render. Call render() first to generate the image."""
+        If the current SPH output is invalid, this triggers an EXPORT-quality render. If you don't want this to happen,
+        you should call your own CHANGED render for example.
+        """
+
+        if not self.has_rendered:
+            logger.info("Export-quality render has been triggered, because no render has been done yet.")
+            self.render(DrawReason.EXPORT)
+
         np_dtype = self._output_dtype
         bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
         im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
@@ -281,6 +289,11 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
+    def invalidate(self, draw_reason=DrawReason.CHANGE):
+        """Invalidates the current render, so that an attempt to get the current image will fail."""
+        if draw_reason != DrawReason.REFINE and draw_reason != DrawReason.PRESENTATION_CHANGE:
+            self.has_rendered = False
+
     def render(self, draw_reason=DrawReason.CHANGE):
         performance.signposter.emit_event("Start SPH render")
 
@@ -307,6 +320,7 @@ class SPH:
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+        self.has_rendered = True
 
     def needs_refine(self):
         return self._render_progression.needs_refine()

@@ -46,10 +46,6 @@ class ColormapBase:
         """Get a parameter value by name"""
         return self._params.get(name, None)
 
-    def get_parameter_ui_range(self, name: str) -> tuple[float, float]:
-        """Get a suggested UI range for a parameter"""
-        return (0.0, 1.0) # default range
-
     def get_parameters(self) -> dict:
         """Get all parameters as a dictionary"""
         return self._params.copy()
@@ -88,16 +84,6 @@ class Colormap(ColormapBase):
     def accepts_parameters(cls, parameters: dict) -> bool:
         return parameters.get("type", None) == "density"
 
-    def get_parameter_ui_range(self, name):
-        if name=="vmin" or name=="vmax":
-            if not hasattr(self, "_vals_min"):
-                return 0.0, 1.0
-            if self._params['log']:
-                return self._log_vals_min, self._log_vals_max
-            else:
-                return self._vals_min, self._vals_max
-        else:
-            return super().get_parameter_ui_range(name)
 
     def accepts_parameter_update(self, parameters: dict) -> bool:
         """Check if the colormap accepts the given parameters for an update"""
@@ -385,15 +371,6 @@ class Colormap(ColormapBase):
     def set_scaling(self, width, height, scaling):
         self._update_parameter_buffer(width, height, scaling)
 
-    def get_ui_range(self):
-        """Get a range for vmin->vmax suitable for user interface sliders"""
-        if not hasattr(self, "_vals_min"):
-            return 0, 1
-        if self.log_scale:
-            return self._log_vals_min, self._log_vals_max
-        else:
-            return self._vals_min, self._vals_max
-
     @classmethod
     def _finite_range(cls, values):
         valid = np.isfinite(values)
@@ -413,20 +390,24 @@ class Colormap(ColormapBase):
         self._autorange_using_values(vals)
 
     def _autorange_using_values(self, vals):
-        self._log_vals_min, self._log_vals_max = self._finite_range(np.log10(vals))
-        self._vals_min, self._vals_max = self._finite_range(vals)
-        if self._log_vals_max == self._log_vals_min:
-            self._log_vals_max += 1.0
-            self._log_vals_min -= 1.0
-        if self._vals_max == self._vals_min:
-            self._vals_max += 1.0
-            self._vals_min -= 1.0
+        log_vals_min, log_vals_max = self._finite_range(np.log10(vals))
+        vals_min, vals_max = self._finite_range(vals)
+        if log_vals_max == log_vals_min:
+            log_vals_max += 1.0
+            log_vals_min -= 1.0
+        if vals_max == vals_min:
+            vals_max += 1.0
+            vals_min -= 1.0
+
+        self._params['ui_range_linear'] = (vals_min, vals_max)
+        self._params['ui_range_log'] = (log_vals_min, log_vals_max)
+
         if (vals < 0).any():
-            self.log_scale = False
+            self._params['log'] = False
         else:
-            self.log_scale = True
+            self._params['log'] = True
         # NB above switching of log scale will automatically rebuild the pipeline if needed
-        if self.log_scale:
+        if self._params['log']:
             vals = np.log10(vals)
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
@@ -438,7 +419,7 @@ class Colormap(ColormapBase):
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
             logger.warning("Press 'r' in the window to try again")
             self._params['vmin'], self._params['vmax'] = 0.0, 1.0
-        logger.info(f"Autoscale: log_scale={self.log_scale}, vmin={self._params['vmin']}, vmax={self._params['vmax']}")
+        logger.info(f"Autoscale: log_scale={self._params['log']}, vmin={self._params['vmin']}, vmax={self._params['vmax']}")
 
     def _update_parameter_buffer(self, width, height, mass_scale):
         parameters = np.zeros((), dtype=self.shader_parameter_dtype)

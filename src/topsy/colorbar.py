@@ -56,7 +56,6 @@ class ColorbarOverlay(Overlay):
             self.update()
 
     def render_contents(self):
-        print(f"ColorbarOverlay.render_contents() called: vmin = {self._vmin}, vmax = {self._vmax}, colormap = {self._colormap}")
         dpi_physical = self.dpi_logical*self._visualizer.canvas.pixel_ratio
 
         fig = figure.Figure(figsize=(self._visualizer.canvas.height_physical * self._aspect_ratio/dpi_physical,
