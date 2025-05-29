@@ -21,7 +21,37 @@ def preprocess_shader(shader_code, active_flags):
     for f in active_flags:
         shader_code = re.sub(f"^.*\[\[{f}]](.*)$", r"\1", shader_code, flags=re.MULTILINE)
     shader_code = re.sub(r"^.*\[\[[A-Z_]+]].*$", "", shader_code, flags=re.MULTILINE)
-    return shader_code
+
+    # process #ifdef / #else / #endif
+    lines = shader_code.splitlines()
+    output_lines: list[str] = []
+    include_stack: list[tuple[bool, bool]] = []
+    current_include = True
+
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith('#ifdef'):
+            _, flag = stripped.split(None, 1)
+            should_include = current_include and (flag in active_flags)
+            include_stack.append((current_include, should_include))
+            current_include = should_include
+
+        elif stripped.startswith('#else'):
+            parent_include, prev_include = include_stack[-1]
+            new_include = parent_include and not prev_include
+            include_stack[-1] = (parent_include, new_include)
+            current_include = new_include
+
+        elif stripped.startswith('#endif'):
+            parent_include, _ = include_stack.pop()
+            current_include = parent_include
+
+        elif current_include:
+            output_lines.append(line)
+
+    result = "\n".join(output_lines)
+
+    return result
 
 def is_inside_ipython():
     try:

@@ -68,7 +68,7 @@ class VisualizerCanvasBase:
         if key=='s':
             self._visualizer.save()
         elif key=='r':
-            self._visualizer.colormap.autorange_vmin_vmax()
+            self._visualizer.colormap_autorange()
         elif key=='h':
             self._visualizer.reset_view()
 

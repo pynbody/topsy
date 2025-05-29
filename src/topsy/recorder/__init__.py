@@ -25,25 +25,24 @@ logger.setLevel(logging.INFO)
 
 class VisualizationRecorder:
     _record_properties = ['colormap_name', 'quantity_name', 'log_scale', 'vmin', 'vmax', 'gamma', # NB ordering is important to prevent triggering auto-scaling
-                          'rotation_matrix', 'scale', 'position_offset']
+                          'colormap.density_vmin', 'colormap.density_vmax', 'rotation_matrix', 'scale', 'position_offset']
     _record_interpolation_class_smoothed = [StepInterpolator, StepInterpolator, StepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator,
-                                            SmoothedStepInterpolator, SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
+                                            SmoothedStepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator, SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
     _record_interpolation_class_unsmoothed = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,
-                                              StepInterpolator, RotationInterpolator, LinearInterpolator, LinearInterpolator]
+                                              StepInterpolator, StepInterpolator, StepInterpolator, RotationInterpolator, LinearInterpolator, LinearInterpolator]
 
 
     def __init__(self, visualizer: Visualizer):
         vs = ViewSynchronizer(synchronize=self._record_properties)
         vs.add_view(visualizer)
-        vs.add_view(self)
+        vs.add_view(self, setter = VisualizationRecorder._add_event)
         self._recording = False
         self._playback = False
         self._recording_ends_at = None
         self._visualizer = visualizer
         self._reset_timestream()
 
-    def __setattr__(self, key, value):
-        super().__setattr__(key, value)
+    def _add_event(self, key, value):
         if key in self._record_properties:
             self._view_synchronizer.update_completed(self)  # this marks the update as done
             if self._recording:
@@ -53,7 +52,8 @@ class VisualizationRecorder:
         return time.time() - self._t0
 
     def _reset_timestream(self):
-        self._timestream = {r: [(0.0, copy.copy(getattr(self._visualizer, r)))] for r in self._record_properties}
+        self._timestream = {r: [(0.0, copy.copy(
+            self._view_synchronizer._default_getter(self._visualizer, r)))] for r in self._record_properties}
 
     def record(self):
         self._t0 = time.time()
@@ -127,7 +127,7 @@ class VisualizationRecorder:
                     if p not in exclude:
                         val = self._get_value_at_time(p, t)
                         if val is not Interpolator.no_value:
-                            setattr(self._visualizer, p, val)
+                            self._view_synchronizer._default_setter(self._visualizer, p, val)
 
                 self._visualizer.display_status("github.com/pynbody/topsy/", timeout=1e6)
                 self._visualizer.draw(DrawReason.EXPORT, render_texture.create_view())

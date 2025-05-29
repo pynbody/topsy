@@ -24,6 +24,9 @@ class SPH:
     _nchannels_input = 2
     _nchannels_output = 2
     _output_dtype = np.float32
+    _buffer_name = "mass_and_quantity" # as defined in particle_buffers.py
+    _vertex_name = "vertex_weighting" # as defined in sph.wgsl
+    _fragment_name = "fragment_weighting"
 
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False, share_render_progression=None):
@@ -62,6 +65,7 @@ class SPH:
         self.max_pixels = np.inf # maximum size of softening, in pixels, to qualify for rendering
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
+        self.has_rendered = False
 
     def _get_depth_renderer(self) -> SPH:
         """Returns a SPH renderer that will generate the depth in the scene"""
@@ -83,48 +87,41 @@ class SPH:
         """
         depth_renderer = self._get_depth_renderer()
         depth_renderer.render(depth_renderer_reason) # CHANGE should normally be good enough; EXPORT for reliability
-        depth_viewport = depth_renderer.get_image(averaging=True)
+
+        image = depth_renderer.get_image()
+
+        depth_viewport = image[..., 1] / image[..., 0]
 
         # transform from viewport to simulation units
         return (depth_viewport - 0.5)*self.scale*2.0
 
-    def get_image(self, averaging) -> np.ndarray:
+    def get_image(self) -> np.ndarray:
         """Reads and returns the last rendered SPH image.
 
-        Note that this call does not actually trigger a render. Call render() first to generate the image."""
-        nchannels = self._nchannels_output
+        If the current SPH output is invalid, this triggers an EXPORT-quality render. If you don't want this to happen,
+        you should call your own CHANGED render for example.
+        """
+
+        if not self.has_rendered:
+            logger.info("Export-quality render has been triggered, because no render has been done yet.")
+            self.render(DrawReason.EXPORT)
+
         np_dtype = self._output_dtype
-        bytes_per_pixel = nchannels * np.dtype(np_dtype).itemsize
-
+        bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
         im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
-                                            {'bytes_per_row': bytes_per_pixel * self._render_resolution},
-                                            (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution, nchannels))
+                                             {'bytes_per_row': bytes_per_pixel * self._render_resolution},
+                                             (self._render_resolution, self._render_resolution, 1))
+        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
+                                                           self._nchannels_output))
 
-        if nchannels == 4:
-            if averaging:
-                raise ValueError("Averaging not supported for RGBA output images")
-            np_im = np_im[:, :, :3] * self.last_render_mass_scale
-        elif averaging:
-            np_im = np_im[:, :, 1] / np_im[:, :, 0]
-        else:
-            np_im = np_im[:, :, 0] * self.last_render_mass_scale
-
-        return np_im
-
+        return np_im * self.last_render_mass_scale
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
 
 
-    def _setup_shader_module(self, flags=None):
-        if flags is None:
-            flags = []
-        wrap_flag = "WRAPPING" if self._wrapping else "NO_WRAPPING"
-        type_flag = "CHANNELED" if self._nchannels_input == 3 else "WEIGHTED"
-        flags += [wrap_flag, type_flag]
-        code = preprocess_shader(load_shader("sph.wgsl"), flags)
-
+    def _setup_shader_module(self):
+        code = load_shader("sph.wgsl")
         self._shader = self._device.create_shader_module(code=code, label="sph")
 
     def _setup_transform_buffer(self):
@@ -186,30 +183,17 @@ class SPH:
 
         vertex_format = wgpu.VertexFormat.float32x3
 
-        if self._nchannels_input == 3 :
-            channel_buffers = [{
-                "array_stride": 12,
-                "step_mode": wgpu.VertexStepMode.instance,
-                "attributes": [
-                    {
-                        "format": vertex_format,
-                        "offset": 0,
-                        "shader_location": 1,
-                    }
-                ]
-            } ]
-        else:
-            channel_buffers = [ {
-                                "array_stride": 4,
-                                "step_mode": wgpu.VertexStepMode.instance,
-                                "attributes": [
-                                    {
-                                        "format": wgpu.VertexFormat.float32,
-                                        "offset": 0,
-                                        "shader_location": i+1,
-                                    }
-                                ]
-                            } for i in range(self._nchannels_input)]
+        channel_buffers = [{
+            "array_stride": 12,
+            "step_mode": wgpu.VertexStepMode.instance,
+            "attributes": [
+                {
+                    "format": vertex_format,
+                    "offset": 0,
+                    "shader_location": 1,
+                }
+            ]
+        } ]
 
         self._render_pipeline = \
             self._device.create_render_pipeline(
@@ -217,7 +201,7 @@ class SPH:
                 label="sph_render_pipeline",
                 vertex = {
                     "module": self._shader,
-                    "entry_point": "vertex_main",
+                    "entry_point": self._vertex_name,
                     "buffers": [
                         {
                             "array_stride": 16,
@@ -241,7 +225,7 @@ class SPH:
                 multisample=None,
                 fragment={
                     "module": self._shader,
-                    "entry_point": "fragment_main",
+                    "entry_point": self._fragment_name,
                     "targets": [
                         {
                             "format": self.render_format,
@@ -308,7 +292,10 @@ class SPH:
 
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
-
+    def invalidate(self, draw_reason=DrawReason.CHANGE):
+        """Invalidates the current render, so that an attempt to get the current image will fail."""
+        if draw_reason != DrawReason.REFINE and draw_reason != DrawReason.PRESENTATION_CHANGE:
+            self.has_rendered = False
 
     def render(self, draw_reason=DrawReason.CHANGE):
         performance.signposter.emit_event("Start SPH render")
@@ -336,6 +323,7 @@ class SPH:
 
         self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
         self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+        self.has_rendered = True
 
     def needs_refine(self):
         return self._render_progression.needs_refine()
@@ -356,13 +344,7 @@ class SPH:
         )
         sph_render_pass.set_pipeline(self._render_pipeline)
 
-        vb_assignment = ['pos_smooth']
-        if self._nchannels_input == 2:
-            vb_assignment += ['mass', 'quantity']
-        elif self._nchannels_input == 3:
-            vb_assignment += ['rgb_masses']
-        else:
-            raise ValueError("Unexpected number of channels")
+        vb_assignment = ['pos_smooth', self._buffer_name]
 
         self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
         sph_render_pass.set_bind_group(0, self._bind_group, [],
@@ -434,15 +416,23 @@ class SPH:
         SPH._kernel_sampler = self._device.create_sampler(label="kernel_sampler",
                                                            mag_filter=wgpu.FilterMode.linear, )
 
+class BivariateSPH(SPH):
+    """Renders a density, mass-weighted-mean pair"""
+
+
 class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float
+    _buffer_name = 'rgb'
     _nchannels_input = 3
     _nchannels_output = 4
     _output_dtype = np.float32
+    _vertex_name = "vertex_rgb"
+    _fragment_name = "fragment_rgb"
+
+
 
 class DepthSPH(SPH):
     """Renders a map of the depth of the particles in the scene."""
-    def _setup_shader_module(self, flags=None):
-        if flags is None:
-            flags = []
-        super()._setup_shader_module(flags+["DEPTH"])
+
+    _vertex_name = "vertex_depth"
+
