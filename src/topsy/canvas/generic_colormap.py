@@ -59,7 +59,6 @@ class ColorMapController(GenericController):
     def apply_log_scale(self, state: bool) -> None:
         params = self.colormap.get_parameters()
         ui_range = params['ui_range_linear'] if not state else params['ui_range_log']
-        print(f"Applying log scale: {state}, ui_range: {ui_range}")
         self.colormap.update_parameters({
             'log': state,
             'vmin': ui_range[0],
@@ -106,20 +105,24 @@ class ColorMapController(GenericController):
 
 class BivariateColorMapController(ColorMapController):
     def apply_denslider(self, vmin: float, vmax: float) -> None:
-        self.visualizer._colormap.density_vmin = vmin
-        self.visualizer._colormap.density_vmax = vmax
+        self.colormap.update_parameters({
+            'density_vmin': vmin,
+            'density_vmax': vmax
+        })
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
         layout = super().get_layout()
+        params = self.colormap.get_parameters()
 
-        den_ui_range = self.visualizer._colormap.get_den_ui_range()
+        den_ui_range = params['ui_range_density']
+        den_range = params['density_vmin'], params['density_vmax']
 
         children = layout.children
 
         children.append(LayoutSpec("hbox", [
             ControlSpec("range_den", "range_slider",
-                        value=(self.visualizer._colormap.density_vmin, self.visualizer._colormap.density_vmax),
+                        value=den_range,
                         range=den_ui_range, callback=lambda vv: self.apply_denslider(*vv),
                         label="density")
             ]))

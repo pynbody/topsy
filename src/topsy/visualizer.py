@@ -197,7 +197,7 @@ class VisualizerBase:
 
         self.particle_buffers.quantity_name = value
         self.invalidate(DrawReason.CHANGE)
-        self._colormap.update_parameters({'vmin': None, 'vmax': None})
+        self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
         self._reinitialize_colormap_and_bar()
 
 
@@ -216,10 +216,10 @@ class VisualizerBase:
             colormap_params['hdr'] = self._hdr
             colormap_params['log'] = True
         elif self._bivariate:
+            colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'bivariate'
-        elif self.quantity_name is not None:
-            colormap_params['type'] = 'weighted'
         else:
+            colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'density'
 
         self._colormap.update_parameters(colormap_params)

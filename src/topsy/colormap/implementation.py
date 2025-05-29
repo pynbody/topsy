@@ -32,13 +32,9 @@ class ColormapBase:
         """Check if the colormap accepts the given parameters"""
         return False
 
-    def accepts_parameter_update(self, parameters: dict) -> bool:
-        """Check if the colormap accepts the given parameters for an update"""
-        return self.accepts_parameters(parameters)
-
     def update_parameters(self, parameters: dict):
         """Update the colormap parameters"""
-        if not self.accepts_parameter_update(parameters):
+        if not self.accepts_parameters(self._params | parameters):
             raise ValueError(f"Colormap {self.__class__.__name__} does not accept parameter update: {parameters}")
         self._params.update(parameters)
 
@@ -63,9 +59,8 @@ class Colormap(ColormapBase):
     fragment_shader = "fragment_main"
     percentile_scaling = [1.0, 99.9]
     map_dimension = wgpu.TextureViewDimension.d1
-    _weighted_average = False
 
-    _default_params = {'colormap_name': 'viridis', 'vmin': 0.0, 'vmax': 1.0, 'log': True}
+    _default_params = {'colormap_name': 'viridis', 'vmin': 0.0, 'vmax': 1.0, 'log': True, 'weighted_average': False}
 
     shader_parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
                                        ("vmax", np.float32, (1,)),
@@ -84,23 +79,16 @@ class Colormap(ColormapBase):
     def accepts_parameters(cls, parameters: dict) -> bool:
         return parameters.get("type", None) == "density"
 
-
-    def accepts_parameter_update(self, parameters: dict) -> bool:
-        """Check if the colormap accepts the given parameters for an update"""
-
-        if not super().accepts_parameter_update(parameters):
-            return False
-
+    def update_parameters(self, parameters: dict):
         parameters_before = self.get_parameters()
-        parameters_after = parameters_before | parameters
-
-        if parameters_before['log'] != parameters_after['log']:
-            return False
+        super().update_parameters(parameters)
+        parameters_after = self.get_parameters()
+        if parameters_before['log'] != parameters_after['log'] or parameters_before['weighted_average'] != parameters_after['weighted_average']:
+            self._setup_shader_module()
+            self._setup_render_pipeline()
         if parameters_before['colormap_name'] != parameters_after['colormap_name']:
-            return False
-
-        return True
-
+            self._setup_map_texture()
+            self._setup_render_pipeline()
 
     def _setup_shader_module(self, active_flags = None):
         shader_code = load_shader("colormap.wgsl")
@@ -108,7 +96,7 @@ class Colormap(ColormapBase):
         if active_flags is None:
             active_flags = []
 
-        mode = "WEIGHTED_MEAN" if self._weighted_average else "DENSITY"
+        mode = "WEIGHTED_MEAN" if self._params['weighted_average'] else "DENSITY"
         active_flags.append(mode)
 
         if self._params['log']:
@@ -124,7 +112,7 @@ class Colormap(ColormapBase):
         For example, drop unneeded channel if density is being displayed; perform ratio if column average is being
         displayed.
         """
-        if self._weighted_average:
+        if self._params['weighted_average']:
             numpy_image = numpy_image[..., 1] / numpy_image[..., 0]
         else:
             numpy_image = numpy_image[..., 0]
@@ -390,6 +378,8 @@ class Colormap(ColormapBase):
         self._autorange_using_values(vals)
 
     def _autorange_using_values(self, vals):
+        new_params = {}
+
         log_vals_min, log_vals_max = self._finite_range(np.log10(vals))
         vals_min, vals_max = self._finite_range(vals)
         if log_vals_max == log_vals_min:
@@ -399,15 +389,15 @@ class Colormap(ColormapBase):
             vals_max += 1.0
             vals_min -= 1.0
 
-        self._params['ui_range_linear'] = (vals_min, vals_max)
-        self._params['ui_range_log'] = (log_vals_min, log_vals_max)
+        new_params['ui_range_linear'] = (vals_min, vals_max)
+        new_params['ui_range_log'] = (log_vals_min, log_vals_max)
 
         if (vals < 0).any():
-            self._params['log'] = False
+            new_params['log'] = False
         else:
-            self._params['log'] = True
-        # NB above switching of log scale will automatically rebuild the pipeline if needed
-        if self._params['log']:
+            new_params['log'] = True
+
+        if new_params['log']:
             vals = np.log10(vals)
         vals = vals[np.isfinite(vals)]
         if len(vals) > 200:
@@ -419,14 +409,19 @@ class Colormap(ColormapBase):
                 "Problem setting vmin/vmax, perhaps there are no particles or something is wrong with them?")
             logger.warning("Press 'r' in the window to try again")
             self._params['vmin'], self._params['vmax'] = 0.0, 1.0
+
+        self.update_parameters(new_params)
+
         logger.info(f"Autoscale: log_scale={self._params['log']}, vmin={self._params['vmin']}, vmax={self._params['vmax']}")
 
     def _update_parameter_buffer(self, width, height, mass_scale):
         parameters = np.zeros((), dtype=self.shader_parameter_dtype)
-        parameters["density_vmin"] = self.density_vmin - np.log10(mass_scale) if hasattr(self, "density_vmin") else 0.0
-        parameters["density_vmax"] = self.density_vmax - np.log10(mass_scale) if hasattr(self, "density_vmax") else 1.0
+        d_vmin = self._params.get('density_vmin', 0.0)
+        d_vmax = self._params.get('density_vmax', 1.0)
+        parameters["density_vmin"] = d_vmin - np.log10(mass_scale)
+        parameters["density_vmax"] = d_vmax - np.log10(mass_scale)
 
-        if self._weighted_average:
+        if self._params['weighted_average']:
             mass_scale = 1.0
 
         parameters["vmin"] = self._params['vmin']
@@ -442,13 +437,6 @@ class Colormap(ColormapBase):
         parameters["gamma"] = self._params.get('gamma', 1.0)
 
         self._device.queue.write_buffer(self._parameter_buffer, 0, parameters)
-
-class WeightedColormap(Colormap):
-    _weighted_average = True
-
-    @classmethod
-    def accepts_parameters(cls, parameters: dict) -> bool:
-        return parameters.get("type", None) == "weighted"
 
 
 class RGBColormap(Colormap):
@@ -557,7 +545,7 @@ class BivariateColormap(Colormap):
 
     def sph_raw_output_to_content(self, numpy_image: np.ndarray):
         ret_image = numpy_image.copy()
-        if self._weighted_average:
+        if self._params['weighted_average']:
             ret_image[..., 1] /= ret_image[..., 0]
         else:
             ret_image[..., 1] = ret_image[..., 0]
@@ -568,15 +556,14 @@ class BivariateColormap(Colormap):
         den_vals = vals[..., 0].ravel()
         den_vals = np.log10(den_vals)
         den_vals = den_vals[np.isfinite(den_vals)]
-        self.density_vmin, self.density_vmax = np.percentile(den_vals, self.percentile_scaling)
-        self._density_ui_min, self._density_ui_max = self._finite_range(den_vals)
+        density_vmin, density_vmax = np.percentile(den_vals, self.percentile_scaling)
+        density_ui_min, density_ui_max = self._finite_range(den_vals)
+        self.update_parameters({
+            'density_vmin': density_vmin,
+            'density_vmax': density_vmax,
+            'ui_range_density': (density_ui_min, density_ui_max),
+        })
         self._autorange_using_values(vals[..., 1])
-
-    def get_den_ui_range(self):
-        """Get a range for density suitable for user interface sliders"""
-        if not hasattr(self, "_density_ui_min"):
-            return 0.0, 1.0
-        return self._density_ui_min, self._density_ui_max
 
     def _generate_mapping_rgba_f32(self, num_points):
         cmap = matplotlib.colormaps[self._params['colormap_name']]

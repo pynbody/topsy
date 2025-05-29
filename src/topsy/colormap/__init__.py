@@ -1,7 +1,7 @@
 import numpy as np
 import wgpu
 
-from .implementation import ColormapBase, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap, WeightedColormap
+from .implementation import ColormapBase, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
 from .. import config
 
 from typing import Iterator, Optional
@@ -63,7 +63,7 @@ class ColormapHolder:
         parameters = self.get_parameters() | parameters  # merge with existing parameters
         if self._colormap is None and self._class_from_parameters(parameters) is None:
             return # we are in an initialization phase and it's fine to have no colormap yet
-        if self._colormap is None or not self._colormap.accepts_parameter_update(parameters):
+        if self._colormap is None or not self._colormap.accepts_parameters(parameters):
             self._colormap = self.instance_from_parameters(parameters, self._device, self._input_texture,
                                                            self._output_format)
             return True
