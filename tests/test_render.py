@@ -35,7 +35,8 @@ def test_render(vis, folder):
 
 def test_hdr_rgb_render(vis):
     vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True, rgb=True)
-    result = vis.get_presentation_image()
+    vis.colormap.update_parameters({"min_mag": 38.0, "max_mag": 40.0})
+    result = vis.get_presentation_image()[..., :3]
 
     assert result.dtype == np.float16
     assert result.max() > 1.0

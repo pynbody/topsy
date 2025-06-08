@@ -11,6 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pynbody
+    from .visualizer import Visualizer
 
 
 from . import config
@@ -107,7 +108,7 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwa
 def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool = False,
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         hdr: bool = False, bivariate: bool = False) :
+         hdr: bool = False, bivariate: bool = False) -> Visualizer:
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -183,7 +184,7 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
 
     return vis
 
-def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs):
+def test(nparticle=config.TEST_DATA_NUM_PARTICLES_DEFAULT, **kwargs) -> Visualizer:
     from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.TestDataLoader,
                                 data_loader_args=(nparticle,),

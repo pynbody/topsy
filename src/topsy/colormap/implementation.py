@@ -54,6 +54,14 @@ class ColormapBase:
         """Set the scaling parameters for the colormap"""
         raise NotImplementedError("Subclasses must implement set_scaling")
 
+class NoColormap(ColormapBase):
+    """A colormap that does nothing, used when the colormap has not yet been selected"""
+
+    @classmethod
+    def accepts_parameters(cls, parameters: dict) -> bool:
+        return parameters.get("type", None) == "none"
+
+
 class Colormap(ColormapBase):
     input_channels = 2
     fragment_shader = "fragment_main"
@@ -96,7 +104,7 @@ class Colormap(ColormapBase):
         if active_flags is None:
             active_flags = []
 
-        mode = "WEIGHTED_MEAN" if self._params['weighted_average'] else "DENSITY"
+        mode = "WEIGHTED_MEAN" if self._params.get('weighted_average', False) else "DENSITY"
         active_flags.append(mode)
 
         if self._params['log']:
@@ -223,7 +231,7 @@ class Colormap(ColormapBase):
         )
 
     def _generate_mapping_rgba_f32(self, num_points):
-        cmap = matplotlib.colormaps[self._params['colormap_name']]
+        cmap = matplotlib.colormaps[self._params.get('colormap_name', config.DEFAULT_COLORMAP)]
         rgba = cmap(np.linspace(0.001, 0.999, num_points)).astype(np.float32)
         return rgba
 
@@ -421,7 +429,7 @@ class Colormap(ColormapBase):
         parameters["density_vmin"] = d_vmin - np.log10(mass_scale)
         parameters["density_vmax"] = d_vmax - np.log10(mass_scale)
 
-        if self._params['weighted_average']:
+        if self._params.get('weighted_average', False):
             mass_scale = 1.0
 
         parameters["vmin"] = self._params['vmin']
@@ -447,7 +455,7 @@ class RGBColormap(Colormap):
 
     _sterrad_to_arcsec2 = 2.3504430539466191e-11
 
-    _default_params = {'vmin': 0.0, 'vmax': 1.0, 'log': True, 'hdr': False}
+    _default_params = {'vmin': 0.0, 'vmax': 1.0, 'log': True, 'gamma': 1.0}
 
     @classmethod
     def accepts_parameters(cls, parameters: dict) -> bool:
@@ -456,11 +464,17 @@ class RGBColormap(Colormap):
 
     @classmethod
     def _log_output_to_mag_per_arcsec2(cls, val):
-        return -2.5 * (val + np.log10(cls._sterrad_to_arcsec2) - 4) # +4 for (10pc->kpc)^2
+        if val is not None:
+            return -2.5 * (val + np.log10(cls._sterrad_to_arcsec2) - 4) # +4 for (10pc->kpc)^2
+        else:
+            return None
 
     @classmethod
     def _mag_per_arcsec2_to_log_output(cls, val):
-        return val/-2.5 + 4 - np.log10(cls._sterrad_to_arcsec2)
+        if val is not None:
+            return val/-2.5 + 4 - np.log10(cls._sterrad_to_arcsec2)
+        else:
+            return None
 
     def get_parameters(self) -> dict:
         """Get all parameters as a dictionary"""
@@ -485,7 +499,9 @@ class RGBColormap(Colormap):
         if "max_mag" in parameters:
             parameters['vmin'] = self._mag_per_arcsec2_to_log_output(parameters['max_mag'])
 
-        super().update_parameters(parameters)
+        # NB we are skipping a level in the hierarchy here, which shows that we shouldn't
+        # really be basing off Colormap, but rather ColormapBase. TODO.
+        ColormapBase.update_parameters(self, parameters)
 
     def autorange_vmin_vmax(self, vals):
         vals = vals.ravel()
@@ -508,9 +524,6 @@ class RGBColormap(Colormap):
 
         logger.info(f"vmin={self._params['vmin']}, vmax={self._params['vmax']}")
 
-    def _setup_map_texture(self, num_points = config.COLORMAP_NUM_SAMPLES):
-        pass
-
     def sph_raw_output_to_content(self, numpy_image: np.ndarray):
         """Map from raw image to the logical content that the colormap will use
 
@@ -518,6 +531,8 @@ class RGBColormap(Colormap):
         displayed.
         """
         return numpy_image[..., :3]
+
+
 
 class RGBHDRColormap(RGBColormap):
     max_percentile = 99.0
@@ -533,7 +548,8 @@ class BivariateColormap(Colormap):
     default_quantity_name = 'rho'
     map_dimension = wgpu.TextureViewDimension.d2
 
-    _default_params = Colormap._default_params | {'density_vmin': 0.0, 'density_vmax': 1.0}
+    _default_params = Colormap._default_params | {'density_vmin': 0.0, 'density_vmax': 1.0,
+                                                  'ui_range_density': (0.0, 1.0)}
 
     @classmethod
     def accepts_parameters(cls, parameters: dict) -> bool:

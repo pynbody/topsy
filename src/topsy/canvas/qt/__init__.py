@@ -93,8 +93,8 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
             else:
                 cmap_menu.setCurrentIndex(0)
             cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
+            self._toolbar.addWidget(cmap_menu)
 
-        self._toolbar.addWidget(cmap_menu)
         self._toolbar.addSeparator()
 
 

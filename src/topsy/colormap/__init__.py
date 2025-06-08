@@ -1,7 +1,7 @@
 import numpy as np
 import wgpu
 
-from .implementation import ColormapBase, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
+from .implementation import ColormapBase, NoColormap, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
 from .. import config
 
 from typing import Iterator, Optional
@@ -18,15 +18,19 @@ class ColormapHolder:
         self._device = device
         self._input_texture = input_texture
         self._output_format = output_format
-        self._colormap: Optional[ColormapBase] = self.instance_from_parameters(
+        self._impl: ColormapBase = self.instance_from_parameters(
             {
                 'colormap_name': config.DEFAULT_COLORMAP,
                 'vmin': None,
                 'vmax': None,
-                'log_scale': False,
-                'type': 'density'
+                'log': False,
+                'type': 'none',
             }, device, input_texture, output_format,
             )
+
+    def _check_valid(self):
+        if self._impl is None or isinstance(self._impl, NoColormap):
+            raise ValueError("ColormapHolder is not fully initialized")
 
     @classmethod
     def _iter_classes(cls, base_class=ColormapBase) -> Iterator[ColormapBase] :
@@ -61,61 +65,61 @@ class ColormapHolder:
         Returns True if the colormap was recreated, False if it was updated in place.
         """
         parameters = self.get_parameters() | parameters  # merge with existing parameters
-        if self._colormap is None and self._class_from_parameters(parameters) is None:
+        if self._impl is None and self._class_from_parameters(parameters) is None:
             return # we are in an initialization phase and it's fine to have no colormap yet
-        if self._colormap is None or not self._colormap.accepts_parameters(parameters):
-            self._colormap = self.instance_from_parameters(parameters, self._device, self._input_texture,
-                                                           self._output_format)
+        if self._impl is None or not self._impl.accepts_parameters(parameters):
+            self._impl = self.instance_from_parameters(parameters, self._device, self._input_texture,
+                                                       self._output_format)
             return True
         else:
-            self._colormap.update_parameters(parameters)
+            self._impl.update_parameters(parameters)
             return False
 
     def get_parameter(self, name: str):
         """
         Get a parameter from the colormap.
         """
-
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
-        return self._colormap.get_parameter(name)
+        return self._impl.get_parameter(name)
 
     def get_parameters(self) -> dict:
         """
         Get all parameters from the colormap.
         """
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
-        return self._colormap.get_parameters()
-
-    def get_parameter_ui_range(self, name: str) -> tuple[float, float]:
-        """
-        Get the UI range for a parameter from the colormap.
-        """
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
-        return self._colormap.get_parameter_ui_range(name)
+        return self._impl.get_parameters()
 
     def autorange(self, sph_render_output: np.ndarray):
         """Update the colormap ranges based on the provided SPH render output."""
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
-        self._colormap.autorange_vmin_vmax(sph_render_output)
+        self._check_valid()
+        self._impl.autorange_vmin_vmax(sph_render_output)
 
     def encode_render_pass(self, command_encoder, target_texture_view):
         """
         Encode the render pass for the colormap.
         This will set up the necessary buffers and shaders for rendering the colormap.
         """
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
+        self._check_valid()
 
-        self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        self._impl.encode_render_pass(command_encoder, target_texture_view)
 
     def set_scaling(self, width, height, mass_scaling):
         """
         Set the scaling for the colormap.
         """
-        if self._colormap is None:
-            raise ValueError("Colormap not set")
-        self._colormap.set_scaling(width, height, mass_scaling)
+        self._check_valid()
+        self._impl.set_scaling(width, height, mass_scaling)
+
+    def sph_raw_output_to_image(self, sph_raw_output: np.ndarray) -> np.ndarray:
+        """
+        Convert SPH raw output to an image using the colormap.
+        """
+        self._check_valid()
+        return self._impl.sph_raw_output_to_image(sph_raw_output)
+
+    def sph_raw_output_to_content(self, sph_raw_output: np.ndarray) -> np.ndarray:
+        """
+        Convert SPH raw output to the logical content represented by the colormap.
+
+        This is typically used for debugging or analysis purposes.
+        """
+        self._check_valid()
+        return self._impl.sph_raw_output_to_content(sph_raw_output)

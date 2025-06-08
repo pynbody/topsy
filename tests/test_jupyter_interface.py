@@ -29,13 +29,13 @@ def jupyter_vis(solara_test):
 def test_colormap_name_select(jupyter_vis, page_session: Page):
     vis = jupyter_vis
 
-    assert vis.colormap_name == "twilight_shifted"
+    assert vis.colormap.get_parameter('colormap_name') == "twilight_shifted"
 
     sel = page_session.locator("select:has-text('twilight_shifted')")
     sel.wait_for()
     sel.select_option("twilight")
 
-    assert poll_until_true(lambda: vis.colormap_name == "twilight")
+    assert poll_until_true(lambda: vis.colormap.get_parameter('colormap_name') == "twilight")
 
     assert vis.quantity_name == None
 

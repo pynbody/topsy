@@ -222,11 +222,11 @@ class VisualizerBase:
             colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'density'
 
-        self._colormap.update_parameters(colormap_params)
+        changed_type = self._colormap.update_parameters(colormap_params)
 
         colormap_params = self._colormap.get_parameters()
 
-        if colormap_params['vmin'] is None:
+        if changed_type:
             logger.info("Autorange colormap parameters")
             self._colormap.autorange(self._sph.get_image())
 
@@ -237,7 +237,7 @@ class VisualizerBase:
 
     def _get_colorbar_label(self):
         label = self.data_loader.get_quantity_label(self.quantity_name)
-        if self._colormap.get_parameter('log_scale'):
+        if self._colormap.get_parameter('log'):
             label = r"$\log_{10}$ " + label
         return label
 

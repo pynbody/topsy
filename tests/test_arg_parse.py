@@ -8,7 +8,7 @@ def test_simple_arg_parse():
     assert args.filename == "test://1000"
     assert args.quantity == "test-quantity"
     assert args.resolution == topsy.config.DEFAULT_RESOLUTION
-    assert args._colormap == topsy.config.DEFAULT_COLORMAP
+    assert args.colormap == topsy.config.DEFAULT_COLORMAP
 
 def test_multi_arg_parse():
     args = topsy.parse_args(["file1","-q","test-quantity","-p","dm","+","file2","-q","test-quantity2"])

@@ -55,6 +55,7 @@ class ColorMapController(GenericController):
 
     def apply_colormap(self, name: str) -> None:
         self.visualizer.colormap.update_parameters({'colormap_name': name})
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def apply_log_scale(self, state: bool) -> None:
         params = self.colormap.get_parameters()
@@ -78,7 +79,7 @@ class ColorMapController(GenericController):
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
-        params = self.visualizer._colormap.get_parameters()
+        params = self.visualizer.colormap.get_parameters()
         cmap = params["colormap_name"]
         qty = self.visualizer.quantity_name or self.default_quantity_name
         ui_range = params['ui_range_linear'] if not params['log'] else params['ui_range_log']
@@ -136,20 +137,22 @@ class RGBMapController(GenericController):
         super().__init__(visualizer, refresh_ui_callback)
 
     def get_state(self) -> dict:
-        cmap = self.visualizer._colormap
+        cmap_params = self.visualizer.colormap.get_parameters()
         return {
-            "mag_range": (cmap.min_mag, cmap.max_mag),
-            "gamma": cmap.gamma,
+            "mag_range": (cmap_params['min_mag'], cmap_params['max_mag']),
+            "gamma": cmap_params['gamma'],
         }
 
     def apply_mag_range(self, mag_pair: Tuple[float, float]) -> None:
         lo, hi = mag_pair
-        cmap = self.visualizer._colormap
-        cmap.min_mag, cmap.max_mag = lo, hi
+        self.visualizer.colormap.update_parameters({
+            'min_mag': lo,
+            'max_mag': hi,
+        })
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def apply_gamma(self, g: float) -> None:
-        self.visualizer._colormap.gamma = g
+        self.visualizer.colormap.update_parameters({'gamma': g})
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
