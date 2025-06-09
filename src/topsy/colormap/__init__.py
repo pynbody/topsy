@@ -2,6 +2,7 @@ import numpy as np
 import wgpu
 
 from .implementation import ColormapBase, NoColormap, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
+from .ui import ColorMapController, BivariateColorMapController, RGBMapController, GenericController
 from .. import config
 
 from typing import Iterator, Optional
@@ -123,3 +124,19 @@ class ColormapHolder:
         """
         self._check_valid()
         return self._impl.sph_raw_output_to_content(sph_raw_output)
+
+    def make_ui_controller(self, visualizer, refresh_ui_callback: Optional[callable] = None) -> GenericController:
+        """
+        Make a UI controller for the currently instantiated colormap.
+
+        This is used to interact with the colormap in a user interface. The controller is an abstract
+        description of the UI elements and their behavior, allowing for different implementations
+        (specifically Qt or Jupyter) to render the UI accordingly.
+        """
+        self._check_valid()
+        if isinstance(self._impl, BivariateColormap):
+            return BivariateColorMapController(visualizer, refresh_ui_callback)
+        elif isinstance(self._impl, RGBColormap):
+            return RGBMapController(visualizer, refresh_ui_callback)
+        else:
+            return ColorMapController(visualizer, refresh_ui_callback)
