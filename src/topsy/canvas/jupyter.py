@@ -4,9 +4,8 @@ from typing import Callable, Any
 
 from rendercanvas.jupyter import RenderCanvas, loop
 from . import VisualizerCanvasBase
-from .generic_colormap import ColorMapController, RGBMapController, ControlSpec, LayoutSpec
 from ..config import JUPYTER_UI_LAG
-from .. import colormap
+from ..colormap.ui import ControlSpec
 
 class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def __init__(self, *args, **kwargs):
@@ -46,13 +45,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         """
         Return a nested ipywidget (HBox/VBox) tree driven by the generic ColorMapController.get_layout() spec.
         """
-        if isinstance(self._visualizer.colormap, colormap.RGBColormap):
-            self._controller = RGBMapController(self._visualizer, self._refresh_ui)
-        elif isinstance(self._visualizer.colormap, colormap.Colormap):
-            self._controller = ColorMapController(self._visualizer, self._refresh_ui)
-        else:
-            self._controller = None
-
+        self._controller = self._visualizer.colormap.make_ui_controller(self._visualizer, self._refresh_ui)
         if self._controller:
             self._controls = self.convert_layout_to_widget(self._controller.get_layout())
         else:

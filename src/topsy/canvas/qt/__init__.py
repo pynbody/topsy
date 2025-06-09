@@ -6,7 +6,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 
 from rendercanvas.qt import RenderCanvas, loop
 
-from .colormap import RGBColorControls, ColorMapControls
+from .colormap import RGBColorControls, ColorMapControls, BivariateColorMapControls
 from .lineedit import MyLineEdit
 from .recording import RecordingSettingsDialog, VisualizationRecorderWithQtProgressbar
 from .. import VisualizerCanvasBase
@@ -84,6 +84,17 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self._toolbar.addSeparator()
 
         self._toolbar.addAction(self._open_cmap)
+
+        if not self._visualizer._rgb:
+            cmap_menu = QtWidgets.QComboBox(self._toolbar)
+            cmap_menu.addItems(["Univariate", "Bivariate"])
+            if self._visualizer._bivariate:
+                cmap_menu.setCurrentIndex(1)
+            else:
+                cmap_menu.setCurrentIndex(0)
+            cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
+            self._toolbar.addWidget(cmap_menu)
+
         self._toolbar.addSeparator()
 
 
@@ -109,14 +120,30 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self._toolbar_update_timer.start(100)
 
         layout.addLayout(our_layout)
-        self.call_later(0, self._on_ready_callback)
+        self.call_later(0, self._prepare_colormap_pane)
 
-    def _on_ready_callback(self):
+    def _on_change_cmap_type(self, index):
+        match index:
+            case 0:
+                self._visualizer._bivariate = False
+            case 1:
+                self._visualizer._bivariate = True
+
+        self._visualizer._reinitialize_colormap_and_bar()
+        self._prepare_colormap_pane()
+
+    def _prepare_colormap_pane(self):
+        if hasattr(self, '_cmap_connection'):
+            self._open_cmap.disconnect(self._cmap_connection)
         if not self._visualizer._hdr and not self._visualizer._rgb:
-            self._colormap_controls = ColorMapControls(self)
+            if self._visualizer._bivariate:
+                self._colormap_controls = BivariateColorMapControls(self)
+            else:
+                self._colormap_controls = ColorMapControls(self)
         elif self._visualizer._rgb:
             self._colormap_controls = RGBColorControls(self)
-        self._open_cmap.triggered.connect(self._colormap_controls.open)
+
+        self._cmap_connection = self._open_cmap.triggered.connect(self._colormap_controls.open)
 
 
     def __del__(self):
@@ -170,7 +197,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
     def on_click_save(self):
         fd = QtWidgets.QFileDialog(self)
-        fname, _ = fd.getSaveFileName(self, "Save snapshot", "", "PNG (*.png);; PDF (*.pdf)")
+        fname, _ = fd.getSaveFileName(self, "Save snapshot", "", "PNG (*.png);; PDF (*.pdf);; numpy (*.npy)")
         if fname:
             logger.info("Saving snapshot to %s", fname)
             self._visualizer.save(fname)
