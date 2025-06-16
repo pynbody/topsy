@@ -4,8 +4,18 @@ import pylab as p
 import numpy as np
 import numpy.testing as npt
 
+from pathlib import Path
+from matplotlib import colors, cm
+
 from topsy import colormap
 from topsy.canvas import offscreen
+
+@pytest.fixture
+def folder():
+    folder = Path(__file__).parent / "output"
+    folder.mkdir(exist_ok=True)
+    return folder
+
 
 @pytest.fixture
 def vis(request):
@@ -15,20 +25,49 @@ def vis(request):
 
 @pytest.fixture
 def input_image():
+    """A dummy output from the SPH renderer, where the density varies in the x direction logarithmically between 10^-3
+    and 1 and the weighted average varies in the y direction linearly between 0 and 1."""
     input_image = np.empty((200, 200, 2), dtype=np.float32)
     input_image[:, :, 0] = np.logspace(-3, 0, 200)
-    input_image[:, :, 1] = np.linspace(0, 1, 200) * input_image[:, :, 0]
+    input_image[:, :, 1] = np.linspace(0, 1, 200)[:, np.newaxis] * input_image[:, :, 0]
     return input_image
 
-@pytest.mark.parametrize("weighted_average", [True, False])
-@pytest.mark.parametrize("log_scale", [True, False])
-def test_colormap(vis, input_image, weighted_average, log_scale):
+@pytest.mark.parametrize("mode", ['density', 'weighted-average', 'bivariate'])
+@pytest.mark.parametrize("log_scale", [True, False], ids=["log", "linear"])
+def test_colormap(vis, input_image, mode, log_scale, folder):
     cmap = vis.colormap
 
+    if mode == 'density':
+        weighted_average = False
+        type = 'density'
+        if log_scale:
+            vmin, vmax = -3.0, 0.0
+        else:
+            vmin, vmax = 0.0, 1.0
+    elif mode == 'weighted-average':
+        weighted_average = True
+        type = 'density'
+        if log_scale:
+            vmin, vmax = -2.0, 0.0
+        else:
+            vmin, vmax = 0.0, 1.0
+    elif mode == 'bivariate':
+        weighted_average = True
+        type = 'bivariate'
+        if log_scale:
+            vmin, vmax = -2.0, 0.0
+        else:
+            vmin, vmax = 0.0, 1.0
+    else:
+        raise ValueError("Invalid mode: {}".format(mode))
+
     cmap.update_parameters({
+        'type': type,
         'weighted_average': weighted_average,
-        'vmin': 0.0,
-        'vmax': 1.0,
+        'vmin': vmin,
+        'vmax': vmax,
+        'density_vmin': -3.0,
+        'density_vmax': 0.0,
         'log': log_scale,
     })
 
@@ -38,18 +77,71 @@ def test_colormap(vis, input_image, weighted_average, log_scale):
 
     assert image.shape == (200, 200, 4)
 
-    mpl_cmap = p.get_cmap(cmap.get_parameter("colormap_name"))
+    p.imsave(folder / f"test_colormap_{mode}_{log_scale}.png", image)
 
-    # now do it via matplotlib for comparison
+    image_via_mpl = _colormap_in_software(input_image, cmap, log_scale, vmax, vmin)
+    p.imsave(folder / f"test_colormap_software_{mode}_{log_scale}.png", image_via_mpl)
+
+    npt.assert_allclose(image, image_via_mpl, atol=5)
+
+
+def _colormap_in_software(input_image, cmap, log_scale, vmax, vmin):
+    if cmap.get_parameter("type") == "bivariate":
+        return _bivariate_colormap_in_software(input_image, cmap)
+    else:
+        return _univariate_colormap_in_software(input_image, cmap)
+
+def _univariate_colormap_in_software(input_image, cmap):
+    mpl_cmap_name = cmap.get_parameter("colormap_name")
+    vmin = cmap.get_parameter("vmin")
+    vmax = cmap.get_parameter("vmax")
+    log_scale = cmap.get_parameter("log")
+
+    norm = colors.Normalize(vmin=vmin, vmax=vmax)
+    mpl_cmap = cm.ScalarMappable(norm=norm, cmap=cm.get_cmap(mpl_cmap_name)).to_rgba
+
     content = cmap.sph_raw_output_to_content(input_image)
     if log_scale:
         content = np.log10(content)
-    image_via_mpl = (mpl_cmap(content)*255).astype(np.uint8)
+    image_via_mpl = (mpl_cmap(content) * 255).astype(np.uint8)
+    return image_via_mpl
 
-    p.imsave("test_colormap.png", image)
-    p.imsave("test_colormap_mpl.png", image_via_mpl)
+def _bivariate_colormap_in_software(input_image, cmap):
+    den_vmin = cmap.get_parameter("density_vmin")
+    den_vmax = cmap.get_parameter("density_vmax")
+    vmin = cmap.get_parameter("vmin")
+    vmax = cmap.get_parameter("vmax")
+    vlog = cmap.get_parameter("log")
 
-    npt.assert_allclose(image, image_via_mpl, atol=5)
+    # generate a 1000 x 1000 grid of points. The mapping is a 2D grid of points in the unit square
+    mapping = cmap._impl._generate_mapping_rgba_f32(1000)
+
+    # for each point in  the input image, figure out the coordinate in the mapping
+    density = input_image[:, :, 0]
+    value_times_density = input_image[:, :, 1]
+    weighted_value = value_times_density / density
+
+    scaled_density = (np.log10(density) - den_vmin) / (den_vmax - den_vmin)
+    if vlog:
+        scaled_weighted_value = (np.log10(weighted_value) - vmin) / (vmax - vmin)
+    else:
+        scaled_weighted_value = (weighted_value - vmin) / (vmax - vmin)
+
+    # set up an interpolator for the mapping on the unit square. Out-of-bounds values should map to nearest
+    from scipy.interpolate import RegularGridInterpolator
+    points = np.linspace(0, 1, 1000)
+    interpolator = RegularGridInterpolator((points, points), mapping, bounds_error=True, method='linear')
+
+    # now interpolate the mapping for each point in the input image
+    coords = np.stack((scaled_weighted_value, scaled_density), axis=-1)
+    coords = np.clip(coords, 0, 1)  # ensure coordinates are within [0, 1]
+    image = np.clip(interpolator(coords), 0, 1)
+
+    # convert to 8-bit RGBA
+    image = (image * 255).astype(np.uint8)
+
+    return image
+
 
 
 
