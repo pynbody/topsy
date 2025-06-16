@@ -10,8 +10,10 @@ This package visualises simulations, and is an add-on to the [pynbody](https://g
 Its name nods to the [TIPSY](https://github.com/N-BodyShop/tipsy) project.
 It is built using [wgpu](https://wgpu.rs), which is a future-facing GPU standard (with thanks to the [python wgpu bindings](https://wgpu-py.readthedocs.io/en/stable/guide.html)).
 
-At the moment, `topsy` is a bit of a toy project, but it already works quite well. The future development path will depend on the level
-of interest from the community.
+At the moment, `topsy` is experimental, but has proven to work well in a variety of environments.  It is mainly
+developed and optimized on Apple M-series chips, but has also been shown to work on NVidia GPUs. 
+
+The future development path will depend on the level of interest from the community.
 
 Installing
 ----------
