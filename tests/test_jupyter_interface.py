@@ -64,8 +64,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     min_slider.wait_for()
     max_slider.wait_for()
 
-    vmin_orig = vis._vmin
-    vmax_orig = vis._vmax
+    vmin_orig = vis.colormap.get_parameter('vmin')
+    vmax_orig = vis.colormap.get_parameter('vmax')
 
     # Use keyboard to move the slider instead of drag_to to avoid pointer event interception issues
     min_slider.focus()
@@ -75,8 +75,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     page_session.keyboard.press("ArrowRight")
     page_session.keyboard.press("ArrowRight")
 
-    assert poll_until_true(lambda: vis._vmin < vmin_orig)
-    assert poll_until_true(lambda: vis._vmax > vmax_orig)
+    assert poll_until_true(lambda: vis.colormap.get_parameter('vmin') < vmin_orig)
+    assert poll_until_true(lambda: vis.colormap.get_parameter('vmax') > vmax_orig)
 
 def test_rgb_map(solara_test, page_session: Page):
     vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, rgb=True)

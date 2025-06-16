@@ -226,7 +226,7 @@ class VisualizerBase:
 
         colormap_params = self._colormap.get_parameters()
 
-        if changed_type:
+        if changed_type or colormap_params['vmin'] is None or colormap_params['vmax'] is None:
             logger.info("Autorange colormap parameters")
             self._colormap.autorange(self._sph.get_image())
 

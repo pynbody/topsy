@@ -8,6 +8,8 @@ from rendercanvas import BaseRenderCanvas
 
 from .lineedit import MyLineEdit
 
+from ...colormap.ui import GenericController, ControlSpec, ColorMapController, BivariateColorMapController, RGBMapController
+
 import math
 import logging
 
@@ -78,10 +80,6 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
         return (self._unscale_float(scaled_value[0]), self._unscale_float(scaled_value[1]))
 
 
-
-from ..generic_colormap import (
-    GenericController, ColorMapController, BivariateColorMapController, RGBMapController, ControlSpec, LayoutSpec
-)
 
 class ColorMapControlsBase(QtWidgets.QDialog):
     controller_class : GenericController = None
