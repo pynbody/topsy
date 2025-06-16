@@ -71,8 +71,6 @@ def test_colormap(vis, input_image, mode, log_scale, folder):
         'log': log_scale,
     })
 
-    print("Colormap parameters:", cmap.get_parameters())
-
     image = cmap.sph_raw_output_to_image(input_image)
 
     assert image.shape == (200, 200, 4)
@@ -180,6 +178,23 @@ def test_colormap_updating(vis):
     cmap.update_parameters({'type': 'bivariate'})
     assert isinstance(cmap._impl, colormap.implementation.BivariateColormap)
     assert impl_id != id(cmap._impl)  # should create a new implementation
+
+def test_rgb_colormap_vmin_vmax():
+    """Test that RGB colormap can be updated either with vmin/vmax or with min_mag/max_mag"""
+    vis = topsy.test(100, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, rgb=True)
+
+    vis.colormap.update_parameters({'vmin': 1.0, 'vmax': 2.0})
+    assert vis.colormap.get_parameter('vmin') == 1.0
+    assert vis.colormap.get_parameter('vmax') == 2.0
+    assert np.allclose(vis.colormap.get_parameter('min_mag'), 31.57212566586528)
+    assert np.allclose(vis.colormap.get_parameter('max_mag'), 34.07212566586528)
+
+    vis.colormap.update_parameters({'min_mag': 1.0, 'max_mag': 2.0})
+    assert np.allclose(vis.colormap.get_parameter('min_mag'), 1.0)
+    assert np.allclose(vis.colormap.get_parameter('max_mag'), 2.0)
+    assert np.allclose(vis.colormap.get_parameter('vmin'), 13.828850266346112)
+    assert np.allclose(vis.colormap.get_parameter('vmax'), 14.228850266346113)
+
 
 def test_colormap_dict_access(vis):
     """Test that the colormap can be accessed as a dictionary"""

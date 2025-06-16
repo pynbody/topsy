@@ -65,14 +65,15 @@ class ColormapHolder:
 
         Returns True if the colormap was recreated, False if it was updated in place.
         """
-        parameters = self.get_parameters() | parameters  # merge with existing parameters
-        if self._impl is None and self._class_from_parameters(parameters) is None:
+        all_parameters = self.get_parameters() | parameters  # merge with existing parameters
+        if self._impl is None and self._class_from_parameters(all_parameters) is None:
             return # we are in an initialization phase and it's fine to have no colormap yet
-        if self._impl is None or not self._impl.accepts_parameters(parameters):
-            self._impl = self.instance_from_parameters(parameters, self._device, self._input_texture,
+        if self._impl is None or not self._impl.accepts_parameters(all_parameters):
+            self._impl = self.instance_from_parameters(all_parameters, self._device, self._input_texture,
                                                        self._output_format)
             return True
         else:
+            # Update the existing colormap parameters, without passing back in already known parameters
             self._impl.update_parameters(parameters)
             return False
 

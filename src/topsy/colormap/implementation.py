@@ -485,8 +485,6 @@ class RGBColormap(Colormap):
         params = super().get_parameters()
         params['min_mag'] = self._log_output_to_mag_per_arcsec2(params['vmax'])
         params['max_mag'] = self._log_output_to_mag_per_arcsec2(params['vmin'])
-        del params['vmin']
-        del params['vmax']
         return params
 
     def get_parameter(self, name: str):
