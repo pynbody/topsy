@@ -424,8 +424,8 @@ class Colormap(ColormapBase):
 
     def _update_parameter_buffer(self, width, height, mass_scale):
         parameters = np.zeros((), dtype=self.shader_parameter_dtype)
-        d_vmin = self._params.get('density_vmin', 0.0)
-        d_vmax = self._params.get('density_vmax', 1.0)
+        d_vmin = self._params.get('density_vmin', 0.0) or 0.0
+        d_vmax = self._params.get('density_vmax', 1.0) or 1.0
         parameters["density_vmin"] = d_vmin - np.log10(mass_scale)
         parameters["density_vmax"] = d_vmax - np.log10(mass_scale)
 

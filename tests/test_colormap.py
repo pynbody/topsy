@@ -166,3 +166,29 @@ def test_colormap_holder_instantiation(vis):
         assert type(colormap_class) == spec["expected"]
 
 
+def test_colormap_updating(vis):
+    """Test that updating the colormap correctly decides whether to create a new implementation or not"""
+    cmap = vis.colormap
+    cmap.update_parameters({'type': 'density'})
+    assert isinstance(cmap._impl, colormap.implementation.Colormap)
+    impl_id = id(cmap._impl)
+
+    cmap.update_parameters({'vmin': 0.0, 'vmax': 20.0})
+    assert impl_id == id(cmap._impl)  # should not create a new implementation
+
+    
+    cmap.update_parameters({'type': 'bivariate'})
+    assert isinstance(cmap._impl, colormap.implementation.BivariateColormap)
+    assert impl_id != id(cmap._impl)  # should create a new implementation
+
+def test_colormap_dict_access(vis):
+    """Test that the colormap can be accessed as a dictionary"""
+    cmap = vis.colormap
+    cmap.update_parameters({'type': 'density', 'vmin': 0.0, 'vmax': 20.0})
+
+    assert cmap['type'] == 'density'
+    assert cmap['vmin'] == 0.0
+    assert cmap['vmax'] == 20.0
+
+    cmap['vmin'] = 5.0
+    assert cmap['vmin'] == 5.0

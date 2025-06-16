@@ -139,3 +139,25 @@ def test_synchronizer_custom_setter():
 
     assert source.value == 2
     assert source.sub.value == 84
+
+
+def test_synchronize_with_dict():
+    source = DummyTarget()
+    source.data = {'key1': 1, 'key2': 2}
+    target1 = DummyTarget()
+    target1.data = {'key1': 0, 'key2': 0}
+
+    synchronizer = ViewSynchronizer(['data[key1]', 'data[key2]'])
+    synchronizer.add_view(source)
+    synchronizer.add_view(target1)
+
+    assert target1.data['key1'] == 0
+    assert target1.data['key2'] == 0
+    synchronizer.perpetuate_update(source)
+
+    assert target1.data['key1'] == 1
+    assert target1.data['key2'] == 2
+    synchronizer.perpetuate_update(target1)
+
+    assert source.data['key1'] == 1
+    assert source.data['key2'] == 2

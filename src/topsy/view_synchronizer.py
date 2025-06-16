@@ -32,7 +32,14 @@ class ViewSynchronizer:
         path = var.split('.')
         value = source
         for p in path:
-            value = getattr(value, p)
+            if '[' in p:
+                # parse array-like access, e.g. name[key] should get attr name and use key to index it
+                attr, key = p.split('[')
+                if key.endswith(']'):
+                    key = key[:-1]
+                value = getattr(value, attr)[key]
+            else:
+                value = getattr(value, p)
         return value
 
     @staticmethod
@@ -43,7 +50,17 @@ class ViewSynchronizer:
         target = source
         for p in path[:-1]:
             target = getattr(target, p)
-        setattr(target, path[-1], value)
+        p = path[-1]
+        if '[' in p:
+            # parse array-like access, e.g. name[key] should get attr name and use key to index it
+            attr, key = p.split('[')
+            if key.endswith(']'):
+                key = key[:-1]
+            target = getattr(target, attr)
+            target[key] = value
+        else:
+            # normal attribute assignment
+            setattr(target, path[-1], value)
 
     def perpetuate_update(self, source):
         """Called when a view has been updated and the update needs to be perpetuated to other views.

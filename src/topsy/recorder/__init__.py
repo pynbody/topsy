@@ -24,8 +24,8 @@ logger.setLevel(logging.INFO)
 
 
 class VisualizationRecorder:
-    _record_properties = ['colormap_name', 'quantity_name', 'log_scale', 'vmin', 'vmax', 'gamma', # NB ordering is important to prevent triggering auto-scaling
-                          'colormap.density_vmin', 'colormap.density_vmax', 'rotation_matrix', 'scale', 'position_offset']
+    _record_properties = ['colormap[type]', 'quantity_name', 'colormap[log]', 'colormap[vmin]', 'colormap[vmax]', 'colormap[gamma]', # NB ordering is important to prevent triggering auto-scaling
+                          'colormap[density_vmin]', 'colormap[density_vmax]', 'rotation_matrix', 'scale', 'position_offset']
     _record_interpolation_class_smoothed = [StepInterpolator, StepInterpolator, StepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator,
                                             SmoothedStepInterpolator, SmoothedStepInterpolator, SmoothedStepInterpolator, SmoothedRotationInterpolator, SmoothedLinearInterpolator, SmoothedLinearInterpolator]
     _record_interpolation_class_unsmoothed = [StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator, StepInterpolator,

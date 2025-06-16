@@ -140,3 +140,15 @@ class ColormapHolder:
             return RGBMapController(visualizer, refresh_ui_callback)
         else:
             return ColorMapController(visualizer, refresh_ui_callback)
+
+    def __getitem__(self, key: str):
+        """
+        Allow dictionary-like access to colormap parameters.
+        """
+        return self.get_parameter(key)
+
+    def __setitem__(self, key: str, value):
+        """
+        Allow dictionary-like setting of colormap parameters.
+        """
+        self.update_parameters({key: value})

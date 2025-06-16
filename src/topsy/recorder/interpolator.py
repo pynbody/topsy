@@ -141,9 +141,9 @@ class SmoothedStepInterpolator(StepInterpolator):
         else:
             last_value = self._last_value
             new_value = super().__call__(t)
-            if new_value is self.no_value or new_value == last_value:
+            if new_value is self.no_value or new_value is None or new_value == last_value:
                 return self.no_value
-            elif last_value is self.no_value:
+            elif last_value is self.no_value or last_value is None:
                 return new_value
             else:
                 self._start_value = last_value
