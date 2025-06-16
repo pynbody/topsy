@@ -1,6 +1,8 @@
 struct ColormapParams {
     vmin: f32,
     vmax: f32,
+    density_vmin: f32, // used only in bivariate case
+    density_vmax: f32, // used only in bivariate case
     window_aspect_ratio: f32,
     gamma: f32
 };
@@ -21,8 +23,13 @@ var image_texture: texture_2d<f32>;
 @group(0) @binding(1)
 var image_sampler: sampler;
 
+#ifdef BIVARIATE
+@group(0) @binding(2)
+var colormap_texture: texture_2d<f32>;
+#else
 @group(0) @binding(2)
 var colormap_texture: texture_1d<f32>;
+#endif
 
 @group(0) @binding(3)
 var colormap_sampler: sampler;
@@ -65,11 +72,12 @@ fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
     return output;
 }
 
+fn log10(value: f32) -> f32 {
+    return log(value)/2.30258509;
+}
 
 @fragment
 fn fragment_main(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
-
     var output: FragmentOutput;
 
     var values = textureSample(image_texture, image_sampler, input.texcoord);
@@ -80,37 +88,52 @@ fn fragment_main(input: VertexOutput) -> FragmentOutput {
     // ultimately, this should be possible within wgsl itself by using a const, but this doesn't
     // seem to be supported at present
 
-    [[WEIGHTED_MEAN]] value = values.g/values.r;
-    [[DENSITY]] value = values.r;
-    [[LOG_SCALE]] value = log(value)/LN_10;
+    #ifdef BIVARIATE
+        var value_2d : vec2<f32>;
+        value_2d.x = log10(values.r);
+        value_2d.x -= colormap_params.density_vmin;
+        value_2d.x /= (colormap_params.density_vmax - colormap_params.density_vmin);
 
-    value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
-    output.color = textureSample(colormap_texture, colormap_sampler, value);
+        #ifdef WEIGHTED_MEAN
+            value_2d.y = values.g / values.r;
+        #else
+            value_2d.y = values.r;
+        #endif
 
+        #ifdef LOG_SCALE
+            value_2d.y = log10(value_2d.y);
+        #endif
+
+        value_2d.y -= colormap_params.vmin;
+        value_2d.y /= (colormap_params.vmax - colormap_params.vmin);
+
+        value_2d = clamp(value_2d, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+        output.color = textureSample(colormap_texture, colormap_sampler, value_2d);
+
+    #else // not BIVARIATE
+
+        #ifdef WEIGHTED_MEAN
+            value = values.g/values.r;
+        #else
+            value = values.r;
+        #endif
+
+        #ifdef LOG_SCALE
+            value = log10(value);
+        #endif
+
+        value = clamp((value-colormap_params.vmin)/(colormap_params.vmax-colormap_params.vmin), 0.0, 1.0);
+        output.color = textureSample(colormap_texture, colormap_sampler, value);
+    #endif // not BIVARIATE
     return output;
 }
 
-@fragment
-fn fragment_main_mono(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
-    var output: FragmentOutput;
-    var value : f32;
-
-    value = textureSample(image_texture, image_sampler, input.texcoord).r;
-
-    [[LOG_SCALE]] value = log(value)/LN_10;
-
-    // clamp lower limit but not upper limit (for HDR)
-    value = max((value - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0);
-
-    output.color = vec4<f32>(value, value, value, 1.0);
-
-    return output;
+fn gamma_map(value: f32, vmin: f32, vmax: f32, gamma: f32) -> f32 {
+    return pow(max((value - vmin)/(vmax - vmin), 0.0), gamma);
 }
 
 @fragment
 fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
-    var LN_10 = 2.30258509;
     var output: FragmentOutput;
     var value_r: f32;
     var value_g: f32;
@@ -120,14 +143,15 @@ fn fragment_main_tri(input: VertexOutput) -> FragmentOutput {
     value_g = textureSample(image_texture, image_sampler, input.texcoord).g;
     value_b = textureSample(image_texture, image_sampler, input.texcoord).b;
 
-    [[LOG_SCALE]] value_r = log(value_r)/LN_10;
-    [[LOG_SCALE]] value_g = log(value_g)/LN_10;
-    [[LOG_SCALE]] value_b = log(value_b)/LN_10;
+#ifdef LOG_SCALE
+    value_r = log10(value_r);
+    value_g = log10(value_g);
+    value_b = log10(value_b);
+#endif
 
-    // clamp lower limit but not upper limit (for HDR)
-    value_r = pow(max((value_r - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
-    value_g = pow(max((value_g - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
-    value_b = pow(max((value_b - colormap_params.vmin)/(colormap_params.vmax - colormap_params.vmin), 0.0), colormap_params.gamma);
+    value_r = gamma_map(value_r, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
+    value_g = gamma_map(value_g, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
+    value_b = gamma_map(value_b, colormap_params.vmin, colormap_params.vmax, colormap_params.gamma);
 
     output.color = vec4<f32>(value_r, value_g, value_b, 1.0);
 

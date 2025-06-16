@@ -264,9 +264,7 @@ class Overlay(metaclass=ABCMeta):
             self._contents = self.render_contents()
         return self._contents
 
-    def invalidate_contents(self):
-        """Mark the contents as invalid, needing a re-render"""
-        self._contents = None
+
     @abstractmethod
     def render_contents(self) -> np.ndarray:
         """Must return a 2D image with RGBA channels for display."""

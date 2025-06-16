@@ -29,13 +29,13 @@ def jupyter_vis(solara_test):
 def test_colormap_name_select(jupyter_vis, page_session: Page):
     vis = jupyter_vis
 
-    assert vis.colormap_name == "twilight_shifted"
+    assert vis.colormap.get_parameter('colormap_name') == "twilight_shifted"
 
     sel = page_session.locator("select:has-text('twilight_shifted')")
     sel.wait_for()
     sel.select_option("twilight")
 
-    assert poll_until_true(lambda: vis.colormap_name == "twilight")
+    assert poll_until_true(lambda: vis.colormap.get_parameter('colormap_name') == "twilight")
 
     assert vis.quantity_name == None
 
@@ -64,8 +64,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     min_slider.wait_for()
     max_slider.wait_for()
 
-    vmin_orig = vis.vmin
-    vmax_orig = vis.vmax
+    vmin_orig = vis.colormap.get_parameter('vmin')
+    vmax_orig = vis.colormap.get_parameter('vmax')
 
     # Use keyboard to move the slider instead of drag_to to avoid pointer event interception issues
     min_slider.focus()
@@ -75,8 +75,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     page_session.keyboard.press("ArrowRight")
     page_session.keyboard.press("ArrowRight")
 
-    assert poll_until_true(lambda: vis.vmin < vmin_orig)
-    assert poll_until_true(lambda: vis.vmax > vmax_orig)
+    assert poll_until_true(lambda: vis.colormap.get_parameter('vmin') < vmin_orig)
+    assert poll_until_true(lambda: vis.colormap.get_parameter('vmax') > vmax_orig)
 
 def test_rgb_map(solara_test, page_session: Page):
     vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, rgb=True)

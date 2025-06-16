@@ -3,6 +3,7 @@ import matplotlib, matplotlib.backends.backend_agg
 import matplotlib.figure as figure
 import matplotlib.colors as colors
 import numpy as np
+import wgpu
 
 from .overlay import Overlay
 
@@ -12,9 +13,13 @@ class ColorbarOverlay(Overlay):
         self.dpi_logical = dpi_logical
         self.kwargs = kwargs
         self._aspect_ratio = 0.2
-        self.vmin = vmin
-        self.vmax = vmax
-        self.colormap = colormap
+
+        params = visualizer.colormap.get_parameters()
+
+        self._vmin = params['vmin']
+        self._vmax = params['vmax']
+        self._colormap = params['colormap_name']
+
         self.label = label
         self._last_width = None
         self._last_height = None
@@ -32,6 +37,24 @@ class ColorbarOverlay(Overlay):
         self._last_width = pixel_width
         self._last_height = pixel_height
         return x, y, width, height
+
+    def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, target_texture_view: wgpu.GPUTextureView,
+                           clear=False):
+
+        self._ensure_texture_is_current()
+        super().encode_render_pass(command_encoder, target_texture_view, clear)
+
+    def _ensure_texture_is_current(self):
+        params = self._visualizer.colormap.get_parameters()
+        changed = (self._vmin != params['vmin'] or
+                   self._vmax != params['vmax'] or
+                   self._colormap != params['colormap_name'])
+        if changed:
+            self._vmin = params['vmin']
+            self._vmax = params['vmax']
+            self._colormap = params['colormap_name']
+            self.update()
+
     def render_contents(self):
         dpi_physical = self.dpi_logical*self._visualizer.canvas.pixel_ratio
 
@@ -42,8 +65,8 @@ class ColorbarOverlay(Overlay):
 
         canvas = matplotlib.backends.backend_agg.FigureCanvasAgg(fig)
 
-        cmap = matplotlib.colormaps[self.colormap]
-        cNorm = colors.Normalize(vmin=self.vmin, vmax=self.vmax)
+        cmap = matplotlib.colormaps[self._colormap]
+        cNorm = colors.Normalize(vmin=self._vmin, vmax=self._vmax)
         cb1 = matplotlib.colorbar.ColorbarBase(fig.add_axes([0.05, 0.05, 0.3, 0.9]),
                                                cmap=cmap, norm=cNorm, orientation='vertical')
         cb1.set_label(self.label)

@@ -6,6 +6,7 @@ from . import loader, split_buffers
 
 logger = logging.getLogger(__name__)
 
+_UNSET = object()
 
 class ParticleBuffers:
     def __init__(self, loader: loader.AbstractDataLoader, device: wgpu.GPUDevice, max_draw_calls_per_buffer: int):
@@ -15,8 +16,8 @@ class ParticleBuffers:
         self._loader = loader
 
         self.quantity_name = None
-        self._named_quantity_buffers = None
-        self._quantity_buffer_is_for_name = None
+        self._mass_and_quantity_buffers = None
+        self._quantity_buffer_is_for_name = _UNSET # can't use None here because None is valid (means 'density render')
         self._current_vertex_buffers = []
 
         self._create_indirect_draw_buffers(max_draw_calls_per_buffer)
@@ -50,12 +51,10 @@ class ParticleBuffers:
             match name:
                 case "pos_smooth":
                     buffers.append(self.get_pos_smooth_buffers())
-                case "mass":
-                    buffers.append(self.get_mass_buffers())
-                case "quantity":
-                    buffers.append(self.get_quantity_buffers())
-                case "rgb_masses":
-                    buffers.append(self.get_rgb_masses_buffers())
+                case "mass_and_quantity":
+                    buffers.append(self.get_mass_and_quantity_buffers())
+                case "rgb":
+                    buffers.append(self.get_rgb_buffers())
                 case _:
                     raise ValueError(f"Unknown buffer name: {name}")
         self._current_vertex_buffers = buffers
@@ -91,38 +90,29 @@ class ParticleBuffers:
             self._split_buffers.write_buffers(self._device, self._pos_smooth_buffers, data)
         return self._pos_smooth_buffers
 
-    def get_mass_buffers(self):
-        if not hasattr(self, "_mass_buffers"):
-            logger.info("Creating mass buffer")
-            data = self._loader.get_mass().astype(np.float32)
-            self._mass_buffers = self._split_buffers.create_buffers(self._device, 4,
-                                                                     wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
-            self._split_buffers.write_buffers(self._device, self._mass_buffers, data)
-        return self._mass_buffers
-
-    def get_quantity_buffers(self):
-        if self.quantity_name is None:
-            return self.get_mass_buffers()
-        elif self._quantity_buffer_is_for_name != self.quantity_name:
-            self._create_quantity_buffers_if_needed()
-            logger.info(f"Transferring {self.quantity_name} into buffer")
-            data = self._loader.get_named_quantity(self.quantity_name).view(np.float32)
-            self._split_buffers.write_buffers(self._device, self._named_quantity_buffers, data)
+    def get_mass_and_quantity_buffers(self):
+        if self._quantity_buffer_is_for_name != self.quantity_name:
+            self._create_mass_and_quantity_buffers_if_needed()
+            data = np.zeros((len(self._loader), 3), dtype=np.float32)
+            data[:, 0] = self._loader.get_mass()
+            if self.quantity_name is not None:
+                data[:, 1] = self._loader.get_named_quantity(self.quantity_name)
+            self._split_buffers.write_buffers(self._device, self._mass_and_quantity_buffers, data)
             self._quantity_buffer_is_for_name = self.quantity_name
-        return self._named_quantity_buffers
+        return self._mass_and_quantity_buffers
 
-    def get_rgb_masses_buffers(self):
+    def get_rgb_buffers(self):
         if not hasattr(self, "_rgb_masses_buffers"):
-            logger.info("Creating RGB masses buffer")
+            logger.info("Creating rgb buffer")
             data = self._loader.get_rgb_masses().view(np.float32)
             self._rgb_masses_buffers = self._split_buffers.create_buffers(self._device, 4 * 3,
                                                 wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
             self._split_buffers.write_buffers(self._device, self._rgb_masses_buffers, data)
         return self._rgb_masses_buffers
 
-    def _create_quantity_buffers_if_needed(self):
-        if self._named_quantity_buffers is not None:
+    def _create_mass_and_quantity_buffers_if_needed(self):
+        if self._mass_and_quantity_buffers is not None:
             return
         logger.info("Creating quantity buffer")
-        self._named_quantity_buffers = self._split_buffers.create_buffers(self._device, 4,
-                                             wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
+        self._mass_and_quantity_buffers = self._split_buffers.create_buffers(self._device, 4 * 3,
+                                                                             wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)

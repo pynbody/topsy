@@ -24,6 +24,19 @@ def test_linear_interpolator():
     assert interp(4.0) == 0.0
     assert interp(4.01) is interp.no_value
 
+def test_smoothed_step_interpolation_with_none():
+    timestream = [(0.0, 0.0), (1.0, None), (2.0, 4.0), (4.0, 0.0)]
+    interp = interpolator.SmoothedStepInterpolator(timestream)
+    assert interp(0.0) == 0.0
+    assert interp(0.5) is interp.no_value
+    assert interp(1.99) is interp.no_value
+    assert interp(2.01) == 4.0
+    assert interp(3.0) is interp.no_value
+    assert interp(4.0) == 4.0
+    assert interp(4.125) == 2.0
+    assert interp(4.25) == 0.0
+    assert interp(4.5) is interp.no_value
+
 def test_rotation_interpolator():
     timestream = [(0.0, np.eye(3)), (1.0, np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]))]
     interp = interpolator.RotationInterpolator(timestream)

@@ -217,7 +217,7 @@ class RenderProgressionWithCells(RenderProgression):
 
     def get_fraction_volume_selected(self):
         """Get the number of cells selected for inclusion in next render pass"""
-        return len(self._selected_cells)/self._cell_layout.get_num_cells()
+        return max(1,len(self._selected_cells))/self._cell_layout.get_num_cells()
 
 
 
