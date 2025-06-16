@@ -120,7 +120,10 @@ class PynbodyDataInMemory(AbstractDataLoader):
         return len(self.snapshot)
 
     def get_periodicity_scale(self):
-        return float(self.snapshot.properties['boxsize'].in_units("kpc"))
+        if 'boxsize' in self.snapshot.properties:
+            return float(self.snapshot.properties['boxsize'].in_units("kpc"))
+        else:
+            return None
 
     def get_filename(self):
         return self.snapshot.filename
@@ -204,7 +207,7 @@ class PynbodyDataLoader(PynbodyDataInMemory):
 
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = config.TEST_DATA_NUM_PARTICLES_DEFAULT,
-                 n_cells = 10, seed: int = 1337, with_cells = False):
+                 n_cells = 10, seed: int = 1337, with_cells = False, periodic = False):
         self._n_particles = n_particles
         self._gmm_weights = [0.5, 0.4, 0.1]  # should sum to 1
         self._gmm_means = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [6.0, 10.0, 0.0]])
@@ -212,6 +215,8 @@ class TestDataLoader(AbstractDataLoader):
 
         self._gmm_pos = self._generate_samples(seed)
         self._gmm_den = self._evaluate_density(self._gmm_pos)
+
+        self._periodic = periodic
 
         if with_cells:
             self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self._gmm_pos, self._gmm_pos.min()-1e-3,
@@ -281,7 +286,7 @@ class TestDataLoader(AbstractDataLoader):
         return "test data"
 
     def get_periodicity_scale(self):
-        return 100.0
+        return 100.0 if self._periodic else None
 
     def get_rgb_masses(self):
         rgb = np.empty((len(self._gmm_pos), 3), dtype=np.float32)

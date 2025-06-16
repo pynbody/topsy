@@ -5,7 +5,7 @@ import numpy as np
 
 class SimCube(Line):
     def __init__(self, visualizer, color, width):
-        size = visualizer.data_loader.get_periodicity_scale()
+        size = visualizer.data_loader.get_periodicity_scale() or 1.0
         line_starts_ends = [[0,0,0], [0,0,1],
                             [0,0,0], [0,1,0],
                             [0,0,0], [1,0,0],
