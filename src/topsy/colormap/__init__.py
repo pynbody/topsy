@@ -1,6 +1,8 @@
 import numpy as np
 import wgpu
 
+from . import implementation, surface
+
 from .implementation import ColormapBase, NoColormap, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
 from .ui import ColorMapController, BivariateColorMapController, RGBMapController, GenericController
 from .. import config

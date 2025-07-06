@@ -228,6 +228,8 @@ class VisualizerBase:
         elif self._bivariate:
             colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'bivariate'
+        elif self._surface:
+            colormap_params['type'] = 'surface'
         else:
             colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'density'
@@ -240,7 +242,7 @@ class VisualizerBase:
             logger.info("Autorange colormap parameters")
             self._colormap.autorange(self._sph.get_image())
 
-        if colormap_params['type'] != 'rgb':
+        if colormap_params['type'] not in ('rgb', 'surface'):
             self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
                                                       colormap_params['colormap_name'], self._get_colorbar_label())
 

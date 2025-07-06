@@ -1,4 +1,9 @@
-// Vertex shader is shared with standard colormap
+// Vertex and fragment shaders for surface rendering
+
+struct VertexOutput {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) texCoord: vec2<f32>,
+}
 
 // Fragment shader
 @group(0) @binding(0) var colorTexture: texture_2d<f32>;
@@ -10,6 +15,7 @@ struct Uniforms {
     lightColor: vec3<f32>,     // Light color
     ambientColor: vec3<f32>,   // Ambient light color
     texelSize: vec2<f32>,      // 1.0 / texture dimensions
+    windowAspectRatio: f32,    // Window aspect ratio for proper scaling
 }
 
 @group(0) @binding(2) var<uniform> uniforms: Uniforms;
@@ -24,7 +30,7 @@ fn computeNormal(texCoord: vec2<f32>) -> vec3<f32> {
     let texelSize = uniforms.texelSize;
 
     // Sample depth at neighboring pixels
-    let depthCenter = sampleDepth(texCoord);
+
     let depthLeft   = sampleDepth(texCoord + vec2<f32>(-texelSize.x, 0.0));
     let depthRight  = sampleDepth(texCoord + vec2<f32>(texelSize.x, 0.0));
     let depthUp     = sampleDepth(texCoord + vec2<f32>(0.0, -texelSize.y));
@@ -36,32 +42,62 @@ fn computeNormal(texCoord: vec2<f32>) -> vec3<f32> {
 
     // Construct normal vector
     // The normal points "outward" from the surface
-    let normal = normalize(vec3<f32>(-dX, -dY, 1.0));
+    let normal = normalize(vec3<f32>(-dX, -dY, texelSize.x));
 
     return normal;
 }
 
-// Simple Lambertian lighting
-fn computeLighting(normal: vec3<f32>) -> vec3<f32> {
+
+fn computeLighting(texCoord: vec2<f32>) -> vec3<f32> {
+    let normal = computeNormal(texCoord);
+    let depthCenter = sampleDepth(texCoord);
     let lightDir = uniforms.lightDirection;
     let NdotL = max(dot(normal, lightDir), 0.0);
 
     let diffuse = uniforms.lightColor * NdotL;
     let ambient = uniforms.ambientColor;
 
-    return diffuse + ambient;
+    return (diffuse + ambient)*depthCenter;
+}
+
+@vertex
+fn vertex_main(@builtin(vertex_index) vertexIndex : u32) -> VertexOutput {
+    var pos = array<vec2<f32>, 4>(
+        vec2(-1.0, -1.0),
+        vec2(-1.0, 1.0),
+        vec2(1.0, -1.0),
+        vec2(1.0, 1.0)
+    );
+
+    // Apply aspect ratio scaling
+    if (uniforms.windowAspectRatio > 1.0) {
+        for (var i = 0u; i < 4u; i = i + 1u) {
+            pos[i].y = pos[i].y * uniforms.windowAspectRatio;
+        }
+    } else {
+        for (var i = 0u; i < 4u; i = i + 1u) {
+            pos[i].x = pos[i].x / uniforms.windowAspectRatio;
+        }
+    }
+
+    var texc = array<vec2<f32>, 4>(
+        vec2(0.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 1.0),
+        vec2(1.0, 0.0)
+    );
+
+    var output: VertexOutput;
+    output.pos = vec4<f32>(pos[vertexIndex], 0.0, 1.0);
+    output.texCoord = texc[vertexIndex];
+
+    return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Sample the original color (RGB channels)
-    let originalColor = textureSample(colorTexture, textureSampler, input.texCoord);
-
-    // Compute surface normal from depth
-    let normal = computeNormal(input.texCoord);
-
-    // Compute lighting
-    let lighting = computeLighting(normal);
+    let lighting = computeLighting(input.texCoord);
 
     return vec4<f32>(lighting, 1.0);
-}
+
+ }

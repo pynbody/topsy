@@ -127,7 +127,7 @@ fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
     var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
 
     value *= input.intensities.x;
-    var output = FragmentOutputWeighting(vec2<f32>(value, value*input.intensities.y));
+    var output = FragmentOutputWeighting(vec2<f32>(value, input.intensities.y));
 
     return output;
 }
