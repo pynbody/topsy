@@ -3,7 +3,8 @@ struct TransformParams {
     scale_factor: f32,
     clipspace_size_min: f32,
     clipspace_size_max: f32,
-    boxsize_by_2_clipspace: f32
+    boxsize_by_2_clipspace: f32,
+    density_cut: f32
 };
 
 struct VertexInput {
@@ -81,12 +82,35 @@ fn vertex_weighting(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-@vertex
-fn vertex_depth(input: VertexInput) -> VertexOutput {
+fn vertex_calculate_depth(input: VertexInput) -> VertexOutput {
     var output: VertexOutput = vertex_calculate_positions(input);
     output.intensities.x = input.quantities.x/(input.pos.w * input.pos.w);
     output.intensities.y = output.pos.z;
     return output;
+}
+
+@vertex
+fn vertex_depth(input: VertexInput) -> VertexOutput {
+    return vertex_calculate_depth(input);
+}
+
+@vertex
+fn vertex_depth_with_cut(input: VertexInput) -> VertexOutput {
+    // This could be made more efficient by a compute shader passing once through the buffer
+    // which would only need to be updated when the user changed the density threshold
+    var result: VertexOutput;
+
+    var rho: f32 = input.quantities.x / pow(input.pos.w,3.0f);
+
+    if(rho > trans_params.density_cut) {
+        result = vertex_calculate_depth(input);
+    } else {
+        // put somewhere out of the clip space:
+        result.pos.x = 100;
+        result.pos.y = 100;
+        result.pos.w = 100;
+    }
+    return result;
 }
 
 

@@ -28,8 +28,28 @@ class SPH:
     _vertex_name = "vertex_weighting" # as defined in sph.wgsl
     _fragment_name = "fragment_weighting"
 
+    _blend = {
+                "color": {
+                    "src_factor": wgpu.BlendFactor.one,
+                    "dst_factor": wgpu.BlendFactor.one,
+                    "operation": wgpu.BlendOperation.add,
+                },
+                "alpha": {
+                    "src_factor": wgpu.BlendFactor.one,
+                    "dst_factor": wgpu.BlendFactor.one,
+                    "operation": wgpu.BlendOperation.add,
+                },
+              }
+
+    _transform_params_dtype = [("transform", np.float32, (4, 4)),
+                              ("scale_factor", np.float32, (1,)),
+                              ("min_max_size", np.float32, (2,)),
+                              ("boxsize_by_2_clipspace", np.float32, (1,)),
+                              ("density_cut", np.float32, (1,))]
+
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False, share_render_progression=None):
+        logger.info(f"Initializing {self.__class__} with resolution {render_resolution}")
         self._visualizer = visualizer
 
         logger.info(f"Creating SPH renderer with resolution {render_resolution}")
@@ -229,51 +249,39 @@ class SPH:
                     "targets": [
                         {
                             "format": self.render_format,
-                            "blend": {
-                                "color": {
-                                    "src_factor": wgpu.BlendFactor.one,
-                                    "dst_factor": wgpu.BlendFactor.one,
-                                    "operation": wgpu.BlendOperation.add,
-                                },
-                                "alpha": {
-                                    "src_factor": wgpu.BlendFactor.one,
-                                    "dst_factor": wgpu.BlendFactor.one,
-                                    "operation": wgpu.BlendOperation.add,
-                                },
-                              }
+                            "blend": self._blend
                         }
                     ]
                 }
             )
 
+
     def _update_transform_buffer(self):
+        transform_params = self._get_transform_params()
+
+        self.last_transform_params = transform_params
+        self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
+
+    def _get_transform_params(self):
         model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
                                    [0, 1.0, 0, self.position_offset[1]],
                                    [0, 0, 1.0, self.position_offset[2]],
                                    [0, 0, 0.0, 1.0]])
-
         # self._transform is the transformation around the origin (fine for opengl)
         # but in webgpu, the clip space in the z direction is [0,1]
         # so we need a matrix that brings z=0. to z=0.5 and squishes the z direction
         # so that the clipping is the same in all dimensions
         clipcoord_displace = np.array([[1.0, 0, 0, 0.0],
-                             [0, 1.0, 0, 0.0],
-                             [0, 0, 0.5, 0.5],
-                             [0, 0, 0.0, 1.0]])
+                                       [0, 1.0, 0, 0.0],
+                                       [0, 0, 0.5, 0.5],
+                                       [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
-
-        transform[:3,:3] = self.rotation_matrix
+        transform[:3, :3] = self.rotation_matrix
         rotation_and_scaling = transform / self.scale
-
         rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
-
         scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
-        transform_params_dtype = [("transform", np.float32, (4, 4)),
-                                  ("scale_factor", np.float32, (1,)),
-                                  ("min_max_size", np.float32, (2,)),
-                                  ("boxsize_by_2_clipspace", np.float32, (1,)),
-                                  ("padding", np.int32, (1,))]
-        transform_params = np.zeros((), dtype=transform_params_dtype)
+
+        transform_params = np.zeros((), dtype=self._transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         if self._visualizer.periodicity_scale is not None:
@@ -281,16 +289,11 @@ class SPH:
                                                          self._visualizer.periodicity_scale / self.scale
         else:
             transform_params["boxsize_by_2_clipspace"] = 0.0
-
         resolution = self._render_texture.width
         assert resolution == self._render_texture.height
-
         # min_max_size to be sent in viewport coordinates
-        transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
-
-        self.last_transform_params = transform_params
-
-        self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
+        transform_params["min_max_size"] = (2. * self.min_pixels / resolution, 2. * self.max_pixels / resolution)
+        return transform_params
 
     def invalidate(self, draw_reason=DrawReason.CHANGE):
         """Invalidates the current render, so that an attempt to get the current image will fail."""
@@ -435,4 +438,35 @@ class DepthSPH(SPH):
     """Renders a map of the depth of the particles in the scene."""
 
     _vertex_name = "vertex_depth"
+
+class DepthSPHWithOcclusion(DepthSPH):
+    """Renders a map of the front-most particles in the scene, subject to a given density cut"""
+    _vertex_name = "vertex_depth_with_cut"
+
+    _blend = {
+        "color": {
+            "src_factor": wgpu.BlendFactor.one,
+            "dst_factor": wgpu.BlendFactor.one,
+            "operation": wgpu.BlendOperation.max,
+        },
+        "alpha": {
+            "src_factor": wgpu.BlendFactor.one,
+            "dst_factor": wgpu.BlendFactor.one,
+            "operation": wgpu.BlendOperation.max,
+        },
+    }
+
+    def __init__(self, visualizer: Visualizer, render_resolution, wrapping=False, share_render_progression=None):
+        super().__init__(visualizer, render_resolution, wrapping, share_render_progression)
+        mass = self._visualizer.data_loader.get_mass()
+        smooth = self._visualizer.data_loader.get_smooth()
+        rho = mass / smooth**3
+        self._cut_val = np.quantile(rho, 0.7)
+
+    def _get_transform_params(self):
+        tp = super()._get_transform_params()
+        tp["density_cut"] = self._cut_val
+        return tp
+
+
 

@@ -36,9 +36,10 @@ class VisualizerBase:
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
-                 hdr = False, rgb=False, bivariate=False):
+                 hdr = False, rgb=False, bivariate=False, surface=False):
         self._hdr = hdr
         self._rgb = rgb
+        self._surface = surface
         self._bivariate = bivariate
         self._render_resolution = render_resolution
         self._sph_class = sph.SPH
@@ -69,7 +70,11 @@ class VisualizerBase:
         elif self._rgb:
             logger.info("Using RGB renderer")
             self._sph = sph.RGBSPH(self, self._render_resolution)
+        elif self._surface:
+            logger.info("Using depth renderer")
+            self._sph = sph.DepthSPHWithOcclusion(self, self._render_resolution)
         else:
+            logger.info("Using standard SPH renderer")
             self._sph = sph.SPH(self, self._render_resolution)
 
         self.reset_view()
@@ -176,15 +181,20 @@ class VisualizerBase:
     @property
     def quantity_name(self):
         """The name of the quantity being visualised, or None if density projection."""
-        return self.particle_buffers.quantity_name
+        if self._surface:
+            return "depth"
+        else:
+            return self.particle_buffers.quantity_name
 
     @property
     def averaging(self):
         """True if the quantity being visualised is a weighted average, False if it is a mass projection."""
-        return self.particle_buffers.quantity_name is not None
+        return self.quantity_name is not None
 
     @quantity_name.setter
     def quantity_name(self, value):
+        if self._surface:
+            raise ValueError("Cannot set quantity name on surface")
         if value == self.particle_buffers.quantity_name:
             return
 
