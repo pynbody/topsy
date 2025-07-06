@@ -42,7 +42,6 @@ class VisualizerBase:
         self._surface = surface
         self._bivariate = bivariate
         self._render_resolution = render_resolution
-        self._sph_class = sph.SPH
         self._colorbar: Optional[colorbar.ColorbarOverlay] = None
         self._encoder_executor = ThreadPoolExecutor(max_workers=1) # 1 worker to prevent GIL contention
 
@@ -65,24 +64,10 @@ class VisualizerBase:
 
         self._periodic_tiling = periodic_tiling
 
-        if periodic_tiling:
-            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
-        elif self._rgb:
-            logger.info("Using RGB renderer")
-            self._sph = sph.RGBSPH(self, self._render_resolution)
-        elif self._surface:
-            logger.info("Using depth renderer")
-            self._sph = sph.DepthSPHWithOcclusion(self, self._render_resolution)
-        else:
-            logger.info("Using standard SPH renderer")
-            self._sph = sph.SPH(self, self._render_resolution)
+        self._initialize_sph_and_colormap(colormap_name)
 
         self.reset_view()
 
-        self.render_texture = self._sph.get_output_texture()
-        self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
-                                                                          self.canvas_format)
-        self._colormap.update_parameters({'colormap_name': colormap_name})
         self._reinitialize_colormap_and_bar()
 
         self._last_status_update = 0.0
@@ -97,6 +82,28 @@ class VisualizerBase:
                                      (1, 1, 1, 0.3) # color
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
+
+    def _initialize_sph_and_colormap(self, colormap_name = None):
+        if self._periodic_tiling:
+            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
+        elif self._rgb:
+            logger.info("Using RGB renderer")
+            self._sph = sph.RGBSPH(self, self._render_resolution)
+        elif self._surface:
+            logger.info("Using depth renderer")
+            self._sph = sph.DepthSPHWithOcclusion(self, self._render_resolution)
+        else:
+            logger.info("Using standard SPH renderer")
+            self._sph = sph.SPH(self, self._render_resolution)
+
+        if colormap_name is None:
+            colormap_name = self._colormap.get_parameter('colormap_name')
+
+        self.render_texture = self._sph.get_output_texture()
+
+        self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
+                                                                          self.canvas_format)
+        self._colormap.update_parameters({'colormap_name': colormap_name})
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")

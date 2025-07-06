@@ -81,9 +81,7 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
 
 
 
-class ColorMapControlsBase(QtWidgets.QDialog):
-    controller_class : GenericController = None
-
+class ColorMapControls(QtWidgets.QDialog):
     def __init__(self, canvas: BaseRenderCanvas):
         super().__init__(canvas)
         self.setWindowTitle("Color controls")
@@ -91,7 +89,11 @@ class ColorMapControlsBase(QtWidgets.QDialog):
                             | QtCore.Qt.WindowType.FramelessWindowHint)
         self.resize(400, 0)
 
-        self.controller = self.controller_class(canvas._visualizer, self._refresh_ui)
+        self.controller = canvas._visualizer.colormap.make_ui_controller(
+            canvas._visualizer,
+            self._refresh_ui
+        )
+
         # build UI
         self._widgets: Dict[str, QtWidgets.QWidget] = {}
         root_spec = self.controller.get_layout()
@@ -209,13 +211,4 @@ class ColorMapControlsBase(QtWidgets.QDialog):
 
         root = self.controller.get_layout()
         walk(root)
-
-class ColorMapControls(ColorMapControlsBase):
-    controller_class = ColorMapController
-
-class BivariateColorMapControls(ColorMapControlsBase):
-    controller_class = BivariateColorMapController
-
-class RGBColorControls(ColorMapControlsBase):
-    controller_class = RGBMapController
 

@@ -13,6 +13,7 @@ class ColorAsSurfaceMap(Colormap):
         'light_direction': [0.0, 1.0/np.sqrt(2.), 1.0/np.sqrt(2.)],
         'light_color': [1.0, 1.0, 1.0],
         'ambient_color': [0.0, 0.0, 0.2],
+        'log_den_threshold': None,
         'weighted_average': False
     }
     

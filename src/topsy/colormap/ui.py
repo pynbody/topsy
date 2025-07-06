@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import matplotlib as mpl
 import abc
 
-from .. import config, drawreason
+from .. import config, drawreason, sph
 
 @dataclass
 class ControlSpec:
@@ -178,4 +178,28 @@ class RGBMapController(GenericController):
                 ),
             ],
         )
-    
+
+class SurfaceMapController(GenericController):
+    def set_den_cut(self, val):
+        self.visualizer._sph.set_log_density_cut(val)
+        self.visualizer.invalidate(drawreason.DrawReason.CHANGE)
+
+    def get_layout(self) -> LayoutSpec:
+        sph_ = self.visualizer._sph
+        assert isinstance(sph_, sph.DepthSPHWithOcclusion)
+
+        cut_range = sph_.get_log_density_cut_range()
+        cut_val = sph_.get_log_density_cut()
+        return LayoutSpec(
+            type="vbox",
+            children=[
+                ControlSpec(
+                    name="log_den_threshold",
+                    type="slider",
+                    label="Density threshold",
+                    range=cut_range,
+                    value=cut_val,
+                    callback = self.set_den_cut
+                )
+            ]
+        )

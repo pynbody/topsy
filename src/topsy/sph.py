@@ -461,12 +461,24 @@ class DepthSPHWithOcclusion(DepthSPH):
         mass = self._visualizer.data_loader.get_mass()
         smooth = self._visualizer.data_loader.get_smooth()
         rho = mass / smooth**3
-        self._cut_val = np.quantile(rho, 0.7)
+        self._cut_min = np.log10(rho.min())
+        self._cut_max = np.log10(rho.max())
+        self._cut_val = np.log10(np.quantile(rho, 0.5))
 
     def _get_transform_params(self):
         tp = super()._get_transform_params()
-        tp["density_cut"] = self._cut_val
+        tp["density_cut"] = 10**self._cut_val
         return tp
+
+    def get_log_density_cut(self):
+        return self._cut_val
+
+    def set_log_density_cut(self, value):
+        self._cut_val = value
+
+    def get_log_density_cut_range(self):
+        return self._cut_min, self._cut_max
+
 
 
 
