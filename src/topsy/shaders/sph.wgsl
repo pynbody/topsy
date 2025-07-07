@@ -104,12 +104,19 @@ fn vertex_depth_with_cut(input: VertexInput) -> VertexOutput {
 
     if(rho > trans_params.density_cut) {
         result = vertex_calculate_depth(input);
+
+        // Factors: Sphere extends to 2*h, but that's already baked into the kernel image
+        // input.pos.w*trans_params.scale_factor gives the extent of h in (x,y) clip space,
+        // but note the z direction is squsiehd into (0,1) while (x,y) are in (-1,1)
+        // so there is a factor of 0.5 in the z direction.
+        result.intensities.z = input.pos.w * trans_params.scale_factor*0.5;
     } else {
         // put somewhere out of the clip space:
         result.pos.x = 100;
         result.pos.y = 100;
         result.pos.w = 100;
     }
+
     return result;
 }
 
@@ -136,8 +143,13 @@ fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
 fn fragment_raw(input: VertexOutput) -> FragmentOutputWeighting {
     var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
 
-    value *= input.intensities.x;
-    var output = FragmentOutputWeighting(vec2<f32>(value, input.intensities.y));
+    var depth: f32 = input.intensities.y + input.intensities.z*value;
+
+    if (value<0.0) {
+        discard;
+    }
+
+    var output = FragmentOutputWeighting(vec2<f32>(value, depth));
 
     return output;
 }

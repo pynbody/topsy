@@ -358,7 +358,7 @@ class SPH:
 
         return command_encoder.finish()
 
-    def _get_kernel_at_resolution(self, n_samples):
+    def _setup_kernel(self):
         if self._kernel is None:
             try:
                 self._kernel = pynbody.sph.Kernel2D()
@@ -366,6 +366,7 @@ class SPH:
                 # pynbody v2:
                 self._kernel = pynbody.sph.kernels.Kernel2D()
 
+    def _get_kernel_at_resolution(self, n_samples):
         # sph kernel is sampled at the centre of the pixels, and the full grid ranges from -2 to 2.
         # thus the left hand most pixel is at -2+2/n_samples, and the right hand most pixel is at 2-2/n_samples.
         pixel_centres = np.linspace(-2+2./n_samples, 2-2./n_samples, n_samples)
@@ -375,20 +376,22 @@ class SPH:
         # The below could easily be optimized but doesn't seem worth it
         kernel_im = np.array([self._kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
+        kernel_im *= self._get_kernel_image_normalization(kernel_im)
+
+        return kernel_im
+
+    def _get_kernel_image_normalization(self, kernel_im):
         # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
         # It should be normalized such that the integral over the kernel is 1/h^2. We have h=1 here, and the
         # full width is 4h, so the width of a pixel is dx=4/n_samples. So we need to multiply by dx^2=(n_samples/4)^2.
         # This results in a correction of a few percent, typically; not huge but not negligible either.
         #
         # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
-        kernel_im *= (n_samples / 4) ** 2 / kernel_im.sum()
-
-        return kernel_im
+        assert kernel_im.shape == (len(kernel_im), len(kernel_im)), "Kernel image should be square"
+        return (len(kernel_im) / 4) ** 2 / kernel_im.sum()
 
     def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
-        if hasattr(SPH, "_kernel_texture"):
-            # As things stand, the kernel texture is actually shared between instances of SPH for efficiency.
-            return
+        self._setup_kernel()
 
         SPH._kernel_texture = self._device.create_texture(
             label="kernel_texture",
@@ -439,6 +442,17 @@ class DepthSPH(SPH):
 
     _vertex_name = "vertex_depth"
 
+class LocalSphereKernel:
+    def __init__(self):
+        pass
+
+    def get_value(self, distance):
+        """Returns the value of the local sphere kernel at a given distance."""
+        if distance < 2.0:
+            return np.sqrt(4.0 - distance**2)
+        else:
+            return -0.01
+
 class DepthSPHWithOcclusion(SPH):
     """Renders a map of the front-most particles in the scene, subject to a given density cut"""
     _vertex_name = "vertex_depth_with_cut"
@@ -465,6 +479,12 @@ class DepthSPHWithOcclusion(SPH):
         self._cut_min = np.log10(rho.min())
         self._cut_max = np.log10(rho.max())
         self._cut_val = np.log10(np.quantile(rho, 0.5))
+
+    def _setup_kernel(self):
+        self._kernel = LocalSphereKernel()
+
+    def _get_kernel_image_normalization(self, kernel_im):
+        return 1.0
 
     def _get_transform_params(self):
         tp = super()._get_transform_params()

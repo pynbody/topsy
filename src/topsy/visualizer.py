@@ -29,9 +29,14 @@ logger.setLevel(logging.INFO)
 
 
 class VisualizerBase:
+
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
     show_status = True
     device = None # device will be shared across all instances
+
+    _sph : Optional[sph.SPH]
+    _colormap: Optional[colormap.ColormapHolder]
+    _colorbar: Optional[colorbar.ColorbarOverlay]
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
@@ -42,7 +47,9 @@ class VisualizerBase:
         self._surface = surface
         self._bivariate = bivariate
         self._render_resolution = render_resolution
-        self._colorbar: Optional[colorbar.ColorbarOverlay] = None
+        self._colorbar = None
+        self._sph = None
+        self._colormap = None
         self._encoder_executor = ThreadPoolExecutor(max_workers=1) # 1 worker to prevent GIL contention
 
         self.crosshairs_visible = False
@@ -66,10 +73,6 @@ class VisualizerBase:
 
         self._initialize_sph_and_colormap(colormap_name)
 
-        self.reset_view()
-
-        self._reinitialize_colormap_and_bar()
-
         self._last_status_update = 0.0
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 40, color=(1, 1, 1, 1))
 
@@ -84,6 +87,15 @@ class VisualizerBase:
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
     def _initialize_sph_and_colormap(self, colormap_name = None):
+        """(Re-)initialize SPH, colormap and colorbar"""
+
+        if self._sph is not None:
+            old_rotation = self._sph.rotation_matrix
+            old_position = self._sph.position_offset
+        else:
+            old_rotation = None
+            old_position = None
+
         if self._periodic_tiling:
             self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
         elif self._rgb:
@@ -96,6 +108,8 @@ class VisualizerBase:
             logger.info("Using standard SPH renderer")
             self._sph = sph.SPH(self, self._render_resolution)
 
+        self.reset_view(rotation_matrix = old_rotation, position_offset = old_position)
+
         if colormap_name is None:
             colormap_name = self._colormap.get_parameter('colormap_name')
 
@@ -104,6 +118,8 @@ class VisualizerBase:
         self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
                                                                           self.canvas_format)
         self._colormap.update_parameters({'colormap_name': colormap_name})
+
+        self._reinitialize_colormap_and_bar()
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
@@ -166,14 +182,21 @@ class VisualizerBase:
         self._sph.position_offset = value
         self.invalidate()
 
-    def reset_view(self):
-        self._sph.rotation_matrix = np.eye(3)
+    def reset_view(self, rotation_matrix=None, position_offset=None):
+        """Reset to the default view, or a specified rotation/position if provided."""
+        if rotation_matrix is None:
+            rotation_matrix = np.eye(3)
+        if position_offset is None:
+            position_offset = -self.data_loader.get_initial_center()
+            logger.info(f"Position offset: {position_offset}")
+
+        self._sph.rotation_matrix = rotation_matrix
         period_scale = self.data_loader.get_periodicity_scale()
         if period_scale is not None:
             self.scale = period_scale / 2
         else:
             self.scale = config.DEFAULT_SCALE
-        self._sph.position_offset = np.zeros(3)
+        self._sph.position_offset = position_offset
 
     @property
     def scale(self):
@@ -224,8 +247,7 @@ class VisualizerBase:
 
     def _reinitialize_colormap_and_bar(self):
         """Reinitialize the colormap and colorbar.
-        
-        If keep_scale is False, render and figure out the min/max values for the colormap too.
+
         """
         colormap_params = {}
         if self._rgb:
@@ -252,6 +274,8 @@ class VisualizerBase:
         if colormap_params['type'] not in ('rgb', 'surface'):
             self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
                                                       colormap_params['colormap_name'], self._get_colorbar_label())
+        else:
+            self._colorbar = None
 
 
     def _get_colorbar_label(self):
