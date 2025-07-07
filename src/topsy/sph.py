@@ -439,9 +439,10 @@ class DepthSPH(SPH):
 
     _vertex_name = "vertex_depth"
 
-class DepthSPHWithOcclusion(DepthSPH):
+class DepthSPHWithOcclusion(SPH):
     """Renders a map of the front-most particles in the scene, subject to a given density cut"""
     _vertex_name = "vertex_depth_with_cut"
+    _fragment_name = "fragment_raw"
 
     _blend = {
         "color": {
