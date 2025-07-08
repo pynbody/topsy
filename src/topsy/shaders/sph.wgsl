@@ -129,6 +129,11 @@ struct FragmentOutputRGB {
     @location(0) output: vec4<f32>
 }
 
+struct FragmentOutputRaw {
+    @location(0) output: vec2<f32>,
+    @builtin(frag_depth) depth: f32,
+}
+
 @fragment
 fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
     var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
@@ -140,18 +145,15 @@ fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
 }
 
 @fragment
-fn fragment_raw(input: VertexOutput) -> FragmentOutputWeighting {
+fn fragment_raw(input: VertexOutput) -> FragmentOutputRaw {
     var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
-
     var depth: f32 = input.intensities.y + input.intensities.z*value;
 
     if (value<0.0) {
         discard;
     }
 
-    var output = FragmentOutputWeighting(vec2<f32>(value, depth));
-
-    return output;
+    return FragmentOutputRaw(vec2<f32>(value, depth), depth);
 }
 
 @fragment

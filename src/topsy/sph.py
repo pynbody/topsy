@@ -461,13 +461,13 @@ class DepthSPHWithOcclusion(SPH):
     _blend = {
         "color": {
             "src_factor": wgpu.BlendFactor.one,
-            "dst_factor": wgpu.BlendFactor.one,
-            "operation": wgpu.BlendOperation.max,
+            "dst_factor": wgpu.BlendFactor.zero,
+            "operation": wgpu.BlendOperation.add,
         },
         "alpha": {
             "src_factor": wgpu.BlendFactor.one,
-            "dst_factor": wgpu.BlendFactor.one,
-            "operation": wgpu.BlendOperation.max,
+            "dst_factor": wgpu.BlendFactor.zero,
+            "operation": wgpu.BlendOperation.add,
         },
     }
 
@@ -479,6 +479,13 @@ class DepthSPHWithOcclusion(SPH):
         self._cut_min = np.log10(rho.min())
         self._cut_max = np.log10(rho.max())
         self._cut_val = np.log10(np.quantile(rho, 0.5))
+        # Create a depth texture for the depth buffer
+        self._depth_texture = self._device.create_texture(
+            size=(render_resolution, render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT,
+            format=wgpu.TextureFormat.depth32float,
+            label="sph_depth_texture",
+        )
 
     def _setup_kernel(self):
         self._kernel = LocalSphereKernel()
@@ -500,6 +507,140 @@ class DepthSPHWithOcclusion(SPH):
     def get_log_density_cut_range(self):
         return self._cut_min, self._cut_max
 
+    def _setup_render_pipeline(self):
+        self._bind_group_layout = \
+            self._device.create_bind_group_layout(
+                label="sph_bind_group_layout",
+                entries=[
+                    {
+                        "binding": 0,
+                        "visibility": wgpu.ShaderStage.VERTEX,
+                        "buffer": {"type": wgpu.BufferBindingType.uniform},
+                    },
+                    {
+                        "binding": 1,
+                        "visibility": wgpu.ShaderStage.FRAGMENT,
+                        "texture": {"sample_type": wgpu.TextureSampleType.float,
+                                    "view_dimension": wgpu.TextureViewDimension.d2},
+                    },
+                    {
+                        "binding": 2,
+                        "visibility": wgpu.ShaderStage.FRAGMENT,
+                        "sampler": {"type": wgpu.SamplerBindingType.filtering},
+                    },
+                ]
+            )
 
+        self._bind_group = \
+            self._device.create_bind_group(
+                label="sph_bind_group",
+                layout=self._bind_group_layout,
+                entries=[
+                    {"binding": 0,
+                     "resource": {
+                         "buffer": self._transform_buffer,
+                         "offset": 0,
+                         "size": self._transform_buffer.size
+                      }
+                     },
+                    {"binding": 1,
+                        "resource": self._kernel_texture.create_view(),
+                    },
+                    {"binding": 2,
+                        "resource": self._kernel_sampler,
+                    }
+                ]
+            )
 
+        self._pipeline_layout = \
+            self._device.create_pipeline_layout(
+                label="sph_pipeline_layout",
+                bind_group_layouts=[self._bind_group_layout]
+            )
 
+        vertex_format = wgpu.VertexFormat.float32x3
+
+        channel_buffers = [{
+            "array_stride": 12,
+            "step_mode": wgpu.VertexStepMode.instance,
+            "attributes": [
+                {
+                    "format": vertex_format,
+                    "offset": 0,
+                    "shader_location": 1,
+                }
+            ]
+        } ]
+
+        self._render_pipeline = \
+            self._device.create_render_pipeline(
+                layout=self._pipeline_layout,
+                label="sph_render_pipeline",
+                vertex = {
+                    "module": self._shader,
+                    "entry_point": self._vertex_name,
+                    "buffers": [
+                        {
+                            "array_stride": 16,
+                            "step_mode": wgpu.VertexStepMode.instance,
+                            "attributes": [
+                                {
+                                    "format": wgpu.VertexFormat.float32x4,
+                                    "offset": 0,
+                                    "shader_location": 0,
+                                }
+                            ]
+                        },
+                    ] + channel_buffers
+                },
+                primitive={
+                    "topology": wgpu.PrimitiveTopology.triangle_list,
+                },
+                depth_stencil={
+                    "format": wgpu.TextureFormat.depth32float,
+                    "depth_write_enabled": True,
+                    "depth_compare": wgpu.CompareFunction.greater,
+                },
+                multisample=None,
+                fragment={
+                    "module": self._shader,
+                    "entry_point": self._fragment_name,
+                    "targets": [
+                        {
+                            "format": wgpu.TextureFormat.rg32float,
+                            "blend": self._blend,
+                            "write_mask": wgpu.ColorWrite.ALL,
+                        }
+                    ]
+                },
+            )
+
+    def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
+        command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
+        view: wgpu.GPUTextureView = self._render_texture.create_view()
+        depth_view: wgpu.GPUTextureView = self._depth_texture.create_view()
+        sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
+            color_attachments=[
+                {
+                    "view": view,
+                    "resolve_target": None,
+                    "clear_value": (0.0, 0.0, 0.0, 0.0),
+                    "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
+                    "store_op": wgpu.StoreOp.store,
+                }
+            ],
+            depth_stencil_attachment={
+                "view": depth_view,
+                "depth_clear_value": 0.0,
+                "depth_load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
+                "depth_store_op": wgpu.StoreOp.store,
+            }
+        )
+        sph_render_pass.set_pipeline(self._render_pipeline)
+        vb_assignment = ['pos_smooth', self._buffer_name]
+        self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
+        sph_render_pass.set_bind_group(0, self._bind_group, [],
+                                       0, 99)
+        self._visualizer.particle_buffers.issue_draw_indirect(sph_render_pass)
+        sph_render_pass.end()
+        return command_encoder.finish()
