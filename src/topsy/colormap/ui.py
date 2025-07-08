@@ -184,9 +184,16 @@ class SurfaceMapController(GenericController):
         self.visualizer._sph.set_log_density_cut(val)
         self.visualizer.invalidate(drawreason.DrawReason.CHANGE)
 
+    def set_smoothing_scale(self, val):
+        self.visualizer.colormap.update_parameters(
+            {'smoothing_scale': val}
+        )
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
+
     def get_layout(self) -> LayoutSpec:
         sph_ = self.visualizer._sph
         assert isinstance(sph_, sph.DepthSPHWithOcclusion)
+        params = self.visualizer.colormap.get_parameters()
 
         cut_range = sph_.get_log_density_cut_range()
         cut_val = sph_.get_log_density_cut()
@@ -200,6 +207,14 @@ class SurfaceMapController(GenericController):
                     range=cut_range,
                     value=cut_val,
                     callback = self.set_den_cut
+                ),
+                ControlSpec(
+                    name="smoothing_scale",
+                    type="slider",
+                    label="Surface smoothing",
+                    range=(0.0, 0.05),
+                    value=params['smoothing_scale'],
+                    callback=self.set_smoothing_scale
                 )
             ]
         )

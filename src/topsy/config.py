@@ -36,3 +36,6 @@ JUPYTER_UI_LAG = 0.05
 
 # special name for  projected density in UI
 PROJECTED_DENSITY_NAME = "Projected density"
+
+# Maximum number of pixels to use when smoothing z maps for surfaces
+MAX_SURFACE_SMOOTH_PIXELS = 100
