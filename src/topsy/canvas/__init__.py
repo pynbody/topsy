@@ -71,6 +71,10 @@ class VisualizerCanvasBase:
             self._visualizer.colormap_autorange()
         elif key=='h':
             self._visualizer.reset_view()
+        elif key=='w':
+            offset = self._visualizer.position_offset
+            rotation_matrix = self._visualizer.rotation_matrix
+            print(f".translate({np.array2string(offset, separator=",")}).transform(np.array({np.array2string(rotation_matrix, separator=",")}))")
 
     def mouse_wheel(self, delta_x, delta_y):
         if isinstance(self, rendercanvas.jupyter.JupyterRenderCanvas):

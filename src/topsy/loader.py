@@ -61,6 +61,9 @@ class AbstractDataLoader(ABC):
         else:
             return progressive_render.RenderProgression(len(self))
 
+    def get_initial_center(self):
+        return np.zeros(3, dtype=np.float32)
+
 
 class PynbodyDataInMemory(AbstractDataLoader):
     """Base class for data loaders that use pynbody."""
@@ -173,18 +176,21 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         if center.startswith("halo-"):
             halo_number = int(center[5:])
             h = self.snapshot.ancestor.halos()
-            pynbody.analysis.halo.center(h[halo_number], vel=False)
-            self.snapshot.wrap()
+            cen = pynbody.analysis.halo.center(h[halo_number], return_cen=True)
         elif center == 'zoom':
             f_dm = self.snapshot.ancestor.dm
-            pynbody.analysis.halo.center(f_dm[f_dm['mass'] < 1.01 * f_dm['mass'].min()])
-            self.snapshot.wrap()
+            cen = pynbody.analysis.halo.center(f_dm[f_dm['mass'] < 1.01 * f_dm['mass'].min()], return_cen=True)
         elif center == 'all':
-            pynbody.analysis.halo.center(self.snapshot)
+            cen = pynbody.analysis.halo.center(self.snapshot, return_cen=True)
         elif center == 'none':
-            self.snapshot['pos']-=(self.snapshot['pos'].max(axis=0) + self.snapshot['pos'].min(axis=0))/2.0
+            cen = np.zeros(3)
         else:
             raise ValueError("Unknown centering type")
+
+        self._initial_center = cen
+
+    def get_initial_center(self):
+        return self._initial_center
 
     def _perform_smoothing(self):
         try:
