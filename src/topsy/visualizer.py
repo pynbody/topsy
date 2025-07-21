@@ -211,10 +211,7 @@ class VisualizerBase:
     @property
     def quantity_name(self):
         """The name of the quantity being visualised, or None if density projection."""
-        if self._surface:
-            return "depth"
-        else:
-            return self.particle_buffers.quantity_name
+        return self.particle_buffers.quantity_name
 
     @property
     def averaging(self):
@@ -223,8 +220,6 @@ class VisualizerBase:
 
     @quantity_name.setter
     def quantity_name(self, value):
-        if self._surface:
-            raise ValueError("Cannot set quantity name on surface")
         if value == self.particle_buffers.quantity_name:
             return
 
@@ -258,6 +253,7 @@ class VisualizerBase:
             colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'bivariate'
         elif self._surface:
+            colormap_params['weighted_average'] = self.quantity_name is not None
             colormap_params['type'] = 'surface'
         else:
             colormap_params['weighted_average'] = self.quantity_name is not None
@@ -390,13 +386,35 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
+        """Get the logical content of the SPH image, possibly with post-processing but no colormaps"""
         return self._colormap.sph_raw_output_to_content(self._sph.get_image())
+    
+    def get_sph_presentation_image(self) -> np.ndarray:
+        """Get the SPH image as a presentation image, i.e. with colormap applied but no additional layers such as colorbar."""
+        texture: wgpu.GPUTexture = self.device.create_texture(
+            size=(self._render_resolution, self._render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                    wgpu.TextureUsage.COPY_SRC,
+            format=self.canvas_format,
+            label="output_texture",
+        )
+
+        self.render_sph(DrawReason.EXPORT)
+
+        self._colormap.set_scaling(self._render_resolution, self._render_resolution, self._sph.last_render_mass_scale)
+
+        command_encoder = self.device.create_command_encoder()
+        self._colormap.encode_render_pass(command_encoder, texture.create_view())
+        self.device.queue.submit([command_encoder.finish()])
+
+        return self._texture_to_rgba_numpy(texture)
+
 
     def get_depth_image(self) -> np.ndarray:
         return self._sph.get_depth_image()
 
-
     def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
+        """Get the full presentation image, complete with layers such as colorbar, scalebar and status line"""
         texture: wgpu.GPUTexture = self.device.create_texture(
             size=(resolution[0], resolution[1], 1),
             usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
@@ -406,7 +424,12 @@ class VisualizerBase:
         )
         self.draw(DrawReason.EXPORT, texture.create_view())
 
+        return self._texture_to_rgba_numpy(texture)
+
+    def _texture_to_rgba_numpy(self, texture):
         size = texture.size
+
+        is_bgr = texture.format.startswith("bgr")
 
         if texture.format.endswith("8unorm"):
             bytes_per_pixel = 4
@@ -430,15 +453,29 @@ class VisualizerBase:
             size,
         )
 
-        return np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
+        result = np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
+
+        if is_bgr:
+            result = result[..., [2, 1, 0, 3]]
+
+        return result
 
 
     def save(self, filename='output.pdf'):
+        """Save the current view to a file, either as a numpy array or as a matplotlib image.
+        
+        If a numpy array, the logical content of the SPH image is saved, i.e. without colormaps.
+        
+        If a matplotlib image, the SPH image is colormapped and saved as an image using matplotlib to add
+        the colorbar and axes so that these are rendered to vectors if a pdf is requested.
+
+        Note that matplotlib is never used to perform the colormapping, so that bivariate and surface rendering
+        outputs correctly.
+        """
         self._sph.render(DrawReason.EXPORT)
-        image = self.get_sph_image()
         if filename.endswith(".npy"):
+            image = self.get_sph_image()
             np.save(filename, image)
-            return
         else:
             import matplotlib.pyplot as p
             colormap_params = self._colormap.get_parameters()
@@ -446,16 +483,25 @@ class VisualizerBase:
             fig = p.figure()
             p.clf()
             p.set_cmap(colormap_params['colormap_name'])
-            extent = np.array([-1., 1., -1., 1.])*self.scale
-            if colormap_params.get('log', False):
-                image = np.log10(image)
 
-            p.imshow(image,
-                     vmin=self._colormap.get_parameter('vmin'),
-                     vmax=self._colormap.get_parameter('vmax'),
-                     extent=extent)
+            image = self.get_sph_presentation_image()
+
+            extent = np.array([-1., 1., -1., 1.])*self.scale
+
+            p.imshow(image, extent=extent)
             p.xlabel("$x$/kpc")
-            p.colorbar().set_label(self._colorbar.label)
+
+            cb_vmin = self._colormap.get_parameter('vmin')
+            cb_vmax = self._colormap.get_parameter('vmax')
+
+            if self._colorbar is not None:
+                p.colorbar(
+                    p.cm.ScalarMappable(
+                        norm=p.Normalize(vmin=cb_vmin, vmax=cb_vmax),
+                        cmap=colormap_params['colormap_name'],
+                    ),
+                    ax = p.gca()
+                ).set_label(self._colorbar.label)
             p.savefig(filename)
             p.close(fig)
 

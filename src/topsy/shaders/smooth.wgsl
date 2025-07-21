@@ -12,7 +12,8 @@ struct SmoothingParams {
 @compute @workgroup_size(8, 8)
 fn bilateral_filter_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let coord = vec2<i32>(global_id.xy);
-    let center_depth = textureLoad(input_depth, coord, 0).g;
+    let center_sample = textureLoad(input_depth, coord, 0);
+    let center_depth = center_sample.g;
 
     var weighted_sum = 0.0;
     var weight_sum = 0.0;
@@ -41,5 +42,5 @@ fn bilateral_filter_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
     let filtered_depth = weighted_sum / weight_sum;
-    textureStore(output_depth, coord, vec4<f32>(0.0, filtered_depth, 0.0, 1.0));
+    textureStore(output_depth, coord, vec4<f32>(center_sample.r, filtered_depth, 0.0, 1.0));
 }

@@ -179,7 +179,7 @@ class RGBMapController(GenericController):
             ],
         )
 
-class SurfaceMapController(GenericController):
+class SurfaceMapController(ColorMapController):
     def set_den_cut(self, val):
         self.visualizer._sph.set_log_density_cut(val)
         self.visualizer.invalidate(drawreason.DrawReason.CHANGE)
@@ -191,6 +191,8 @@ class SurfaceMapController(GenericController):
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
+        parent_layout = super().get_layout()
+
         sph_ = self.visualizer._sph
         assert isinstance(sph_, sph.DepthSPHWithOcclusion)
         params = self.visualizer.colormap.get_parameters()
@@ -216,5 +218,5 @@ class SurfaceMapController(GenericController):
                     value=params['smoothing_scale'],
                     callback=self.set_smoothing_scale
                 )
-            ]
+            ] + parent_layout.children
         )

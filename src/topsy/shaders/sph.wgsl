@@ -82,16 +82,12 @@ fn vertex_weighting(input: VertexInput) -> VertexOutput {
     return output;
 }
 
-fn vertex_calculate_depth(input: VertexInput) -> VertexOutput {
+@vertex
+fn vertex_depth(input: VertexInput) -> VertexOutput {
     var output: VertexOutput = vertex_calculate_positions(input);
     output.intensities.x = input.quantities.x/(input.pos.w * input.pos.w);
     output.intensities.y = output.pos.z;
     return output;
-}
-
-@vertex
-fn vertex_depth(input: VertexInput) -> VertexOutput {
-    return vertex_calculate_depth(input);
 }
 
 @vertex
@@ -103,8 +99,13 @@ fn vertex_depth_with_cut(input: VertexInput) -> VertexOutput {
     var rho: f32 = input.quantities.x / pow(input.pos.w,3.0f);
 
     if(rho > trans_params.density_cut) {
-        result = vertex_calculate_depth(input);
+        result = vertex_calculate_positions(input);
+        result.intensities.x = input.quantities.y; // quantity value
+        result.intensities.y = result.pos.z; // depth value
 
+        // "z" component of "intensities" is actually the depth scale of the sphere to be
+        // rendered on this tile
+        //
         // Factors: Sphere extends to 2*h, but that's already baked into the kernel image
         // input.pos.w*trans_params.scale_factor gives the extent of h in (x,y) clip space,
         // but note the z direction is squsiehd into (0,1) while (x,y) are in (-1,1)
@@ -153,7 +154,7 @@ fn fragment_raw(input: VertexOutput) -> FragmentOutputRaw {
         discard;
     }
 
-    return FragmentOutputRaw(vec2<f32>(value, depth), depth);
+    return FragmentOutputRaw(vec2<f32>(input.intensities.x, depth), depth);
 }
 
 @fragment

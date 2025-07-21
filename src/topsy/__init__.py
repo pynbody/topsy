@@ -93,8 +93,7 @@ def main():
                     sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
                     sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
                     hdr=args.hdr, bivariate=args.bivariate, surface=args.surface)
-        if not args.surface:
-            vis.quantity_name = args.quantity
+        vis.quantity_name = args.quantity
         vis.canvas.show()
 
     from rendercanvas import qt # has to be imported here so that underlying qt toolkit has been autoselected
