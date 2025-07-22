@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union, TYPE_CHECKING
 import matplotlib as mpl
 import abc
 
 from .. import config, drawreason, sph
 
+if TYPE_CHECKING:
+    from .. import visualizer
+    
 @dataclass
 class ControlSpec:
     name: str
@@ -15,16 +20,31 @@ class ControlSpec:
     range: Optional[Tuple[float, float]] = None
     callback: Callable[[Any], None] = lambda _: None
 
+    def get_first_named_element(self, name):
+        if self.name == name:
+            return name
+        else:
+            return None
+
 @dataclass
 class LayoutSpec:
     type: str  # 'vbox' | 'hbox'
     children: List[Union['LayoutSpec', ControlSpec]]
 
+    def get_first_named_element(self, name):
+        for c in self.children:
+            if result := c.get_first_named_element(name):
+                return result
+        return None
+
 class GenericController(abc.ABC):
-    def __init__(self, visualizer, refresh_ui_callback: Optional[Callable] = None):
+    def __init__(self, visualizer: visualizer.Visualizer, 
+                 refresh_ui_callback: Callable[[LayoutSpec, bool], None]):
+
         self.visualizer = visualizer
         self.colormap = visualizer.colormap
         self._refresh_ui_callback = refresh_ui_callback
+        self._layout_on_last_refresh = self.get_layout()
 
     @abc.abstractmethod
     def get_layout(self) -> LayoutSpec:
@@ -32,7 +52,28 @@ class GenericController(abc.ABC):
 
     def refresh_ui(self) -> None:
         if self._refresh_ui_callback is not None:
-            self._refresh_ui_callback()
+            current_layout = self.get_layout()
+            different_widgets = self._layout_has_different_widgets(current_layout, self._layout_on_last_refresh)
+            self._refresh_ui_callback(current_layout, different_widgets)
+            self._layout_on_last_refresh = current_layout
+
+    @classmethod
+    def _layout_has_different_widgets(cls, layout1: LayoutSpec, layout2: LayoutSpec) -> bool:
+        """Check if two layouts have different widgets."""
+        if layout1.type != layout2.type or len(layout1.children) != len(layout2.children):
+            return True
+        for child1, child2 in zip(layout1.children, layout2.children):
+            if type(child1) != type(child2):
+                return True
+            elif isinstance(child1, ControlSpec) and isinstance(child2, ControlSpec):
+                if child1.name != child2.name or child1.type != child2.type or child1.value != child2.value:
+                    return True
+            elif isinstance(child1, LayoutSpec) and isinstance(child2, LayoutSpec):
+                if cls._layout_has_different_widgets(child1, child2):
+                    return True
+            else:
+                raise TypeError(f"Unexpected child type: {type(child1)} or {type(child2)}")
+        return False
 
 class ColorMapController(GenericController):
     """Controller description for standard color maps"""
@@ -78,15 +119,13 @@ class ColorMapController(GenericController):
         self.colormap.update_parameters({'vmin': vmin, 'vmax': vmax})
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
-    def get_layout(self) -> LayoutSpec:
+    def get_layout(self, suppress_range=False) -> LayoutSpec:
         params = self.visualizer.colormap.get_parameters()
         cmap = params["colormap_name"]
         qty = self.visualizer.quantity_name or self.default_quantity_name
         ui_range = params['ui_range_linear'] if not params['log'] else params['ui_range_log']
 
-        return LayoutSpec(
-            type="vbox",
-            children=[
+        children = [
                 LayoutSpec("hbox", [
                     ControlSpec("colormap", "combo", options=self.get_colormap_list(),
                                 value=cmap, callback=self.apply_colormap),
@@ -94,14 +133,20 @@ class ColorMapController(GenericController):
                                 value=qty, callback=self.apply_quantity),
                     ControlSpec("log", "checkbox", label="Log scale",
                                 value=params['log'], callback=self.apply_log_scale),
-                ]),
-                LayoutSpec("hbox", [
-                    ControlSpec("range", "range_slider", value=(params['vmin'], params['vmax']),
-                                range=ui_range, callback=lambda vv: self.apply_slider(*vv)),
-                    ControlSpec("auto", "button", label="Auto",
-                                callback=lambda _: self.apply_auto()),
-                ]),
-            ],
+                ]),]
+        
+        if not suppress_range:
+            children.append(LayoutSpec("hbox", [
+                                ControlSpec("range", "range_slider", 
+                                            value=(params['vmin'], params['vmax']),
+                                            range=ui_range, callback=lambda vv: self.apply_slider(*vv)),
+                                ControlSpec("auto", "button", label="Auto",
+                                            callback=lambda _: self.apply_auto()),
+                            ]))
+
+        return LayoutSpec(
+            type="vbox",
+            children=children
         )
 
 class BivariateColorMapController(ColorMapController):
@@ -191,10 +236,13 @@ class SurfaceMapController(ColorMapController):
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
     def get_layout(self) -> LayoutSpec:
-        parent_layout = super().get_layout()
+        suppress_range = self.visualizer.quantity_name is None 
+
+        standard_cmap_children = super().get_layout(suppress_range=suppress_range).children
 
         sph_ = self.visualizer._sph
         assert isinstance(sph_, sph.DepthSPHWithOcclusion)
+
         params = self.visualizer.colormap.get_parameters()
 
         cut_range = sph_.get_log_density_cut_range()
@@ -218,5 +266,5 @@ class SurfaceMapController(ColorMapController):
                     value=params['smoothing_scale'],
                     callback=self.set_smoothing_scale
                 )
-            ] + parent_layout.children
+            ] + standard_cmap_children
         )

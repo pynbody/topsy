@@ -8,7 +8,7 @@ from rendercanvas import BaseRenderCanvas
 
 from .lineedit import MyLineEdit
 
-from ...colormap.ui import GenericController, ControlSpec, ColorMapController, BivariateColorMapController, RGBMapController
+from ...colormap.ui import LayoutSpec, GenericController, ControlSpec, ColorMapController, BivariateColorMapController, RGBMapController
 
 import math
 import logging
@@ -87,9 +87,8 @@ class ColorMapControls(QtWidgets.QDialog):
         self.setWindowTitle("Color controls")
         self.setWindowFlags(QtCore.Qt.WindowType.Popup
                             | QtCore.Qt.WindowType.FramelessWindowHint)
-        self.resize(400, 0)
 
-        self.controller = canvas._visualizer.colormap.make_ui_controller(
+        self.controller: GenericController = canvas._visualizer.colormap.make_ui_controller(
             canvas._visualizer,
             self._refresh_ui
         )
@@ -97,16 +96,22 @@ class ColorMapControls(QtWidgets.QDialog):
         # build UI
         self._widgets: Dict[str, QtWidgets.QWidget] = {}
         root_spec = self.controller.get_layout()
-        self.setLayout(self._build_layout(root_spec))
+        self._layout = self._build_layout(root_spec)
+        self.setLayout(self._layout)
 
     def open(self):
         # position next to toolbar
+        self.controller.refresh_ui()
+        super().show()
+        self._update_screen_size_and_position()
+
+    def _update_screen_size_and_position(self):
+        self.resize(400, 0)
+        self.updateGeometry()
         action_rect = self.parent()._toolbar.actionGeometry(
             self.parent()._open_cmap
         )
         pos = self.parent()._toolbar.mapToGlobal(action_rect.topLeft())
-        self._refresh_ui()
-        super().show()
         self.move(pos - QtCore.QPoint(self.width()//2, self.height()))
 
     def _build_layout(self, spec: LayoutSpec) -> QtWidgets.QLayout:
@@ -180,35 +185,57 @@ class ColorMapControls(QtWidgets.QDialog):
     def _on_changed(self, callback: Callable[[Any], None], value: Any):
         callback(value)
 
-    def _refresh_ui(self):
-        # re-fetch specs and update every widget
-        def walk(spec: Union[LayoutSpec, ControlSpec]):
-            if isinstance(spec, ControlSpec):
-                w = self._widgets.get(spec.name)
-                if not w:
-                    return
-                if spec.type == "combo" or spec.type == 'combo-edit':
-                    w.blockSignals(True)
-                    w.setCurrentText(spec.value)
-                    w.blockSignals(False)
-                elif spec.type == "checkbox":
-                    w.blockSignals(True)
-                    w.setChecked(spec.value)
-                    w.blockSignals(False)
-                elif spec.type == "range_slider":
-                    w.blockSignals(True)
-                    w.setRange(*(spec.range or (0, 1)))
-                    w.setValue(tuple(spec.value))
-                    w.blockSignals(False)
-                elif spec.type == "slider":
-                    w.blockSignals(True)
-                    w.setRange(*(spec.range or (0, 1)))
-                    w.setValue(spec.value)
-                    w.blockSignals(False)
-            else:
-                for c in spec.children:
-                    walk(c)
+    @classmethod
+    def _clear_layout(cls, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            child_layout = item.layout()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            elif child_layout is not None:
+                cls._clear_layout(child_layout)
+                child_layout.setParent(None)
+        
+    def _rebuild_ui(self, root: LayoutSpec):
+        self._clear_layout(self._layout)
+        self._widgets = {}
+        QtWidgets.QWidget().setLayout(self._layout)
+        self._layout = self._build_layout(root)
+        self.setLayout(self._layout)
+        self._update_screen_size_and_position()
 
-        root = self.controller.get_layout()
-        walk(root)
+    def _update_ui(self, root: LayoutSpec):
+        if isinstance(root, ControlSpec):
+            w = self._widgets.get(root.name)
+            if not w:
+                return
+            if root.type == "combo" or root.type == 'combo-edit':
+                w.blockSignals(True)
+                w.setCurrentText(root.value)
+                w.blockSignals(False)
+            elif root.type == "checkbox":
+                w.blockSignals(True)
+                w.setChecked(root.value)
+                w.blockSignals(False)
+            elif root.type == "range_slider":
+                w.blockSignals(True)
+                w.setRange(*(root.range or (0, 1)))
+                w.setValue(tuple(root.value))
+                w.blockSignals(False)
+            elif root.type == "slider":
+                w.blockSignals(True)
+                w.setRange(*(root.range or (0, 1)))
+                w.setValue(root.value)
+                w.blockSignals(False)
+        else:
+            for c in root.children:
+                self._update_ui(c)
+
+    def _refresh_ui(self, root: LayoutSpec, new_widgets: bool):
+        if new_widgets:
+            self._rebuild_ui(root)
+        else:
+            self._update_ui(root)
 
