@@ -109,7 +109,7 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, param
 def load(filename: str, center: str = "none", particle: str = "gas", 
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         parameters: dict = None) -> Visualizer:
+         render_mode: str = None) -> Visualizer:
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -138,10 +138,8 @@ def load(filename: str, center: str = "none", particle: str = "gas",
     tile : bool
         If True, wrap and tile the simulation box using its periodicity. Default is False.
 
-    parameters : dict
-        Parameter dictionary for visualization settings. If provided, takes precedence over
-        individual boolean flags. Should contain 'render_mode' key with values like 'univariate', 
-        'bivariate', 'rgb', 'rgb-hdr', 'surface', and other visualization parameters.
+    render_mode : str
+        Visualization mode. Should be one of 'univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface', etc.
 
     Returns
     -------
@@ -175,7 +173,7 @@ def load(filename: str, center: str = "none", particle: str = "gas",
                                 data_loader_args=loader_args,
                                 periodic_tiling=tile,
                                 render_resolution=resolution,
-                                parameters=parameters)
+                                render_mode=render_mode)
 
     return vis
 

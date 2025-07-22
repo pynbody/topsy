@@ -85,14 +85,13 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         self._toolbar.addAction(self._open_cmap)
 
-        if self._visualizer.render_mode not in ['rgb', 'rgb-hdr']:
-            cmap_menu = QtWidgets.QComboBox(self._toolbar)
-            cmap_menu.addItems(["Univariate", "Bivariate", "Surface", "RGB", "RGB-HDR"])
-            current_mode = self._visualizer.render_mode
-            mode_to_index = {'univariate': 0, 'bivariate': 1, 'surface': 2, 'rgb': 3, 'rgb-hdr': 4}
-            cmap_menu.setCurrentIndex(mode_to_index.get(current_mode, 0))
-            cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
-            self._toolbar.addWidget(cmap_menu)
+        cmap_menu = QtWidgets.QComboBox(self._toolbar)
+        cmap_menu.addItems(["Univariate", "Bivariate", "Surface", "RGB", "RGB-HDR"])
+        current_mode = self._visualizer.render_mode
+        mode_to_index = {'univariate': 0, 'bivariate': 1, 'surface': 2, 'rgb': 3, 'rgb-hdr': 4}
+        cmap_menu.setCurrentIndex(mode_to_index.get(current_mode, 0))
+        cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
+        self._toolbar.addWidget(cmap_menu)
 
         self._toolbar.addSeparator()
 

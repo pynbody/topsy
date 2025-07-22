@@ -56,9 +56,9 @@ class VisualizerBase:
         self.show_colorbar = True
         self.show_scalebar = True
 
-        self.canvas = canvas_class(visualizer=self, title="topsy")
         self._validate_render_mode(render_mode)
         self._render_mode = render_mode
+        self.canvas = canvas_class(visualizer=self, title="topsy")
         
         self._setup_wgpu()
         self._configure_canvas_context()

@@ -410,3 +410,61 @@ def test_surface_render(folder):
     
     npt.assert_allclose(result[::20, ::20, 0].ravel(), quantity_expectation, rtol=1e-3)
     npt.assert_allclose(result[::20, ::20, 1].ravel(), depth_expectation, rtol=1e-3)
+
+
+def test_render_mode_switching():
+    """Test that render mode can be switched on-the-fly without errors"""
+    vis = topsy.test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, 
+                     render_mode='univariate')
+    vis.scale = 20.0
+
+    mode_sequence = 'univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface'
+    
+    for mode in mode_sequence:
+        vis.render_mode = mode
+        _check_vis_output_matches_mode(vis, mode)
+
+
+def test_render_mode_invalid():
+    """Test that invalid render modes are properly rejected"""
+    vis = topsy.test(100, render_resolution=50, canvas_class=offscreen.VisualizerCanvas)
+    
+    # Test setting invalid render mode
+    with pytest.raises(ValueError, match="Invalid render_mode 'invalid'"):
+        vis.render_mode = 'invalid'
+    
+    # Verify the original render mode is unchanged
+    assert vis.render_mode == 'univariate'
+
+
+def test_render_mode_initialization():
+    """Test that render mode can be set during initialization"""
+    modes_to_test = ['univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface']
+    
+    for mode in modes_to_test:
+        vis = topsy.test(100, render_resolution=50, canvas_class=offscreen.VisualizerCanvas,
+                         render_mode=mode)
+        assert vis.render_mode == mode
+        
+        _check_vis_output_matches_mode(vis, mode)
+
+def _check_vis_output_matches_mode(vis, mode):
+    result = vis.get_sph_image()
+    result_presentation = vis.get_sph_presentation_image()
+        
+        # check type based on mode:
+    if mode.endswith('hdr'):
+        assert result_presentation.dtype == np.float16
+    else:
+        assert result_presentation.dtype == np.uint8
+
+    res = vis._render_resolution
+
+    assert result_presentation.shape == (res, res, 4)
+
+    if mode in ['rgb', 'rgb-hdr']:
+        assert result.shape == (res, res, 3)
+    elif mode in ['bivariate', 'surface']:
+        assert result.shape == (res, res, 2)
+    else:  # univariate
+        assert result.shape == (res, res)
