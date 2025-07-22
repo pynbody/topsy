@@ -34,7 +34,8 @@ def test_render(vis, folder):
     plt.imsave(folder / "test.png", result) # needs manual verification
 
 def test_hdr_rgb_render(vis):
-    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, hdr=True, rgb=True)
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, 
+                     render_mode='rgb-hdr')
     vis.colormap.update_parameters({"min_mag": 38.0, "max_mag": 40.0})
     result = vis.get_presentation_image()[..., :3]
 
@@ -194,7 +195,8 @@ def test_rotated_sph_output(vis):
 
 
 def test_rgb_sph_output():
-    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, rgb=True)
+    vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, 
+                     render_mode='rgb')
     result = vis.get_sph_image()
     assert result.shape == (200,200,3)
 
@@ -242,7 +244,8 @@ def test_depth_output(vis, folder):
     npt.assert_allclose(result[::20,::20].ravel(), expect, atol=1e-1)
 
 def test_bivariate_render(folder):
-     vis = topsy.test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, bivariate=True)
+     vis = topsy.test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, 
+                      render_mode='bivariate')
      vis.quantity_name = "test-quantity" 
      vis.scale = 20.0
      vis.rotate(0.0, 0.5)
@@ -345,7 +348,7 @@ def test_bivariate_render(folder):
      
 def test_surface_render(folder):
     vis = topsy.test(int(1e5), render_resolution=200, canvas_class=offscreen.VisualizerCanvas, 
-                     surface=True)
+                     render_mode='surface')
     vis.quantity_name = "test-quantity"
     vis.scale = 12.0
     vis.rotate(0.0, 1.0)

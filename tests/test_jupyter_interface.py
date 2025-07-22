@@ -27,7 +27,8 @@ def jupyter_vis(solara_test):
 
 @pytest.fixture
 def jupyter_vis_surface(solara_test):
-    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, surface=True)
+    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, 
+                     render_mode='surface')
     display(vis)
     return vis
 
@@ -85,7 +86,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     assert poll_until_true(lambda: vis.colormap.get_parameter('vmax') > vmax_orig)
 
 def test_rgb_map(solara_test, page_session: Page):
-    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, rgb=True)
+    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, 
+                     render_mode='rgb')
     display(vis)
 
     # at the moment we just check this actually gives the alternative panel

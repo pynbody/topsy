@@ -37,9 +37,8 @@ def parse_args(args=None):
                            default=None, type=str)
     argparser.add_argument("--tile", "-t", help="Wrap and tile the simulation box using its periodicity",
                            default=False, action="store_true")
-    argparser.add_argument('--hdr', help="[Experimental] Enable HDR rendering", action="store_true")
-    argparser.add_argument('--rgb', help="[Experimental] Enable RGB->UVI rendering for stars", action="store_true")
-    argparser.add_argument("--bivariate", "-b", help="[Experimental] Enable bivariate rendering", action="store_true")
+    argparser.add_argument("--render-mode", help="Rendering mode: univariate (default), bivariate, rgb, rgb-hdr, surface", 
+                           default="univariate", choices=['univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface'], dest='render_mode')
     argparser.add_argument("--load-sphere", nargs='+', help="Load a sphere of particles with the given "
                                                           "radius and, optionally, centre in simulation units. "
                                                           "e.g. --load-sphere 5.0 to load a sphere of radius 5.0 about"
@@ -48,8 +47,6 @@ def parse_args(args=None):
                                                           "Supported only for swift simulations. Units are simulation units.",
                             metavar=("_"),
                             default=None, type=float)
-    argparser.add_argument("--surface", "-s", help="[Experimental] Enable surface rendering",
-                           action="store_true")
 
     if args is None:
         args = sys.argv[1:]
@@ -88,29 +85,31 @@ def main():
     all_args = parse_args()
 
     for args in all_args:
+        # Convert CLI args to parameters dict for cleaner interface
         vis = load(args.filename, center=args.center, resolution=args.resolution,
-                    particle=args.particle, tile=args.tile, rgb=args.rgb,
+                    particle=args.particle, tile=args.tile,
                     sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
                     sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
-                    hdr=args.hdr, bivariate=args.bivariate, surface=args.surface)
+                    render_mode=args.render_mode)
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
     from rendercanvas import qt # has to be imported here so that underlying qt toolkit has been autoselected
     qt.loop.run()
 
-def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, **kwargs):
+def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, parameters: dict = None, **kwargs):
     from . import visualizer, loader
     vis = visualizer.Visualizer(data_loader_class=loader.PynbodyDataInMemory,
                                 data_loader_args=(snapshot,),
+                                parameters=parameters,
                                 **kwargs)
     vis.quantity_name = quantity
     return vis
 
-def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool = False,
+def load(filename: str, center: str = "none", particle: str = "gas", 
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         hdr: bool = False, bivariate: bool = False, surface: bool = False) -> Visualizer:
+         parameters: dict = None) -> Visualizer:
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -136,21 +135,13 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
         If specified, load a sphere of particles with the given center. Units are simulation units.
         Must be a tuple of three floats (x, y, z).
 
-    rgb : bool
-        If True, enable RGB->UVI rendering for stars. Default is False.
-
-    bivariate : bool
-        If True, enable bivariate rendering. Default is False.
-
-    hdr : bool
-        If True, try enabling HDR rendering (only valid when rgb=True). Default is False.
-
     tile : bool
         If True, wrap and tile the simulation box using its periodicity. Default is False.
 
-    surface : bool
-        If True, enable surface rendering. Default is False.
-
+    parameters : dict
+        Parameter dictionary for visualization settings. If provided, takes precedence over
+        individual boolean flags. Should contain 'render_mode' key with values like 'univariate', 
+        'bivariate', 'rgb', 'rgb-hdr', 'surface', and other visualization parameters.
 
     Returns
     -------
@@ -182,10 +173,9 @@ def load(filename: str, center: str = "none", particle: str = "gas", rgb: bool =
 
     vis = visualizer.Visualizer(data_loader_class=loader_class,
                                 data_loader_args=loader_args,
-                                hdr=hdr,
                                 periodic_tiling=tile,
                                 render_resolution=resolution,
-                                rgb=rgb, bivariate=bivariate, surface=surface)
+                                parameters=parameters)
 
     return vis
 

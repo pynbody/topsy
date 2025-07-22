@@ -85,15 +85,12 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         self._toolbar.addAction(self._open_cmap)
 
-        if not self._visualizer._rgb:
+        if self._visualizer.render_mode not in ['rgb', 'rgb-hdr']:
             cmap_menu = QtWidgets.QComboBox(self._toolbar)
-            cmap_menu.addItems(["Univariate", "Bivariate", "Surface"])
-            if self._visualizer._surface:
-                cmap_menu.setCurrentIndex(2)
-            elif self._visualizer._bivariate:
-                cmap_menu.setCurrentIndex(1)
-            else:
-                cmap_menu.setCurrentIndex(0)
+            cmap_menu.addItems(["Univariate", "Bivariate", "Surface", "RGB", "RGB-HDR"])
+            current_mode = self._visualizer.render_mode
+            mode_to_index = {'univariate': 0, 'bivariate': 1, 'surface': 2, 'rgb': 3, 'rgb-hdr': 4}
+            cmap_menu.setCurrentIndex(mode_to_index.get(current_mode, 0))
             cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
             self._toolbar.addWidget(cmap_menu)
 
@@ -125,19 +122,16 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         self.call_later(0, self._prepare_colormap_pane)
 
     def _on_change_cmap_type(self, index):
-        match index:
-            case 0:
-                self._visualizer._bivariate = False
-                self._visualizer._surface = False
-            case 1:
-                self._visualizer._bivariate = True
-                self._visualizer._surface = False
-            case 2:
-                self._visualizer._bivariate = False
-                self._visualizer._surface = True
+        index_to_mode = {0: 'univariate',
+            1: 'bivariate',
+            2: 'surface',
+            3: 'rgb',
+            4: 'rgb-hdr'
+        }
+        
+        render_mode = index_to_mode.get(index, 'univariate')
 
-        self._visualizer._initialize_sph_and_colormap()
-        self._visualizer._reinitialize_colormap_and_bar()
+        self._visualizer.render_mode = render_mode
         self._prepare_colormap_pane()
 
     def _prepare_colormap_pane(self):
