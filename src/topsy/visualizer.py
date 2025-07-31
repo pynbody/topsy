@@ -199,21 +199,28 @@ class VisualizerBase:
     def colormap(self):
         return self._colormap
 
-    def _update_render_mode(self, new_render_mode):
+    def _update_render_mode(self, new_render_mode, revert_on_failure=True):
         self._validate_render_mode(new_render_mode)
 
         old_render_mode = getattr(self, "_render_mode", None)   
         self._render_mode = new_render_mode
 
         logger.info(f"Initializing pipeline for render mode '{self._render_mode}'")
-        if self._render_mode_to_canvas_format(old_render_mode) != self._render_mode_to_canvas_format(self._render_mode):
-            # If canvas format changes, reconfigure the canvas context:
-            self._configure_canvas_context()
+        try:
+            if self._render_mode_to_canvas_format(old_render_mode) != self._render_mode_to_canvas_format(self._render_mode):
+                # If canvas format changes, reconfigure the canvas context:
+                self._configure_canvas_context()
 
-            # when canvas format changes we need to re-initialize the overlays:
-            self._initialize_overlays()
+                # when canvas format changes we need to re-initialize the overlays:
+                self._initialize_overlays()
 
-        self._initialize_sph_and_colormap_and_bar()
+            self._initialize_sph_and_colormap_and_bar()
+        except:
+            if revert_on_failure:
+                logger.error(f"Failed to update render mode to '{new_render_mode}'; reverting to '{old_render_mode}'")
+                self._update_render_mode(old_render_mode, revert_on_failure=False)
+            raise
+
         
         self.invalidate(DrawReason.CHANGE)
 

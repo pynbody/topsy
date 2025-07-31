@@ -8,7 +8,7 @@ from rendercanvas import BaseRenderCanvas
 
 from .lineedit import MyLineEdit
 
-from ...colormap.ui import LayoutSpec, GenericController, ControlSpec, ColorMapController, BivariateColorMapController, RGBMapController
+from ...colormap.ui import LayoutSpec, GenericController, ControlSpec, UnifiedColorMapController
 
 import math
 import logging
@@ -88,10 +88,7 @@ class ColorMapControls(QtWidgets.QDialog):
         self.setWindowFlags(QtCore.Qt.WindowType.Popup
                             | QtCore.Qt.WindowType.FramelessWindowHint)
 
-        self.controller: GenericController = canvas._visualizer.colormap.make_ui_controller(
-            canvas._visualizer,
-            self._refresh_ui
-        )
+        self.controller: GenericController = UnifiedColorMapController(canvas._visualizer, self._refresh_ui)
 
         # build UI
         self._widgets: Dict[str, QtWidgets.QWidget] = {}
@@ -177,6 +174,26 @@ class ColorMapControls(QtWidgets.QDialog):
             w = QtWidgets.QPushButton(spec.label or "")
             w.setStyleSheet("color: black;")  # unclear why this is necessary
             w.pressed.connect(lambda cb=spec.callback: self._on_changed(cb, None))
+        elif spec.type == "color_picker":
+            w = QtWidgets.QPushButton()
+            w.setText("")
+            w.setStyleSheet(f"background-color: {spec.value};")
+            original_color = spec.value
+            def pick_color():
+                dialog = QtWidgets.QColorDialog(self)
+                dialog.setCurrentColor(spec.value)
+                dialog.setWindowTitle(spec.name)
+                dialog.setOption(QtWidgets.QColorDialog.ColorDialogOption.ShowAlphaChannel, False)
+                def on_color_changed(color):
+                    if color.isValid():
+                        w.setStyleSheet(f"background-color: {color.name()};")
+                        self._on_changed(spec.callback, color.name())
+                dialog.currentColorChanged.connect(on_color_changed)
+                if not dialog.exec():
+                    w.setStyleSheet(f"background-color: {original_color};")
+                    self._on_changed(spec.callback, original_color)
+
+            w.clicked.connect(pick_color)
         else:
             w = QtWidgets.QLabel(f"Unknown control {spec.name}")
 

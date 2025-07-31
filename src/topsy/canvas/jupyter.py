@@ -5,7 +5,7 @@ from typing import Callable, Any
 from rendercanvas.jupyter import RenderCanvas, loop
 from . import VisualizerCanvasBase
 from ..config import JUPYTER_UI_LAG
-from ..colormap.ui import ControlSpec
+from ..colormap.ui import ControlSpec, UnifiedColorMapController
 
 class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def __init__(self, *args, **kwargs):
@@ -46,7 +46,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         Return a nested ipywidget (HBox/VBox) tree driven by the generic ColorMapController.get_layout() spec.
         """
         self._controller_box = widgets.Box()
-        self._controller = self._visualizer.colormap.make_ui_controller(self._visualizer, self._refresh_ui)
+        self._controller = UnifiedColorMapController(self._visualizer, self._refresh_ui)
         
         if self._controller:
             self._rebuild_ui(self._controller.get_layout())
@@ -140,7 +140,9 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         elif spec.type == "button":
             w = widgets.Button(description=spec.label or "")
             w.on_click(lambda btn, cb=spec.callback: self._callback(cb, None))
-
+        elif spec.type == "color_picker":
+            w = widgets.ColorPicker(concise=True, description=spec.label or "", value=spec.value)
+            w.observe(lambda change, cb=spec.callback: self._callback(cb, change["new"]), names="value")
         else:
             w = widgets.HTML(f"<b>Unknown control {spec.name}</b>")
 

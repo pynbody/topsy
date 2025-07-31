@@ -437,7 +437,7 @@ def test_render_mode_invalid():
     assert vis.render_mode == 'univariate'
 
 
-def test_render_mode_initialization():
+def test_render_mode_reinitialization():
     """Test that render mode can be set during initialization"""
     modes_to_test = ['univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface']
     
@@ -447,6 +447,29 @@ def test_render_mode_initialization():
         assert vis.render_mode == mode
         
         _check_vis_output_matches_mode(vis, mode)
+
+class RestrictedModeOffscreenCanvas(offscreen.VisualizerCanvas):
+    """A custom canvas that prevents hdr rendering"""
+    def _rc_get_present_methods(self):
+        return {
+            "bitmap": {
+                "formats": ["rgba-u8"],
+            }
+        }
+
+def test_render_mode_fail():
+    """Tests that if a particular render mode fails, the original render mode is restored"""
+    vis = topsy.test(100, render_resolution=50, canvas_class=RestrictedModeOffscreenCanvas,
+                     render_mode='univariate')
+    
+    original_mode = vis.render_mode
+    
+    # Attempt to set an invalid render mode
+    with pytest.raises(ValueError):
+        vis.render_mode = 'rgb-hdr' # valid, but we are forcing a failure (as will happen in Jupyter currently)
+    
+    # Verify that the original render mode is still intact
+    assert vis.render_mode == original_mode
 
 def _check_vis_output_matches_mode(vis, mode):
     result = vis.get_sph_image()
