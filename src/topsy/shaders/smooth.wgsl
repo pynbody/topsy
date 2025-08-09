@@ -20,10 +20,12 @@ fn bilateral_filter_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let half_kernel = params.kernel_size / 2;
 
+    let tex_size = textureDimensions(input_depth, 0);
+
     // Sample neighborhood
     for (var dy = -half_kernel; dy <= half_kernel; dy++) {
-        for (var dx = -half_kernel; dx <= half_kernel; dx++) {
-            let sample_coord = coord + vec2<i32>(dx, dy);
+        for (var dx = -half_kernel; dx <= half_kernel; dx++) {    
+            let sample_coord = clamp(coord + vec2<i32>(dx, dy), vec2<i32>(0, 0), vec2<i32>(tex_size) - vec2<i32>(1, 1));
             let sample_depth = textureLoad(input_depth, sample_coord, 0).g;
 
             // Spatial weight (Gaussian based on distance)
