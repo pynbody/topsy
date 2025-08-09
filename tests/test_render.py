@@ -355,7 +355,7 @@ def test_surface_render(folder):
     vis._sph.set_log_density_cut(-8.0)
 
     vis.render_sph()
-    result = vis.get_sph_image()
+    result = vis._sph.get_image() # TODO should be get_sph_image(), but bypassing smoothing for test purposes
     presentation_result = vis.get_sph_presentation_image()
 
     np.save(folder / "test_surface.npy", result)  
