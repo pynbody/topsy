@@ -122,6 +122,9 @@ class SPH:
         you should call your own CHANGED render for example.
         """
 
+        return self._get_image_unscaled() * self.last_render_mass_scale
+
+    def _get_image_unscaled(self):
         if not self.has_rendered:
             logger.info("Export-quality render has been triggered, because no render has been done yet.")
             self.render(DrawReason.EXPORT)
@@ -133,8 +136,8 @@ class SPH:
                                              (self._render_resolution, self._render_resolution, 1))
         np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
                                                            self._nchannels_output))
-
-        return np_im * self.last_render_mass_scale
+                                                           
+        return np_im
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
@@ -645,3 +648,7 @@ class DepthSPHWithOcclusion(SPH):
         self._visualizer.particle_buffers.issue_draw_indirect(sph_render_pass)
         sph_render_pass.end()
         return command_encoder.finish()
+
+    def get_image(self):
+        return self._get_image_unscaled() # no scaling because we are using max values, not weighted
+    
