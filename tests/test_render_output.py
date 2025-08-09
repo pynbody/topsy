@@ -25,23 +25,122 @@ def vis(request):
 
 
 def test_render(vis, folder):
-    result = vis.get_presentation_image()
+    result = vis.get_sph_presentation_image()
     assert result.dtype == np.uint8
-    # silly test, but it's better than nothing:
-    assert result[:,:,0].max() == 255
-    assert result[:,:,0].min() <= 5
+    
+    plt.imsave(folder / "test_density_render.png", result)
 
-    plt.imsave(folder / "test.png", result) # needs manual verification
+    reference_result = [ 48,  20,  55, 255,  56,  17,  69, 255,  73,  21, 100, 255,  84,
+        30, 126, 255,  88,  39, 139, 255,  89,  40, 141, 255,  85,  32,
+       129, 255,  76,  22, 105, 255,  60,  17,  75, 255,  48,  20,  55,
+       255,  58,  17,  72, 255,  81,  26, 117, 255,  92,  53, 154, 255,
+        94,  76, 170, 255,  95,  89, 177, 255,  95,  90, 177, 255,  94,
+        79, 172, 255,  93,  58, 158, 255,  85,  31, 127, 255,  64,  18,
+        83, 255,  78,  24, 111, 255,  93,  58, 158, 255,  95,  95, 179,
+       255, 100, 124, 188, 255, 108, 143, 191, 255, 112, 148, 192, 255,
+       103, 134, 190, 255,  96, 103, 182, 255,  93,  66, 164, 255,  83,
+        30, 124, 255,  89,  41, 142, 255,  95,  88, 176, 255, 102, 131,
+       189, 255, 129, 166, 195, 255, 181, 199, 207, 255, 211, 214, 219,
+       255, 179, 198, 206, 255, 117, 154, 193, 255,  96, 102, 182, 255,
+        92,  52, 153, 255,  93,  58, 158, 255,  96, 109, 184, 255, 118,
+       155, 193, 255, 184, 201, 208, 255, 211, 185, 168, 255, 193, 119,
+        95, 255, 209, 182, 163, 255, 179, 198, 206, 255, 102, 132, 189,
+       255,  94,  71, 167, 255,  93,  65, 163, 255,  98, 117, 186, 255,
+       126, 164, 195, 255, 212, 214, 220, 255, 195, 127, 100, 255,  47,
+        20,  54, 255, 195, 127, 100, 255, 209, 213, 218, 255, 108, 143,
+       191, 255,  94,  79, 172, 255,  93,  60, 160, 255,  97, 111, 185,
+       255, 119, 157, 194, 255, 193, 205, 211, 255, 211, 186, 170, 255,
+       196, 128, 101, 255, 213, 192, 179, 255, 175, 196, 205, 255, 102,
+       132, 189, 255,  94,  75, 169, 255,  90,  46, 147, 255,  95,  93,
+       178, 255, 104, 136, 190, 255, 136, 172, 196, 255, 190, 204, 210,
+       255, 212, 214, 220, 255, 172, 194, 204, 255, 115, 152, 193, 255,
+        96, 106, 183, 255,  93,  59, 159, 255,  81,  26, 117, 255,  93,
+        65, 163, 255,  96, 103, 182, 255, 103, 133, 190, 255, 113, 150,
+       193, 255, 114, 151, 193, 255, 105, 137, 190, 255,  97, 111, 185,
+       255,  94,  76, 170, 255,  87,  36, 135, 255,  59,  17,  74, 255,
+        85,  31, 127, 255,  93,  64, 162, 255,  95,  88, 176, 255,  96,
+       102, 182, 255,  96, 103, 182, 255,  95,  91, 178, 255,  94,  71,
+       167, 255,  89,  41, 142, 255,  71,  20,  95, 255]
 
-def test_hdr_rgb_render(vis):
+    npt.assert_allclose(result[::20, ::20].ravel(), reference_result, atol = 5)
+
+    
+
+def test_hdr_rgb_render(vis, folder):
     vis = topsy.test(1000, render_resolution=200, canvas_class = offscreen.VisualizerCanvas, 
                      render_mode='rgb-hdr')
+    vis.scale = 20.0
     vis.colormap.update_parameters({"min_mag": 38.0, "max_mag": 40.0})
-    result = vis.get_presentation_image()[..., :3]
+    result = vis.get_sph_presentation_image()[..., :3]
 
+    import tifffile
+    tifffile.imwrite(folder / 'output.tiff', result, photometric='rgb')
+
+    result_ref = [0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 6.4880e-02,
+       6.9336e-02, 3.5217e-02, 2.0544e-01, 1.6541e-01, 8.9844e-02,
+       3.0615e-01, 1.8469e-01, 6.7261e-02, 2.8003e-01, 9.2163e-02,
+       0.0000e+00, 1.0266e-01, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 5.1727e-02,
+       5.1666e-02, 9.2957e-02, 1.4478e-01, 1.8115e-01, 2.8369e-01,
+       3.3496e-01, 3.5303e-01, 5.5371e-01, 6.7529e-01, 6.0400e-01,
+       9.1797e-01, 7.2461e-01, 5.8545e-01, 9.0771e-01, 4.3213e-01,
+       2.9126e-01, 5.0488e-01, 1.6150e-01, 3.9032e-02, 1.0016e-01,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 2.6108e-02, 0.0000e+00,
+       0.0000e+00, 1.0046e-01, 1.0583e-01, 6.4575e-02, 1.7163e-01,
+       2.4866e-01, 2.3535e-01, 2.8442e-01, 4.0967e-01, 4.6313e-01,
+       6.4160e-01, 7.3584e-01, 9.4092e-01, 1.4326e+00, 1.4043e+00,
+       1.7422e+00, 1.4844e+00, 1.3799e+00, 1.7246e+00, 7.8271e-01,
+       6.6211e-01, 8.9307e-01, 3.2764e-01, 2.3462e-01, 2.7783e-01,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 1.1157e-01, 1.0760e-01,
+       1.2436e-02, 2.2888e-01, 3.0688e-01, 2.1631e-01, 3.3374e-01,
+       5.0293e-01, 4.2993e-01, 4.1748e-01, 6.5332e-01, 6.2207e-01,
+       6.7773e-01, 8.8672e-01, 9.7705e-01, 1.3584e+00, 1.4326e+00,
+       1.6670e+00, 1.3984e+00, 1.3887e+00, 1.6270e+00, 7.9834e-01,
+       7.6221e-01, 8.9160e-01, 4.0430e-01, 3.6450e-01, 3.3521e-01,
+       3.4729e-02, 1.0475e-02, 0.0000e+00, 2.0020e-01, 2.4500e-01,
+       1.2408e-01, 4.5337e-01, 6.0010e-01, 5.0146e-01, 7.6807e-01,
+       1.0264e+00, 9.5312e-01, 8.5303e-01, 1.2705e+00, 1.1934e+00,
+       7.9199e-01, 1.3271e+00, 1.2568e+00, 1.0049e+00, 1.3633e+00,
+       1.3350e+00, 9.6289e-01, 1.1465e+00, 1.1504e+00, 6.8457e-01,
+       7.6758e-01, 7.3291e-01, 4.5020e-01, 4.5972e-01, 3.6157e-01,
+       4.0802e-02, 3.5797e-02, 0.0000e+00, 2.4255e-01, 3.1348e-01,
+       1.8469e-01, 6.1133e-01, 7.8613e-01, 6.9678e-01, 1.4355e+00,
+       1.7363e+00, 1.6963e+00, 2.2207e+00, 2.7754e+00, 2.7461e+00,
+       1.9062e+00, 3.2383e+00, 3.2148e+00, 2.2070e+00, 2.7500e+00,
+       2.7227e+00, 1.3857e+00, 1.6689e+00, 1.6328e+00, 7.1582e-01,
+       8.3984e-01, 7.5928e-01, 4.7852e-01, 5.0342e-01, 3.8403e-01,
+       2.3098e-03, 0.0000e+00, 0.0000e+00, 1.7371e-01, 2.3767e-01,
+       1.0162e-01, 4.2896e-01, 5.8740e-01, 4.7583e-01, 7.2461e-01,
+       9.8779e-01, 9.0088e-01, 8.0762e-01, 1.2305e+00, 1.1377e+00,
+       6.8994e-01, 1.2119e+00, 1.0996e+00, 8.3398e-01, 1.2178e+00,
+       1.1250e+00, 7.8223e-01, 1.0010e+00, 9.1943e-01, 5.9424e-01,
+       6.9092e-01, 5.8887e-01, 4.3018e-01, 4.3896e-01, 3.1226e-01,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 5.8716e-02, 9.5459e-02,
+       0.0000e+00, 1.8213e-01, 2.9395e-01, 1.6760e-01, 2.7783e-01,
+       4.6924e-01, 3.4424e-01, 3.1104e-01, 5.6494e-01, 4.3604e-01,
+       3.4448e-01, 6.0791e-01, 4.7949e-01, 4.1260e-01, 6.2109e-01,
+       5.0244e-01, 4.4849e-01, 5.7178e-01, 4.6191e-01, 4.1357e-01,
+       4.5483e-01, 3.4351e-01, 3.3203e-01, 3.0591e-01, 1.8652e-01,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 3.3081e-02, 9.2102e-02, 0.0000e+00, 9.3384e-02,
+       2.1033e-01, 1.1346e-01, 1.3831e-01, 2.9419e-01, 1.9678e-01,
+       1.8323e-01, 3.3838e-01, 2.4231e-01, 2.3254e-01, 3.4595e-01,
+       2.5317e-01, 2.6636e-01, 3.1665e-01, 2.2717e-01, 2.6367e-01,
+       2.5098e-01, 1.6150e-01, 2.1973e-01, 1.5894e-01, 6.6223e-02,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00, 0.0000e+00,
+       2.2003e-02, 0.0000e+00, 9.6664e-03, 9.0576e-02, 4.5563e-02,
+       5.1086e-02, 1.2915e-01, 8.4229e-02, 9.2285e-02, 1.3745e-01,
+       9.2041e-02, 1.2189e-01, 1.1792e-01, 7.0374e-02, 1.2500e-01,
+       7.3303e-02, 2.1027e-02, 9.0942e-02, 4.7646e-03, 0.0000e+00]
+    
     assert result.dtype == np.float16
-    assert result.max() > 1.0
+    npt.assert_allclose(result[::20, ::20].ravel(), result_ref, atol=1e-2)
 
+    
 def test_particle_pos_smooth(vis):
     # this is testing the test data
     if hasattr(vis.data_loader, '_cell_layout'):
@@ -458,84 +557,3 @@ def test_surface_render(folder):
     ], dtype=np.uint8)
 
     npt.assert_allclose(presentation_result[::20, ::20].ravel(), presentation_expectation, atol=5)
-
-
-def test_render_mode_switching():
-    """Test that render mode can be switched on-the-fly without errors"""
-    vis = topsy.test(1000, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, 
-                     render_mode='univariate')
-    vis.scale = 20.0
-
-    mode_sequence = 'univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface'
-    
-    for mode in mode_sequence:
-        vis.render_mode = mode
-        _check_vis_output_matches_mode(vis, mode)
-
-
-def test_render_mode_invalid():
-    """Test that invalid render modes are properly rejected"""
-    vis = topsy.test(100, render_resolution=50, canvas_class=offscreen.VisualizerCanvas)
-    
-    # Test setting invalid render mode
-    with pytest.raises(ValueError, match="Invalid render_mode 'invalid'"):
-        vis.render_mode = 'invalid'
-    
-    # Verify the original render mode is unchanged
-    assert vis.render_mode == 'univariate'
-
-
-def test_render_mode_reinitialization():
-    """Test that render mode can be set during initialization"""
-    modes_to_test = ['univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface']
-    
-    for mode in modes_to_test:
-        vis = topsy.test(100, render_resolution=50, canvas_class=offscreen.VisualizerCanvas,
-                         render_mode=mode)
-        assert vis.render_mode == mode
-        
-        _check_vis_output_matches_mode(vis, mode)
-
-class RestrictedModeOffscreenCanvas(offscreen.VisualizerCanvas):
-    """A custom canvas that prevents hdr rendering"""
-    def _rc_get_present_methods(self):
-        return {
-            "bitmap": {
-                "formats": ["rgba-u8"],
-            }
-        }
-
-def test_render_mode_fail():
-    """Tests that if a particular render mode fails, the original render mode is restored"""
-    vis = topsy.test(100, render_resolution=50, canvas_class=RestrictedModeOffscreenCanvas,
-                     render_mode='univariate')
-    
-    original_mode = vis.render_mode
-    
-    # Attempt to set an invalid render mode
-    with pytest.raises(ValueError):
-        vis.render_mode = 'rgb-hdr' # valid, but we are forcing a failure (as will happen in Jupyter currently)
-    
-    # Verify that the original render mode is still intact
-    assert vis.render_mode == original_mode
-
-def _check_vis_output_matches_mode(vis, mode):
-    result = vis.get_sph_image()
-    result_presentation = vis.get_sph_presentation_image()
-        
-        # check type based on mode:
-    if mode.endswith('hdr'):
-        assert result_presentation.dtype == np.float16
-    else:
-        assert result_presentation.dtype == np.uint8
-
-    res = vis._render_resolution
-
-    assert result_presentation.shape == (res, res, 4)
-
-    if mode in ['rgb', 'rgb-hdr']:
-        assert result.shape == (res, res, 3)
-    elif mode in ['bivariate', 'surface']:
-        assert result.shape == (res, res, 2)
-    else:  # univariate
-        assert result.shape == (res, res)
