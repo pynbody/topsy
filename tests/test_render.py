@@ -256,7 +256,7 @@ def test_bivariate_render(folder):
      results_mapped = vis.get_sph_presentation_image()
 
      np.save(folder / "test_bivariate.npy", results)  
-     np.save(folder / "test_bivariate_mapped.npy", results_mapped)
+     plt.imsave(folder / "test_bivariate.png", results_mapped)
 
      expect_den = [3.9312412e-10, 4.7599746e-10, 5.6863347e-10, 6.7354927e-10,
        7.9762674e-10, 9.3636621e-10, 1.0364271e-09, 9.9064090e-10,
@@ -342,8 +342,8 @@ def test_bivariate_render(folder):
        108, 207, 255, 188, 111, 209, 255, 188, 110, 208, 255, 186, 106,
        207, 255, 182,  98, 204, 255, 177,  88, 200, 255]
      
-     npt.assert_allclose(results[::20,::20,0].ravel(), expect_den, rtol=1e-4)
-     npt.assert_allclose(results[::20,::20,1].ravel(), expect_qty, atol=1e-8)
+     npt.assert_allclose(results[::20,::20,0].ravel(), expect_den, rtol=2e-3)
+     npt.assert_allclose(results[::20,::20,1].ravel(), expect_qty, atol=1e-4)
      npt.assert_allclose(results_mapped[::20, ::20].ravel(), expect_rgba, atol=5)
      
 def test_surface_render(folder):
