@@ -22,5 +22,8 @@ jobs:
     - name: Install flit
       run: pip install flit
     
-    - name: Build and publish to PyPI
-      run: flit publish
+    - name: Build package
+      run: flit build
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
