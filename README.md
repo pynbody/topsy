@@ -126,13 +126,14 @@ Using SSPs
 ----------
 
 If you have stars in your simulation, you can try rendering using pynbody's SSP tables, using the command-line
-flag `--rgb`, e.g.
+flag `--render-mode rgb`, or by selecting the RGB option in the colormap. Make sure you are visualising stars rather than
+any other particles e.g.
 
 ```
-topsy -c halo-1 -p s --rgb my_simulation 
+topsy -c halo-1 -p s --render-mode rgb my_simulation 
 ```
 
-Even better, if you have an HDR display (e.g. recent Macbook Pros), you can use the `--hdr` flag to render in HDR mode.  
+Even better, if you have an HDR display (e.g. recent Macbook Pros), you can use the `--render-mode rgb-hdr` flag to render in HDR mode.  
 Note in HDR mode that the magnitude range specified applies to the SDR range, i.e. HDR brightnesses extend beyond the specified maximum surface brightness limit. The exact brightest magntiude that can be displayed will depend on your display hardware.
 
 
@@ -160,12 +161,12 @@ There is also a toolbar at the bottom of the window with some buttons:
   - save a snapshot of the current view to an image file.
 * <img src="https://github.com/pynbody/topsy/blob/c69e08e6e8d29cd93b6e8224796de4eec6d0c667/src/topsy/canvas/icons/linked.png?raw=true" style="width: 1em;">
   - link this window to other topsy windows, so that rotating, scaling or moving one does the same to the other
-* <img src="https://github.com/pynbody/topsy/blob/b516b3e15aeefcc78ecb4d8b52009f6243da7020/src/topsy/canvas/qt/icons/rgb.png?raw=true" style="width: 1em;"> - open colormap control; this lets you select the min/max values, the quantity to visualise, and the matplotlib colormap. (When in RGB / SSP mode, you just get to set the surface brightness range and a gamma value.) 
+* <img src="https://github.com/pynbody/topsy/blob/b516b3e15aeefcc78ecb4d8b52009f6243da7020/src/topsy/canvas/qt/icons/rgb.png?raw=true" style="width: 1em;"> - open colormap control; this lets you select the rendering mode, min/max values, the quantity to visualise, the matplotlib colormap and more.
 
 Using from jupyter
 ------------------
 
-Thanks to [jupyter-rfb](https://jupyter-rfb.readthedocs.io/en/stable/), it is possible to use `topsy` within a jupyter notebook. 
+It is possible to use `topsy` within a jupyter notebook.  Graphics are rendered on the jupyter server, and displayed within the notebook.
 
 To open a topsy view within your jupyter notebook, try
 
@@ -175,4 +176,4 @@ topsy.load("/path/to/simulation", particle="gas")
 ```
 Note that you can interact with this widget in exactly the same way as the native window produced by `topsy`. Most of
 the same options you can pass on the command line are also available via this `load` function (type 
-`help(topsy.load)` for details).
+`help(topsy.load)` for details). 
