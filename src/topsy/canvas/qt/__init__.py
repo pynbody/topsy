@@ -6,7 +6,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 
 from rendercanvas.qt import RenderCanvas, loop
 
-from .colormap import RGBColorControls, ColorMapControls, BivariateColorMapControls
+from .colormap import ColorMapControls
 from .lineedit import MyLineEdit
 from .recording import RecordingSettingsDialog, VisualizationRecorderWithQtProgressbar
 from .. import VisualizerCanvasBase
@@ -85,16 +85,6 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
 
         self._toolbar.addAction(self._open_cmap)
 
-        if not self._visualizer._rgb:
-            cmap_menu = QtWidgets.QComboBox(self._toolbar)
-            cmap_menu.addItems(["Univariate", "Bivariate"])
-            if self._visualizer._bivariate:
-                cmap_menu.setCurrentIndex(1)
-            else:
-                cmap_menu.setCurrentIndex(0)
-            cmap_menu.currentIndexChanged.connect(self._on_change_cmap_type)
-            self._toolbar.addWidget(cmap_menu)
-
         self._toolbar.addSeparator()
 
 
@@ -122,26 +112,11 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         layout.addLayout(our_layout)
         self.call_later(0, self._prepare_colormap_pane)
 
-    def _on_change_cmap_type(self, index):
-        match index:
-            case 0:
-                self._visualizer._bivariate = False
-            case 1:
-                self._visualizer._bivariate = True
-
-        self._visualizer._reinitialize_colormap_and_bar()
-        self._prepare_colormap_pane()
-
     def _prepare_colormap_pane(self):
         if hasattr(self, '_cmap_connection'):
             self._open_cmap.disconnect(self._cmap_connection)
-        if not self._visualizer._hdr and not self._visualizer._rgb:
-            if self._visualizer._bivariate:
-                self._colormap_controls = BivariateColorMapControls(self)
-            else:
-                self._colormap_controls = ColorMapControls(self)
-        elif self._visualizer._rgb:
-            self._colormap_controls = RGBColorControls(self)
+
+        self._colormap_controls = ColorMapControls(self)
 
         self._cmap_connection = self._open_cmap.triggered.connect(self._colormap_controls.open)
 

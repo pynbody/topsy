@@ -25,6 +25,13 @@ def jupyter_vis(solara_test):
     display(vis)
     return vis
 
+@pytest.fixture
+def jupyter_vis_surface(solara_test):
+    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, 
+                     render_mode='surface')
+    display(vis)
+    return vis
+
 
 def test_colormap_name_select(jupyter_vis, page_session: Page):
     vis = jupyter_vis
@@ -79,7 +86,8 @@ def test_alter_range(jupyter_vis, page_session: Page):
     assert poll_until_true(lambda: vis.colormap.get_parameter('vmax') > vmax_orig)
 
 def test_rgb_map(solara_test, page_session: Page):
-    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, rgb=True)
+    vis = topsy.test(100, canvas_class = topsy.canvas.jupyter.VisualizerCanvas, 
+                     render_mode='rgb')
     display(vis)
 
     # at the moment we just check this actually gives the alternative panel
@@ -87,3 +95,24 @@ def test_rgb_map(solara_test, page_session: Page):
     sel.wait_for()
 
     
+def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
+   
+    sel = page_session.locator("select:has-text('Projected density')")
+    sel.wait_for()
+
+     # Check that no vmin/vmax slider exists initially
+    assert page_session.locator("div.noUi-handle-upper").count() == 0
+
+    sel.select_option("test-quantity")
+
+    # Wait for vmin/vmax slider to appear. NB there's other sliders, just not range sliders, so here
+    # we look for the 'upper' handle (the 'lower' handles exist in single-value sliders)
+    assert poll_until_true(lambda: page_session.locator("div.noUi-handle-upper").count() > 0)
+
+    # Change quantity back 
+    sel = page_session.locator("select:has-text('test-quantity')")
+    sel.wait_for()
+    sel.select_option("Projected density")
+
+    # Wait for vmin/vmax sliders to disappear
+    assert poll_until_true(lambda: page_session.locator("div.noUi-handle-upper").count() == 0)

@@ -7,7 +7,7 @@ import wgpu
 
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Any, Optional
 
 from . import config
 from . import canvas
@@ -29,20 +29,24 @@ logger.setLevel(logging.INFO)
 
 
 class VisualizerBase:
+
     colorbar_aspect_ratio = config.COLORBAR_ASPECT_RATIO
     show_status = True
     device = None # device will be shared across all instances
 
+    _sph : Optional[sph.SPH]
+    _colormap: Optional[colormap.ColormapHolder]
+    _colorbar: Optional[colorbar.ColorbarOverlay]
+
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
                  colormap_name = config.DEFAULT_COLORMAP, canvas_class = canvas.VisualizerCanvas,
-                 hdr = False, rgb=False, bivariate=False):
-        self._hdr = hdr
-        self._rgb = rgb
-        self._bivariate = bivariate
+                 render_mode='univariate'):
+        
         self._render_resolution = render_resolution
-        self._sph_class = sph.SPH
-        self._colorbar: Optional[colorbar.ColorbarOverlay] = None
+        self._colorbar = None
+        self._sph = None
+        self._colormap = None
         self._encoder_executor = ThreadPoolExecutor(max_workers=1) # 1 worker to prevent GIL contention
 
         self.crosshairs_visible = False
@@ -52,35 +56,30 @@ class VisualizerBase:
         self.show_colorbar = True
         self.show_scalebar = True
 
+        self._validate_render_mode(render_mode)
+        self._render_mode = render_mode
         self.canvas = canvas_class(visualizer=self, title="topsy")
-
+        
         self._setup_wgpu()
+        self._configure_canvas_context()
+        self._initialize_data_loader_and_buffers(data_loader_class, data_loader_args, data_loader_kwargs)
+        self._initialize_overlays()
 
+        self._periodic_tiling = periodic_tiling
+
+        self._initialize_sph_and_colormap_and_bar(colormap_name)
+
+        self._last_status_update = 0.0
+
+    def _initialize_data_loader_and_buffers(self, data_loader_class, data_loader_args, data_loader_kwargs):
         self.data_loader = data_loader_class(self.device, *data_loader_args, **data_loader_kwargs)
         self.particle_buffers = particle_buffers.ParticleBuffers(self.data_loader, self.device,
                                                                  self.data_loader.get_render_progression().get_max_particle_regions_per_block())
 
         self.periodicity_scale = self.data_loader.get_periodicity_scale()
+        
 
-        self._periodic_tiling = periodic_tiling
-
-        if periodic_tiling:
-            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
-        elif self._rgb:
-            logger.info("Using RGB renderer")
-            self._sph = sph.RGBSPH(self, self._render_resolution)
-        else:
-            self._sph = sph.SPH(self, self._render_resolution)
-
-        self.reset_view()
-
-        self.render_texture = self._sph.get_output_texture()
-        self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
-                                                                          self.canvas_format)
-        self._colormap.update_parameters({'colormap_name': colormap_name})
-        self._reinitialize_colormap_and_bar()
-
-        self._last_status_update = 0.0
+    def _initialize_overlays(self):
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 40, color=(1, 1, 1, 1))
 
         self._scalebar = scalebar.ScalebarOverlay(self)
@@ -92,6 +91,66 @@ class VisualizerBase:
                                      (1, 1, 1, 0.3) # color
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
+
+    def _get_sph_class_for_render_mode(self, render_mode):
+        """Map render mode to appropriate SPH class."""
+        if render_mode == 'rgb' or render_mode == 'rgb-hdr':
+            return sph.RGBSPH
+        elif render_mode == 'surface':
+            return sph.DepthSPHWithOcclusion
+        else:  # 'univariate', 'bivariate'
+            return sph.SPH
+    
+    def _get_colormap_parameters_for_render_mode(self, render_mode):
+        """Generate colormap parameters for the given render mode."""
+        colormap_params = {'weighted_average': self.quantity_name is not None}
+        
+        if render_mode == 'rgb':
+            colormap_params.update({'type': 'rgb', 'hdr': False, 'log': True})
+        elif render_mode == 'rgb-hdr':
+            colormap_params.update({'type': 'rgb', 'hdr': True, 'log': True})
+        elif render_mode == 'bivariate':
+            colormap_params.update({'type': 'bivariate'})
+        elif render_mode == 'surface':
+            colormap_params.update({'type': 'surface'})
+        else:  # 'univariate'
+            colormap_params.update({'type': 'density'})
+            
+        return colormap_params
+
+    def _initialize_sph_and_colormap_and_bar(self, colormap_name = None):
+        """(Re-)initialize SPH, colormap and colorbar"""
+
+        if self._sph is not None:
+            old_rotation = self._sph.rotation_matrix
+            old_position = self._sph.position_offset
+            old_scale = self._sph.scale
+        else:
+            old_rotation = None
+            old_position = None
+            old_scale = None
+
+        if self._periodic_tiling:
+            self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
+        else:
+            # Use render mode to select SPH class
+            sph_class = self._get_sph_class_for_render_mode(self._render_mode)
+            logger.info(f"Using {sph_class.__name__} renderer for render mode '{self._render_mode}'")
+            self._sph = sph_class(self, self._render_resolution)
+
+        self.reset_view(rotation_matrix = old_rotation, position_offset = old_position, scale = old_scale)
+        self.invalidate()
+
+        if colormap_name is None:
+            colormap_name = self._colormap.get_parameter('colormap_name')
+
+        self.render_texture = self._sph.get_output_texture()
+
+        self._colormap: colormap.ColormapHolder = colormap.ColormapHolder(self.device, self.render_texture,
+                                                                          self.canvas_format)
+        self._colormap.update_parameters({'colormap_name': colormap_name})
+
+        self._initialize_colormap_and_bar()
 
     def _setup_wgpu(self):
         self.adapter: wgpu.GPUAdapter = wgpu.gpu.request_adapter_sync(power_preference="high-performance")
@@ -107,17 +166,22 @@ class VisualizerBase:
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
 
-        if self._hdr:
-            self.canvas_format = "rgba16float"
+    def _render_mode_to_canvas_format(self, render_mode):
+        if render_mode is None:
+            return None
+        elif render_mode.endswith('hdr'):
+            format = "rgba16float"
         else:
-            self.canvas_format = self.context.get_preferred_format(self.adapter)
-            if self.canvas_format.endswith("-srgb"):
+            format = self.context.get_preferred_format(self.adapter)
+            if format.endswith("-srgb"):
                 # matplotlib colours aren't srgb. It might be better to convert
                 # but for now, just stop the canvas being srgb
-                self.canvas_format = self.canvas_format[:-5]
-
+                format = format[:-5]
+        return format 
+        
+    def _configure_canvas_context(self):
+        self.canvas_format = self._render_mode_to_canvas_format(self._render_mode)
         self.context.configure(device=self.device, format=self.canvas_format)
-
         logger.info(f"Canvas format {self.canvas_format}")
 
     def invalidate(self, reason=DrawReason.CHANGE):
@@ -135,10 +199,40 @@ class VisualizerBase:
     def colormap(self):
         return self._colormap
 
+    def _update_render_mode(self, new_render_mode, revert_on_failure=True):
+        self._validate_render_mode(new_render_mode)
+
+        old_render_mode = getattr(self, "_render_mode", None)   
+        self._render_mode = new_render_mode
+
+        logger.info(f"Initializing pipeline for render mode '{self._render_mode}'")
+        try:
+            if self._render_mode_to_canvas_format(old_render_mode) != self._render_mode_to_canvas_format(self._render_mode):
+                # If canvas format changes, reconfigure the canvas context:
+                self._configure_canvas_context()
+
+                # when canvas format changes we need to re-initialize the overlays:
+                self._initialize_overlays()
+
+            self._initialize_sph_and_colormap_and_bar()
+        except:
+            if revert_on_failure:
+                logger.error(f"Failed to update render mode to '{new_render_mode}'; reverting to '{old_render_mode}'")
+                self._update_render_mode(old_render_mode, revert_on_failure=False)
+            raise
+
+        
+        self.invalidate(DrawReason.CHANGE)
+
+    def _validate_render_mode(self, new_render_mode):
+        valid_modes = {'univariate', 'bivariate', 'rgb', 'rgb-hdr', 'surface'}
+        if new_render_mode not in valid_modes:
+            raise ValueError(f"Invalid render_mode '{new_render_mode}'. Valid modes: {valid_modes}")
+    
+ 
     @property
     def rotation_matrix(self):
         return self._sph.rotation_matrix
-
 
     @rotation_matrix.setter
     def rotation_matrix(self, value):
@@ -154,14 +248,31 @@ class VisualizerBase:
         self._sph.position_offset = value
         self.invalidate()
 
-    def reset_view(self):
-        self._sph.rotation_matrix = np.eye(3)
-        period_scale = self.data_loader.get_periodicity_scale()
-        if period_scale is not None:
-            self.scale = period_scale / 2
-        else:
-            self.scale = config.DEFAULT_SCALE
-        self._sph.position_offset = np.zeros(3)
+    @property
+    def render_mode(self):
+        return self._render_mode 
+    
+    @render_mode.setter 
+    def render_mode(self, value):
+        self._update_render_mode(value)
+
+    def reset_view(self, rotation_matrix=None, position_offset=None, scale=None):
+        """Reset to the default view, or a specified rotation/position/scale if provided."""
+        if rotation_matrix is None:
+            rotation_matrix = np.eye(3)
+        if position_offset is None:
+            position_offset = -self.data_loader.get_initial_center()
+            logger.info(f"Position offset: {position_offset}")
+        if scale is None:
+            period_scale = self.data_loader.get_periodicity_scale()
+            if period_scale is not None:
+                scale = period_scale / 2
+            else:
+                scale = config.DEFAULT_SCALE
+
+        self._sph.rotation_matrix = rotation_matrix
+        self._sph.scale = scale
+        self._sph.position_offset = position_offset
 
     @property
     def scale(self):
@@ -181,7 +292,7 @@ class VisualizerBase:
     @property
     def averaging(self):
         """True if the quantity being visualised is a weighted average, False if it is a mass projection."""
-        return self.particle_buffers.quantity_name is not None
+        return self.quantity_name is not None
 
     @quantity_name.setter
     def quantity_name(self, value):
@@ -198,29 +309,19 @@ class VisualizerBase:
         self.particle_buffers.quantity_name = value
         self.invalidate(DrawReason.CHANGE)
         self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
-        self._reinitialize_colormap_and_bar()
+        self._initialize_colormap_and_bar()
 
 
     def colormap_autorange(self):
         self._colormap.autorange(self._sph.get_image())
         self.invalidate(DrawReason.PRESENTATION_CHANGE)
 
-    def _reinitialize_colormap_and_bar(self):
+    def _initialize_colormap_and_bar(self):
         """Reinitialize the colormap and colorbar.
-        
-        If keep_scale is False, render and figure out the min/max values for the colormap too.
+
         """
-        colormap_params = {}
-        if self._rgb:
-            colormap_params['type'] = 'rgb'
-            colormap_params['hdr'] = self._hdr
-            colormap_params['log'] = True
-        elif self._bivariate:
-            colormap_params['weighted_average'] = self.quantity_name is not None
-            colormap_params['type'] = 'bivariate'
-        else:
-            colormap_params['weighted_average'] = self.quantity_name is not None
-            colormap_params['type'] = 'density'
+        # Get colormap parameters based on render mode
+        colormap_params = self._get_colormap_parameters_for_render_mode(self._render_mode)
 
         changed_type = self._colormap.update_parameters(colormap_params)
 
@@ -230,9 +331,11 @@ class VisualizerBase:
             logger.info("Autorange colormap parameters")
             self._colormap.autorange(self._sph.get_image())
 
-        if colormap_params['type'] != 'rgb':
+        if colormap_params['type'] not in ('rgb', 'surface'):
             self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
                                                       colormap_params['colormap_name'], self._get_colorbar_label())
+        else:
+            self._colorbar = None
 
 
     def _get_colorbar_label(self):
@@ -347,13 +450,35 @@ class VisualizerBase:
         self._status.encode_render_pass(command_encoder, target_texture_view)
 
     def get_sph_image(self) -> np.ndarray:
+        """Get the logical content of the SPH image, possibly with post-processing but no colormaps"""
         return self._colormap.sph_raw_output_to_content(self._sph.get_image())
+    
+    def get_sph_presentation_image(self) -> np.ndarray:
+        """Get the SPH image as a presentation image, i.e. with colormap applied but no additional layers such as colorbar."""
+        texture: wgpu.GPUTexture = self.device.create_texture(
+            size=(self._render_resolution, self._render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
+                    wgpu.TextureUsage.COPY_SRC,
+            format=self.canvas_format,
+            label="output_texture",
+        )
+
+        self.render_sph(DrawReason.EXPORT)
+
+        self._colormap.set_scaling(self._render_resolution, self._render_resolution, self._sph.last_render_mass_scale)
+
+        command_encoder = self.device.create_command_encoder()
+        self._colormap.encode_render_pass(command_encoder, texture.create_view())
+        self.device.queue.submit([command_encoder.finish()])
+
+        return self._texture_to_rgba_numpy(texture)
+
 
     def get_depth_image(self) -> np.ndarray:
         return self._sph.get_depth_image()
 
-
     def get_presentation_image(self, resolution=(640,480)) -> np.ndarray:
+        """Get the full presentation image, complete with layers such as colorbar, scalebar and status line"""
         texture: wgpu.GPUTexture = self.device.create_texture(
             size=(resolution[0], resolution[1], 1),
             usage=wgpu.TextureUsage.RENDER_ATTACHMENT |
@@ -363,7 +488,12 @@ class VisualizerBase:
         )
         self.draw(DrawReason.EXPORT, texture.create_view())
 
+        return self._texture_to_rgba_numpy(texture)
+
+    def _texture_to_rgba_numpy(self, texture):
         size = texture.size
+
+        is_bgr = texture.format.startswith("bgr")
 
         if texture.format.endswith("8unorm"):
             bytes_per_pixel = 4
@@ -387,15 +517,29 @@ class VisualizerBase:
             size,
         )
 
-        return np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
+        result = np.frombuffer(data, np_type).reshape(size[1], size[0], 4)
+
+        if is_bgr:
+            result = result[..., [2, 1, 0, 3]]
+
+        return result
 
 
     def save(self, filename='output.pdf'):
+        """Save the current view to a file, either as a numpy array or as a matplotlib image.
+        
+        If a numpy array, the logical content of the SPH image is saved, i.e. without colormaps.
+        
+        If a matplotlib image, the SPH image is colormapped and saved as an image using matplotlib to add
+        the colorbar and axes so that these are rendered to vectors if a pdf is requested.
+
+        Note that matplotlib is never used to perform the colormapping, so that bivariate and surface rendering
+        outputs correctly.
+        """
         self._sph.render(DrawReason.EXPORT)
-        image = self.get_sph_image()
         if filename.endswith(".npy"):
+            image = self.get_sph_image()
             np.save(filename, image)
-            return
         else:
             import matplotlib.pyplot as p
             colormap_params = self._colormap.get_parameters()
@@ -403,16 +547,25 @@ class VisualizerBase:
             fig = p.figure()
             p.clf()
             p.set_cmap(colormap_params['colormap_name'])
-            extent = np.array([-1., 1., -1., 1.])*self.scale
-            if colormap_params.get('log', False):
-                image = np.log10(image)
 
-            p.imshow(image,
-                     vmin=self._colormap.get_parameter('vmin'),
-                     vmax=self._colormap.get_parameter('vmax'),
-                     extent=extent)
+            image = self.get_sph_presentation_image()
+
+            extent = np.array([-1., 1., -1., 1.])*self.scale
+
+            p.imshow(image, extent=extent)
             p.xlabel("$x$/kpc")
-            p.colorbar().set_label(self._colorbar.label)
+
+            cb_vmin = self._colormap.get_parameter('vmin')
+            cb_vmax = self._colormap.get_parameter('vmax')
+
+            if self._colorbar is not None:
+                p.colorbar(
+                    p.cm.ScalarMappable(
+                        norm=p.Normalize(vmin=cb_vmin, vmax=cb_vmax),
+                        cmap=colormap_params['colormap_name'],
+                    ),
+                    ax = p.gca()
+                ).set_label(self._colorbar.label)
             p.savefig(filename)
             p.close(fig)
 

@@ -181,7 +181,8 @@ def test_colormap_updating(vis):
 
 def test_rgb_colormap_vmin_vmax():
     """Test that RGB colormap can be updated either with vmin/vmax or with min_mag/max_mag"""
-    vis = topsy.test(100, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, rgb=True)
+    vis = topsy.test(100, render_resolution=200, canvas_class=offscreen.VisualizerCanvas, 
+                     render_mode='rgb')
 
     vis.colormap.update_parameters({'vmin': 1.0, 'vmax': 2.0})
     assert vis.colormap.get_parameter('vmin') == 1.0

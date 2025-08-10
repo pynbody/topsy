@@ -28,8 +28,28 @@ class SPH:
     _vertex_name = "vertex_weighting" # as defined in sph.wgsl
     _fragment_name = "fragment_weighting"
 
+    _blend = {
+                "color": {
+                    "src_factor": wgpu.BlendFactor.one,
+                    "dst_factor": wgpu.BlendFactor.one,
+                    "operation": wgpu.BlendOperation.add,
+                },
+                "alpha": {
+                    "src_factor": wgpu.BlendFactor.one,
+                    "dst_factor": wgpu.BlendFactor.one,
+                    "operation": wgpu.BlendOperation.add,
+                },
+              }
+
+    _transform_params_dtype = [("transform", np.float32, (4, 4)),
+                              ("scale_factor", np.float32, (1,)),
+                              ("min_max_size", np.float32, (2,)),
+                              ("boxsize_by_2_clipspace", np.float32, (1,)),
+                              ("density_cut", np.float32, (1,))]
+
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False, share_render_progression=None):
+        logger.info(f"Initializing {self.__class__} with resolution {render_resolution}")
         self._visualizer = visualizer
 
         logger.info(f"Creating SPH renderer with resolution {render_resolution}")
@@ -102,6 +122,9 @@ class SPH:
         you should call your own CHANGED render for example.
         """
 
+        return self._get_image_unscaled() * self.last_render_mass_scale
+
+    def _get_image_unscaled(self):
         if not self.has_rendered:
             logger.info("Export-quality render has been triggered, because no render has been done yet.")
             self.render(DrawReason.EXPORT)
@@ -113,8 +136,8 @@ class SPH:
                                              (self._render_resolution, self._render_resolution, 1))
         np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
                                                            self._nchannels_output))
-
-        return np_im * self.last_render_mass_scale
+                                                           
+        return np_im
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
@@ -229,51 +252,39 @@ class SPH:
                     "targets": [
                         {
                             "format": self.render_format,
-                            "blend": {
-                                "color": {
-                                    "src_factor": wgpu.BlendFactor.one,
-                                    "dst_factor": wgpu.BlendFactor.one,
-                                    "operation": wgpu.BlendOperation.add,
-                                },
-                                "alpha": {
-                                    "src_factor": wgpu.BlendFactor.one,
-                                    "dst_factor": wgpu.BlendFactor.one,
-                                    "operation": wgpu.BlendOperation.add,
-                                },
-                              }
+                            "blend": self._blend
                         }
                     ]
                 }
             )
 
+
     def _update_transform_buffer(self):
+        transform_params = self._get_transform_params()
+
+        self.last_transform_params = transform_params
+        self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
+
+    def _get_transform_params(self):
         model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
                                    [0, 1.0, 0, self.position_offset[1]],
                                    [0, 0, 1.0, self.position_offset[2]],
                                    [0, 0, 0.0, 1.0]])
-
         # self._transform is the transformation around the origin (fine for opengl)
         # but in webgpu, the clip space in the z direction is [0,1]
         # so we need a matrix that brings z=0. to z=0.5 and squishes the z direction
         # so that the clipping is the same in all dimensions
         clipcoord_displace = np.array([[1.0, 0, 0, 0.0],
-                             [0, 1.0, 0, 0.0],
-                             [0, 0, 0.5, 0.5],
-                             [0, 0, 0.0, 1.0]])
+                                       [0, 1.0, 0, 0.0],
+                                       [0, 0, 0.5, 0.5],
+                                       [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
-
-        transform[:3,:3] = self.rotation_matrix
+        transform[:3, :3] = self.rotation_matrix
         rotation_and_scaling = transform / self.scale
-
         rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
-
         scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
-        transform_params_dtype = [("transform", np.float32, (4, 4)),
-                                  ("scale_factor", np.float32, (1,)),
-                                  ("min_max_size", np.float32, (2,)),
-                                  ("boxsize_by_2_clipspace", np.float32, (1,)),
-                                  ("padding", np.int32, (1,))]
-        transform_params = np.zeros((), dtype=transform_params_dtype)
+
+        transform_params = np.zeros((), dtype=self._transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         if self._visualizer.periodicity_scale is not None:
@@ -281,16 +292,11 @@ class SPH:
                                                          self._visualizer.periodicity_scale / self.scale
         else:
             transform_params["boxsize_by_2_clipspace"] = 0.0
-
         resolution = self._render_texture.width
         assert resolution == self._render_texture.height
-
         # min_max_size to be sent in viewport coordinates
-        transform_params["min_max_size"] = (2.*self.min_pixels/resolution, 2.*self.max_pixels/resolution)
-
-        self.last_transform_params = transform_params
-
-        self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
+        transform_params["min_max_size"] = (2. * self.min_pixels / resolution, 2. * self.max_pixels / resolution)
+        return transform_params
 
     def invalidate(self, draw_reason=DrawReason.CHANGE):
         """Invalidates the current render, so that an attempt to get the current image will fail."""
@@ -355,7 +361,7 @@ class SPH:
 
         return command_encoder.finish()
 
-    def _get_kernel_at_resolution(self, n_samples):
+    def _setup_kernel(self):
         if self._kernel is None:
             try:
                 self._kernel = pynbody.sph.Kernel2D()
@@ -363,6 +369,7 @@ class SPH:
                 # pynbody v2:
                 self._kernel = pynbody.sph.kernels.Kernel2D()
 
+    def _get_kernel_at_resolution(self, n_samples):
         # sph kernel is sampled at the centre of the pixels, and the full grid ranges from -2 to 2.
         # thus the left hand most pixel is at -2+2/n_samples, and the right hand most pixel is at 2-2/n_samples.
         pixel_centres = np.linspace(-2+2./n_samples, 2-2./n_samples, n_samples)
@@ -372,20 +379,22 @@ class SPH:
         # The below could easily be optimized but doesn't seem worth it
         kernel_im = np.array([self._kernel.get_value(d) for d in distance.flatten()]).reshape(n_samples, n_samples)
 
+        kernel_im *= self._get_kernel_image_normalization(kernel_im)
+
+        return kernel_im
+
+    def _get_kernel_image_normalization(self, kernel_im):
         # make kernel explicitly mass conserving; naive pixelization makes it not automatically do this.
         # It should be normalized such that the integral over the kernel is 1/h^2. We have h=1 here, and the
         # full width is 4h, so the width of a pixel is dx=4/n_samples. So we need to multiply by dx^2=(n_samples/4)^2.
         # This results in a correction of a few percent, typically; not huge but not negligible either.
         #
         # (Obviously h!=1 generally, so the h^2 normalization occurs within the shader later.)
-        kernel_im *= (n_samples / 4) ** 2 / kernel_im.sum()
-
-        return kernel_im
+        assert kernel_im.shape == (len(kernel_im), len(kernel_im)), "Kernel image should be square"
+        return (len(kernel_im) / 4) ** 2 / kernel_im.sum()
 
     def _setup_kernel_texture(self, n_samples=64, n_mip_levels = 4):
-        if hasattr(SPH, "_kernel_texture"):
-            # As things stand, the kernel texture is actually shared between instances of SPH for efficiency.
-            return
+        self._setup_kernel()
 
         SPH._kernel_texture = self._device.create_texture(
             label="kernel_texture",
@@ -436,3 +445,210 @@ class DepthSPH(SPH):
 
     _vertex_name = "vertex_depth"
 
+class LocalSphereKernel:
+    def __init__(self):
+        pass
+
+    def get_value(self, distance):
+        """Returns the value of the local sphere kernel at a given distance."""
+        if distance < 2.0:
+            return np.sqrt(4.0 - distance**2)
+        else:
+            return -0.01
+
+class DepthSPHWithOcclusion(SPH):
+    """Renders a map of the front-most particles in the scene, subject to a given density cut"""
+    _vertex_name = "vertex_depth_with_cut"
+    _fragment_name = "fragment_raw"
+    _nchannels_output = 2
+
+    _blend = {
+        "color": {
+            "src_factor": wgpu.BlendFactor.one,
+            "dst_factor": wgpu.BlendFactor.zero,
+            "operation": wgpu.BlendOperation.add,
+        },
+        "alpha": {
+            "src_factor": wgpu.BlendFactor.one,
+            "dst_factor": wgpu.BlendFactor.zero,
+            "operation": wgpu.BlendOperation.add,
+        },
+    }
+
+    def __init__(self, visualizer: Visualizer, render_resolution, wrapping=False, share_render_progression=None):
+        super().__init__(visualizer, render_resolution, wrapping, share_render_progression)
+        mass = self._visualizer.data_loader.get_mass()
+        smooth = self._visualizer.data_loader.get_smooth()
+        rho = mass / smooth**3
+        self._cut_min = np.log10(rho.min())
+        self._cut_max = np.log10(rho.max())
+        self._cut_val = np.log10(np.quantile(rho, 0.5))
+        # Create a depth texture for the depth buffer
+        self._depth_texture = self._device.create_texture(
+            size=(render_resolution, render_resolution, 1),
+            usage=wgpu.TextureUsage.RENDER_ATTACHMENT,
+            format=wgpu.TextureFormat.depth32float,
+            label="sph_depth_texture",
+        )
+
+    def _setup_kernel(self):
+        self._kernel = LocalSphereKernel()
+
+    def _get_kernel_image_normalization(self, kernel_im):
+        return 1.0
+
+    def _get_transform_params(self):
+        tp = super()._get_transform_params()
+        tp["density_cut"] = 10**self._cut_val
+        return tp
+
+    def get_log_density_cut(self):
+        return self._cut_val
+
+    def set_log_density_cut(self, value):
+        self._cut_val = value
+
+    def get_log_density_cut_range(self):
+        return self._cut_min, self._cut_max
+
+    def _setup_render_pipeline(self):
+        self._bind_group_layout = \
+            self._device.create_bind_group_layout(
+                label="sph_bind_group_layout",
+                entries=[
+                    {
+                        "binding": 0,
+                        "visibility": wgpu.ShaderStage.VERTEX,
+                        "buffer": {"type": wgpu.BufferBindingType.uniform},
+                    },
+                    {
+                        "binding": 1,
+                        "visibility": wgpu.ShaderStage.FRAGMENT,
+                        "texture": {"sample_type": wgpu.TextureSampleType.float,
+                                    "view_dimension": wgpu.TextureViewDimension.d2},
+                    },
+                    {
+                        "binding": 2,
+                        "visibility": wgpu.ShaderStage.FRAGMENT,
+                        "sampler": {"type": wgpu.SamplerBindingType.filtering},
+                    },
+                ]
+            )
+
+        self._bind_group = \
+            self._device.create_bind_group(
+                label="sph_bind_group",
+                layout=self._bind_group_layout,
+                entries=[
+                    {"binding": 0,
+                     "resource": {
+                         "buffer": self._transform_buffer,
+                         "offset": 0,
+                         "size": self._transform_buffer.size
+                      }
+                     },
+                    {"binding": 1,
+                        "resource": self._kernel_texture.create_view(),
+                    },
+                    {"binding": 2,
+                        "resource": self._kernel_sampler,
+                    }
+                ]
+            )
+
+        self._pipeline_layout = \
+            self._device.create_pipeline_layout(
+                label="sph_pipeline_layout",
+                bind_group_layouts=[self._bind_group_layout]
+            )
+
+        vertex_format = wgpu.VertexFormat.float32x3
+
+        channel_buffers = [{
+            "array_stride": 12,
+            "step_mode": wgpu.VertexStepMode.instance,
+            "attributes": [
+                {
+                    "format": vertex_format,
+                    "offset": 0,
+                    "shader_location": 1,
+                }
+            ]
+        } ]
+
+        self._render_pipeline = \
+            self._device.create_render_pipeline(
+                layout=self._pipeline_layout,
+                label="sph_render_pipeline",
+                vertex = {
+                    "module": self._shader,
+                    "entry_point": self._vertex_name,
+                    "buffers": [
+                        {
+                            "array_stride": 16,
+                            "step_mode": wgpu.VertexStepMode.instance,
+                            "attributes": [
+                                {
+                                    "format": wgpu.VertexFormat.float32x4,
+                                    "offset": 0,
+                                    "shader_location": 0,
+                                }
+                            ]
+                        },
+                    ] + channel_buffers
+                },
+                primitive={
+                    "topology": wgpu.PrimitiveTopology.triangle_list,
+                },
+                depth_stencil={
+                    "format": wgpu.TextureFormat.depth32float,
+                    "depth_write_enabled": True,
+                    "depth_compare": wgpu.CompareFunction.greater,
+                },
+                multisample=None,
+                fragment={
+                    "module": self._shader,
+                    "entry_point": self._fragment_name,
+                    "targets": [
+                        {
+                            "format": wgpu.TextureFormat.rg32float,
+                            "blend": self._blend,
+                            "write_mask": wgpu.ColorWrite.ALL,
+                        }
+                    ]
+                },
+            )
+
+    def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
+        command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
+        view: wgpu.GPUTextureView = self._render_texture.create_view()
+        depth_view: wgpu.GPUTextureView = self._depth_texture.create_view()
+        sph_render_pass: wgpu.GPURenderPassEncoder = command_encoder.begin_render_pass(
+            color_attachments=[
+                {
+                    "view": view,
+                    "resolve_target": None,
+                    "clear_value": (0.0, 0.0, 0.0, 0.0),
+                    "load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
+                    "store_op": wgpu.StoreOp.store,
+                }
+            ],
+            depth_stencil_attachment={
+                "view": depth_view,
+                "depth_clear_value": 0.0,
+                "depth_load_op": wgpu.LoadOp.clear if clear else wgpu.LoadOp.load,
+                "depth_store_op": wgpu.StoreOp.store,
+            }
+        )
+        sph_render_pass.set_pipeline(self._render_pipeline)
+        vb_assignment = ['pos_smooth', self._buffer_name]
+        self._visualizer.particle_buffers.specify_vertex_buffer_assignment(vb_assignment)
+        sph_render_pass.set_bind_group(0, self._bind_group, [],
+                                       0, 99)
+        self._visualizer.particle_buffers.issue_draw_indirect(sph_render_pass)
+        sph_render_pass.end()
+        return command_encoder.finish()
+
+    def get_image(self):
+        return self._get_image_unscaled() # no scaling because we are using max values, not weighted
+    

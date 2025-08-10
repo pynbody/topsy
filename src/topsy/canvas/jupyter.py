@@ -5,7 +5,7 @@ from typing import Callable, Any
 from rendercanvas.jupyter import RenderCanvas, loop
 from . import VisualizerCanvasBase
 from ..config import JUPYTER_UI_LAG
-from ..colormap.ui import ControlSpec
+from ..colormap.ui import ControlSpec, UnifiedColorMapController
 
 class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def __init__(self, *args, **kwargs):
@@ -45,12 +45,15 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         """
         Return a nested ipywidget (HBox/VBox) tree driven by the generic ColorMapController.get_layout() spec.
         """
-        self._controller = self._visualizer.colormap.make_ui_controller(self._visualizer, self._refresh_ui)
+        self._controller_box = widgets.Box()
+        self._controller = UnifiedColorMapController(self._visualizer, self._refresh_ui)
+        
         if self._controller:
-            self._controls = self.convert_layout_to_widget(self._controller.get_layout())
+            self._rebuild_ui(self._controller.get_layout())
         else:
-            self._controls = widgets.HTML("<b>No colormap controls available</b>")
-        return self._controls
+            self._rebuild_ui(None)
+
+        return self._controller_box
 
     def _callback(self, callback: Callable[[Any], None], value: Any):
         if not self._allow_events:
@@ -58,17 +61,30 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         callback(value)
        
     
-    def _refresh_ui(self):
+    def _refresh_ui(self, root_spec, new_widgets):
         """Walk the layout and update all values, including slider ranges."""
         if not hasattr(self, "_controller"):
             return
-        root_spec = self._controller.get_layout()
+        
+        if new_widgets:
+            self._rebuild_ui(root_spec)
+        else:
+            self._update_ui(root_spec)
+
+    def _update_ui(self, root_spec):
         self._allow_events = False
         try:
             self.update_widget(root_spec, self._controls)
         finally:
              # re-enable events after a delay, to allow the UI to settle (eugh! surely must be a better way?)
             self.call_later(JUPYTER_UI_LAG, lambda: setattr(self, "_allow_events", True))
+
+    def _rebuild_ui(self, root_spec):
+        if root_spec is not None:
+            self._controls = self.convert_layout_to_widget(root_spec)
+        else:
+            self._controls = widgets.HTML("<b>No colormap controls available</b>")
+        self._controller_box.children = [self._controls]
 
     def convert_layout_to_widget(self, spec) -> widgets.Widget:
         children = []
@@ -124,7 +140,9 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
         elif spec.type == "button":
             w = widgets.Button(description=spec.label or "")
             w.on_click(lambda btn, cb=spec.callback: self._callback(cb, None))
-
+        elif spec.type == "color_picker":
+            w = widgets.ColorPicker(concise=True, description=spec.label or "", value=spec.value)
+            w.observe(lambda change, cb=spec.callback: self._callback(cb, change["new"]), names="value")
         else:
             w = widgets.HTML(f"<b>Unknown control {spec.name}</b>")
 

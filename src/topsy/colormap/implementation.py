@@ -68,6 +68,8 @@ class Colormap(ColormapBase):
     percentile_scaling = [1.0, 99.9]
     map_dimension = wgpu.TextureViewDimension.d1
 
+    may_produce_weighted_average = True
+
     _default_params = {'colormap_name': 'viridis', 'vmin': 0.0, 'vmax': 1.0, 'log': True, 'weighted_average': False}
 
     shader_parameter_dtype = np.dtype([("vmin", np.float32, (1,)),
@@ -433,7 +435,7 @@ class Colormap(ColormapBase):
         parameters["density_vmin"] = d_vmin - np.log10(mass_scale)
         parameters["density_vmax"] = d_vmax - np.log10(mass_scale)
 
-        if self._params.get('weighted_average', False):
+        if self.may_produce_weighted_average and self._params.get('weighted_average', False):
             mass_scale = 1.0
 
         parameters["vmin"] = self._params['vmin']
@@ -456,6 +458,8 @@ class RGBColormap(Colormap):
     fragment_shader = "fragment_main_tri"
     max_percentile = 99.9
     dynamic_range = 3.0
+
+    may_produce_weighted_average = False
 
     _sterrad_to_arcsec2 = 2.3504430539466191e-11
 

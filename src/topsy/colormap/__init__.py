@@ -1,8 +1,10 @@
 import numpy as np
 import wgpu
 
+from . import implementation, surface
+
 from .implementation import ColormapBase, NoColormap, Colormap, RGBColormap, RGBHDRColormap, BivariateColormap
-from .ui import ColorMapController, BivariateColorMapController, RGBMapController, GenericController
+from .ui import ColorMapController, BivariateColorMapController, RGBMapController, GenericController, SurfaceMapController
 from .. import config
 
 from typing import Iterator, Optional
@@ -139,6 +141,8 @@ class ColormapHolder:
             return BivariateColorMapController(visualizer, refresh_ui_callback)
         elif isinstance(self._impl, RGBColormap):
             return RGBMapController(visualizer, refresh_ui_callback)
+        elif isinstance(self._impl, surface.ColorAsSurfaceMap):
+            return SurfaceMapController(visualizer, refresh_ui_callback)
         else:
             return ColorMapController(visualizer, refresh_ui_callback)
 

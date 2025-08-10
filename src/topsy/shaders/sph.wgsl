@@ -3,7 +3,8 @@ struct TransformParams {
     scale_factor: f32,
     clipspace_size_min: f32,
     clipspace_size_max: f32,
-    boxsize_by_2_clipspace: f32
+    boxsize_by_2_clipspace: f32,
+    density_cut: f32
 };
 
 struct VertexInput {
@@ -89,6 +90,37 @@ fn vertex_depth(input: VertexInput) -> VertexOutput {
     return output;
 }
 
+@vertex
+fn vertex_depth_with_cut(input: VertexInput) -> VertexOutput {
+    // This could be made more efficient by a compute shader passing once through the buffer
+    // which would only need to be updated when the user changed the density threshold
+    var result: VertexOutput;
+
+    var rho: f32 = input.quantities.x / pow(input.pos.w,3.0f);
+
+    if(rho > trans_params.density_cut) {
+        result = vertex_calculate_positions(input);
+        result.intensities.x = input.quantities.y; // quantity value
+        result.intensities.y = result.pos.z; // depth value
+
+        // "z" component of "intensities" is actually the depth scale of the sphere to be
+        // rendered on this tile
+        //
+        // Factors: Sphere extends to 2*h, but that's already baked into the kernel image
+        // input.pos.w*trans_params.scale_factor gives the extent of h in (x,y) clip space,
+        // but note the z direction is squsiehd into (0,1) while (x,y) are in (-1,1)
+        // so there is a factor of 0.5 in the z direction.
+        result.intensities.z = input.pos.w * trans_params.scale_factor*0.5;
+    } else {
+        // put somewhere out of the clip space:
+        result.pos.x = 100;
+        result.pos.y = 100;
+        result.pos.w = 100;
+    }
+
+    return result;
+}
+
 
 struct FragmentOutputWeighting {
     @location(0) output: vec2<f32>
@@ -96,6 +128,11 @@ struct FragmentOutputWeighting {
 
 struct FragmentOutputRGB {
     @location(0) output: vec4<f32>
+}
+
+struct FragmentOutputRaw {
+    @location(0) output: vec2<f32>,
+    @builtin(frag_depth) depth: f32,
 }
 
 @fragment
@@ -106,6 +143,18 @@ fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
     var output = FragmentOutputWeighting(vec2<f32>(value, value*input.intensities.y));
 
     return output;
+}
+
+@fragment
+fn fragment_raw(input: VertexOutput) -> FragmentOutputRaw {
+    var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
+    var depth: f32 = input.intensities.y + input.intensities.z*value;
+
+    if (value<0.0) {
+        discard;
+    }
+
+    return FragmentOutputRaw(vec2<f32>(input.intensities.x, depth), depth);
 }
 
 @fragment
