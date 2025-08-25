@@ -35,7 +35,6 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._all_instances.append(self)
-        self.hide()
 
         self._toolbar = QtWidgets.QToolBar()
         self._toolbar.setIconSize(QtCore.QSize(16, 16))
