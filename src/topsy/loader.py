@@ -216,7 +216,7 @@ class PynbodyRemoteDataLoader(PynbodyDataInMemory):
 
     _name_smooth_array = 'topsy_smooth'
 
-    def __init__(self, device: wgpu.GPUDevice, filename: str, center: str, particle: str,
+    def __init__(self, device: wgpu.GPUDevice, server: str, filename: str, center: str, particle: str,
                  take_region: Optional[pynbody.filt.Filter] = None):
 
         logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
@@ -224,9 +224,9 @@ class PynbodyRemoteDataLoader(PynbodyDataInMemory):
         # Currently only Swift snapshots are supported
         import pynbody.snapshot.remote_swift as rs
         if take_region is None:
-            snapshot = rs.RemoteSwiftSnap(filename)
+            snapshot = rs.RemoteSwiftSnap(filename, server=server)
         else:
-            snapshot = rs.RemoteSwiftSnap(filename, take_region=take_region)
+            snapshot = rs.RemoteSwiftSnap(filename, server=server, take_region=take_region)
 
         snapshot.physical_units()
         self.filename = filename
