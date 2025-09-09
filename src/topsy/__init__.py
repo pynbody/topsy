@@ -48,6 +48,7 @@ def parse_args(args=None):
                             metavar=("_"),
                             default=None, type=float)
     argparser.add_argument('--hdfstream-server', type=str, help="Read a SWIFT snapshot from the specified server")
+    argparser.add_argument('--hdfstream-user', type=str, help="User name for the hdfstream service")
 
     if args is None:
         args = sys.argv[1:]
@@ -91,7 +92,7 @@ def main():
                     particle=args.particle, tile=args.tile,
                     sphere_radius=args.load_sphere[0] if args.load_sphere is not None else None,
                     sphere_center=tuple(args.load_sphere[1:]) if args.load_sphere is not None and len(args.load_sphere) == 4 else None,
-                    render_mode=args.render_mode, hdfstream_server=args.hdfstream_server)
+                    render_mode=args.render_mode, hdfstream_server=args.hdfstream_server, hdfstream_user=args.hdfstream_user)
         vis.quantity_name = args.quantity
         vis.canvas.show()
 
@@ -110,7 +111,8 @@ def topsy(snapshot: pynbody.snapshot.SimSnap, quantity: str | None = None, param
 def load(filename: str, center: str = "none", particle: str = "gas", 
          resolution: int = config.DEFAULT_RESOLUTION, tile: bool = False,
          sphere_radius: float | None = None, sphere_center: tuple[float, float, float] | None = None,
-         render_mode: str = None, hdfstream_server: str | None = None) -> Visualizer:
+         render_mode: str = None, hdfstream_server: str | None = None,
+         hdfstream_user: str | None = None) -> Visualizer:
     """
     Load a simulation file (currently using pynbody) and return a visualizer object.
 
@@ -165,7 +167,7 @@ def load(filename: str, center: str = "none", particle: str = "gas",
         import pynbody
         if hdfstream_server is not None:
             loader_class = loader.PynbodyRemoteDataLoader
-            server_args = (hdfstream_server,)
+            server_args = (hdfstream_server, hdfstream_user)
         else:
             loader_class = loader.PynbodyDataLoader
             server_args = ()
