@@ -45,6 +45,10 @@ class AbstractDataLoader(ABC):
     def get_rgb_masses(self):
         pass
 
+    @abstractmethod
+    def get_position_units(self) -> str:
+        pass
+
     def get_pos_smooth(self):
         pos_smooth = np.empty((len(self), 4), dtype=np.float32)
         pos_smooth[:, :3] = self.get_positions()
@@ -91,9 +95,13 @@ class PynbodyDataInMemory(AbstractDataLoader):
         self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax,
                                                                             config.DEFAULT_CELLS_NSIDE)
         self._particle_order = ordering[self._cell_layout.randomize_within_cells()]
+        self._position_units = str(self.snapshot['pos'].units)
 
     def get_positions(self):
         return self.snapshot['pos'].astype(np.float32)[self._particle_order]
+
+    def get_position_units(self):
+        return self._position_units
 
     def get_smooth(self):
         return self.snapshot[self._name_smooth_array].astype(np.float32)[self._particle_order]
@@ -169,6 +177,11 @@ class PynbodyDataLoader(PynbodyDataInMemory):
         self._family_name = fam.name
         logger.info("Loading position data...")
         _ = snapshot['pos'] # just trigger the load
+
+        if np.ptp(snapshot['pos']) < 1.0:
+            logger.info("Positions appear to be in a small range - perhaps a planetary simulation. Re-expressing in AU")
+            snapshot.physical_units('au')
+
         self.snapshot = snapshot
 
         self._perform_centering(center)
@@ -290,6 +303,9 @@ class TestDataLoader(AbstractDataLoader):
             return np.sin(self._gmm_pos[:, 0]) * np.cos(self._gmm_pos[:, 1]) * np.cos(self._gmm_pos[:, 2]) * 1e-4
         else:
             raise KeyError("Unknown quantity name")
+
+    def get_position_units(self):
+        return "kpc"
 
     def get_quantity_names(self):
         return ["test-quantity"]
