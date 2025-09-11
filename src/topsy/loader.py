@@ -64,6 +64,13 @@ class AbstractDataLoader(ABC):
     def get_initial_center(self):
         return np.zeros(3, dtype=np.float32)
 
+    def get_initial_view_width(self):
+        period_scale = self.get_periodicity_scale()
+        if period_scale is not None:
+            scale = period_scale / 2
+        else:
+            scale = config.DEFAULT_SCALE
+        return scale
 
 class PynbodyDataInMemory(AbstractDataLoader):
     """Base class for data loaders that use pynbody."""
@@ -75,8 +82,12 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
         self.snapshot = snapshot
 
-        boxmin = self.snapshot['pos'].min()-1e-6
-        boxmax = self.snapshot['pos'].max()+1e-6
+        boxmin = self.snapshot['pos'].min()
+        boxmax = self.snapshot['pos'].max()
+        boxrange = boxmax - boxmin
+        self._initial_view_width = boxrange
+        boxmin -= config.CELL_LAYOUT_FRACTIONAL_PADDING * boxrange
+        boxmax += config.CELL_LAYOUT_FRACTIONAL_PADDING * boxrange
         self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax,
                                                                             config.DEFAULT_CELLS_NSIDE)
         self._particle_order = ordering[self._cell_layout.randomize_within_cells()]
@@ -127,6 +138,9 @@ class PynbodyDataInMemory(AbstractDataLoader):
             return float(self.snapshot.properties['boxsize'].in_units("kpc"))
         else:
             return None
+
+    def get_initial_view_width(self):
+        return self._initial_view_width
 
     def get_filename(self):
         return self.snapshot.filename

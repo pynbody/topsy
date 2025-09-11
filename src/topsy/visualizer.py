@@ -264,11 +264,7 @@ class VisualizerBase:
             position_offset = -self.data_loader.get_initial_center()
             logger.info(f"Position offset: {position_offset}")
         if scale is None:
-            period_scale = self.data_loader.get_periodicity_scale()
-            if period_scale is not None:
-                scale = period_scale / 2
-            else:
-                scale = config.DEFAULT_SCALE
+            scale = self.data_loader.get_initial_view_width()
 
         self._sph.rotation_matrix = rotation_matrix
         self._sph.scale = scale
