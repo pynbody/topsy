@@ -231,7 +231,7 @@ class RGBMapController(GenericController):
 
 class SurfaceMapController(ColorMapController):
     def set_den_cut(self, val):
-        self.visualizer._sph.set_log_density_cut(val)
+        self.visualizer._sph.set_density_cut_percentile(val)
         self.visualizer.invalidate(drawreason.DrawReason.CHANGE)
 
     def set_smoothing_scale(self, val):
@@ -277,8 +277,8 @@ class SurfaceMapController(ColorMapController):
 
         params = self.visualizer.colormap.get_parameters()
 
-        cut_range = sph_.get_log_density_cut_range()
-        cut_val = sph_.get_log_density_cut()
+        cut_range = sph_.get_density_cut_percentile_range()
+        cut_val = sph_.get_density_cut_percentile()
         
         lighting_spec = LayoutSpec(
             type="hbox",
@@ -303,9 +303,9 @@ class SurfaceMapController(ColorMapController):
             type="vbox",
             children=[
                 ControlSpec(
-                    name="log_den_threshold",
+                    name="den_percentile_threshold",
                     type="slider",
-                    label="Density threshold",
+                    label="Density percentile",
                     range=cut_range,
                     value=cut_val,
                     callback = self.set_den_cut
