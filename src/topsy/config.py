@@ -30,6 +30,9 @@ DEFAULT_CELLS_NSIDE = 16
 # High numbers enable more precise geometric selections, but at a general performance penalty
 # due to the complexity of the GPU buffer organization.
 
+CELL_LAYOUT_FRACTIONAL_PADDING = 1e-5
+# Fractional padding to add to the overall cell cube, beyond the max/min particle positions
+
 JUPYTER_UI_LAG = 0.05
 # time over which to spread jupyter UI updates, notably for sliders where updating the range and value
 # simultaneously seems to lead to problems

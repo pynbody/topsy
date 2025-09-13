@@ -21,25 +21,26 @@ class BarLengthRecommender:
     """
 
     acceptable_units = "km", "au", "pc", "kpc", "Mpc"
-    unit_conversion_to_kpc = np.array([
-        pynbody.units.Unit(u).in_units("kpc") for u in acceptable_units
-    ])
 
-    def __init__(self, initial_window_width_kpc=1.0):
-        self._window_width_kpc = initial_window_width_kpc
+
+    def __init__(self, initial_window_width_in_base_units=1.0, base_units="kpc"):
+        self.unit_conversion_to_base = np.array([
+            pynbody.units.Unit(u).in_units(base_units) for u in self.acceptable_units
+        ])
+        self._window_width_in_base_units = initial_window_width_in_base_units
         self._update_recommendation()
         self._update_label()
 
     def _update_recommendation(self):
-        magnitude_in_each_unit = abs(np.log10(self._window_width_kpc / self.unit_conversion_to_kpc) - 0.5)
+        magnitude_in_each_unit = abs(np.log10(self._window_width_in_base_units / self.unit_conversion_to_base) - 0.5)
         chosen_unit_index = np.argmin(magnitude_in_each_unit)
         chosen_unit = self.acceptable_units[chosen_unit_index]
-        chosen_unit_conversion = self.unit_conversion_to_kpc[chosen_unit_index]
-        target_scalebar_length_in_chosen_unit = (self._window_width_kpc / 2.0) / chosen_unit_conversion
+        chosen_unit_conversion = self.unit_conversion_to_base[chosen_unit_index]
+        target_scalebar_length_in_chosen_unit = (self._window_width_in_base_units / 2.0) / chosen_unit_conversion
         quantized_length_in_chosen_unit = self._quantize_length(target_scalebar_length_in_chosen_unit)
         self._physical_scalebar_length_in_chosen_unit = quantized_length_in_chosen_unit
         self._physical_scalebar_length_unit_name = chosen_unit
-        self._physical_scalebar_length_kpc = quantized_length_in_chosen_unit * chosen_unit_conversion
+        self._physical_scalebar_length_base_units = quantized_length_in_chosen_unit * chosen_unit_conversion
 
     @classmethod
     def _quantize_length(cls, physical_scalebar_length):
@@ -77,10 +78,10 @@ class BarLengthRecommender:
                                                    self._physical_scalebar_length_unit_name)
         self._label_is_for = (self._physical_scalebar_length_in_chosen_unit, self._physical_scalebar_length_unit_name)
 
-    def update_window_width(self, window_width_kpc):
-        """Update the window width in kpc, and recalculate the recommended scalebar length if it has changed."""
-        if window_width_kpc != self._window_width_kpc:
-            self._window_width_kpc = window_width_kpc
+    def update_window_width(self, window_width_in_base_units):
+        """Update the window width in base units, and recalculate the recommended scalebar length if it has changed."""
+        if window_width_in_base_units != self._window_width_in_base_units:
+            self._window_width_in_base_units = window_width_in_base_units
             self._update_recommendation()
 
     @property
@@ -92,9 +93,9 @@ class BarLengthRecommender:
         return self._label
 
     @property
-    def physical_scalebar_length_kpc(self):
-        """Get the recommended physical scalebar length in kpc."""
-        return self._physical_scalebar_length_kpc
+    def physical_scalebar_length_base_units(self):
+        """Get the recommended physical scalebar length in base units."""
+        return self._physical_scalebar_length_base_units
     
     
 class BarOverlay(overlay.Overlay):
@@ -124,7 +125,7 @@ class ScalebarOverlay:
     def __init__(self, visualizer: Visualizer):
         self._label = text.TextOverlay(visualizer, "Scalebar", (-0.9, -0.85), 40, color=(1, 1, 1, 1))
         self._bar = BarOverlay(visualizer, x0=-0.9, y0=-0.9, height_pixels=10, color=(1, 1, 1, 1))
-        self._recommender = BarLengthRecommender(1.0) # will be updated immediately
+        self._recommender = BarLengthRecommender(1.0, visualizer.data_loader.get_position_units()) # will be updated immediately
         self._visualizer = visualizer
 
     def encode_render_pass(self, command_encoder: wgpu.GPUCommandEncoder, target_texture_view: wgpu.GPUTextureView):
@@ -156,7 +157,7 @@ class ScalebarOverlay:
         # so the maximum scalebar length should be self.scale kpc
         window_width_kpc = 2.0 * self._visualizer.scale
         self._recommender.update_window_width(window_width_kpc)
-        self._physical_scalebar_length = self._recommender.physical_scalebar_length_kpc
+        self._physical_scalebar_length = self._recommender.physical_scalebar_length_base_units
         self._update_scalebar_label(self._physical_scalebar_length)
 
 

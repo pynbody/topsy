@@ -462,6 +462,8 @@ class DepthSPHWithOcclusion(SPH):
     _fragment_name = "fragment_raw"
     _nchannels_output = 2
 
+    _rho_percentiles_num_samples = 101  # we sample the density cut at each percentile from 0 to 100
+
     _blend = {
         "color": {
             "src_factor": wgpu.BlendFactor.one,
@@ -482,7 +484,8 @@ class DepthSPHWithOcclusion(SPH):
         rho = mass / smooth**3
         self._cut_min = np.log10(rho.min())
         self._cut_max = np.log10(rho.max())
-        self._cut_val = np.log10(np.quantile(rho, 0.5))
+        self._percentile_to_den_cut = np.quantile(rho, np.linspace(0, 1, self._rho_percentiles_num_samples))
+        self._cut_val = np.mean(self.get_density_cut_percentile_range())  # start at median density
         # Create a depth texture for the depth buffer
         self._depth_texture = self._device.create_texture(
             size=(render_resolution, render_resolution, 1),
@@ -499,17 +502,17 @@ class DepthSPHWithOcclusion(SPH):
 
     def _get_transform_params(self):
         tp = super()._get_transform_params()
-        tp["density_cut"] = 10**self._cut_val
+        tp["density_cut"] = self._percentile_to_den_cut[int(self._cut_val/100.0*(self._rho_percentiles_num_samples-1))]
         return tp
 
-    def get_log_density_cut(self):
+    def get_density_cut_percentile(self):
         return self._cut_val
 
-    def set_log_density_cut(self, value):
+    def set_density_cut_percentile(self, value):
         self._cut_val = value
 
-    def get_log_density_cut_range(self):
-        return self._cut_min, self._cut_max
+    def get_density_cut_percentile_range(self):
+        return 0.0, 100.0
 
     def _setup_render_pipeline(self):
         self._bind_group_layout = \

@@ -37,6 +37,7 @@ class VisualizerBase:
     _sph : Optional[sph.SPH]
     _colormap: Optional[colormap.ColormapHolder]
     _colorbar: Optional[colorbar.ColorbarOverlay]
+    data_loader: loader.AbstractDataLoader
 
     def __init__(self, data_loader_class = loader.TestDataLoader, data_loader_args = (), data_loader_kwargs={},
                  *, render_resolution = config.DEFAULT_RESOLUTION, periodic_tiling = False,
@@ -264,11 +265,7 @@ class VisualizerBase:
             position_offset = -self.data_loader.get_initial_center()
             logger.info(f"Position offset: {position_offset}")
         if scale is None:
-            period_scale = self.data_loader.get_periodicity_scale()
-            if period_scale is not None:
-                scale = period_scale / 2
-            else:
-                scale = config.DEFAULT_SCALE
+            scale = self.data_loader.get_initial_view_width()
 
         self._sph.rotation_matrix = rotation_matrix
         self._sph.scale = scale
@@ -327,11 +324,14 @@ class VisualizerBase:
 
         colormap_params = self._colormap.get_parameters()
 
+        show_colorbar = (colormap_params['type'] not in ('rgb', 'surface')
+                         or (colormap_params['type'] == 'surface' and colormap_params['weighted_average']))
+
         if changed_type or colormap_params['vmin'] is None or colormap_params['vmax'] is None:
             logger.info("Autorange colormap parameters")
             self._colormap.autorange(self._sph.get_image())
 
-        if colormap_params['type'] not in ('rgb', 'surface'):
+        if show_colorbar:
             self._colorbar = colorbar.ColorbarOverlay(self, colormap_params['vmin'], colormap_params['vmax'],
                                                       colormap_params['colormap_name'], self._get_colorbar_label())
         else:
