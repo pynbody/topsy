@@ -238,6 +238,71 @@ class PynbodyDataLoader(PynbodyDataInMemory):
                 logger.warning("Unable to save smoothing data to disk")
 
 
+class PynbodyRemoteDataLoader(PynbodyDataInMemory):
+    """Loader which uses pynbody to read a snapshot on a remote server"""
+
+    _name_smooth_array = 'topsy_smooth'
+
+    def __init__(self, device: wgpu.GPUDevice, server: str, user: str, filename: str, center: str, particle: str,
+                 take_region: Optional[pynbody.filt.Filter] = None):
+
+        logger.info(f"Data filename = {filename}, center = {center}, particle = {particle}")
+
+        # Currently only Swift snapshots are supported
+        import pynbody.snapshot.remote_swift as rs
+        if take_region is None:
+            snapshot = rs.RemoteSwiftSnap(filename, server=server, user=user)
+        else:
+            snapshot = rs.RemoteSwiftSnap(filename, server=server, user=user, take_region=take_region)
+
+        snapshot.physical_units()
+        self.filename = filename
+
+        fam = pynbody.family.get_family(particle)
+        snapshot = snapshot[fam]
+
+        self._family_name = fam.name
+        logger.info("Loading position data...")
+        _ = snapshot['pos'] # just trigger the load
+        self.snapshot = snapshot
+
+        self._perform_centering(center)
+
+        super().__init__(device, snapshot)
+
+        self._perform_smoothing()
+
+    @property
+    def _smooth_cache_filename(self):
+        raise NotImplementedError("Caching smoothing lengths is not implemented yet")
+
+    @property
+    def _rho_cache_filename(self):
+        raise NotImplementedError("Caching densities is not implemented yet")
+
+    def _perform_smoothing(self):
+        logger.info("Generating smoothing data - this can take a while...")
+        self.snapshot[self._name_smooth_array] = pynbody.sph.smooth(self.snapshot)
+
+    def _perform_centering(self, center):
+        logger.info("Performing centering...")
+        if center.startswith("halo-"):
+            halo_number = int(center[5:])
+            h = self.snapshot.ancestor.halos()
+            pynbody.analysis.halo.center(h[halo_number], vel=False)
+            self.snapshot.wrap()
+        elif center == 'zoom':
+            f_dm = self.snapshot.ancestor.dm
+            pynbody.analysis.halo.center(f_dm[f_dm['mass'] < 1.01 * f_dm['mass'].min()])
+            self.snapshot.wrap()
+        elif center == 'all':
+            pynbody.analysis.halo.center(self.snapshot)
+        elif center == 'none':
+            self.snapshot['pos']-=(self.snapshot['pos'].max(axis=0) + self.snapshot['pos'].min(axis=0))/2.0
+        else:
+            raise ValueError("Unknown centering type")
+
+
 class TestDataLoader(AbstractDataLoader):
     def __init__(self, device: wgpu.GPUDevice, n_particles: int = config.TEST_DATA_NUM_PARTICLES_DEFAULT,
                  n_cells = 10, seed: int = 1337, with_cells = False, periodic = False):
