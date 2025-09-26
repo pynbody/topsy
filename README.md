@@ -84,14 +84,29 @@ from inside the cloned repository.
 Trying it out
 -------------
 
-### Very quick start
+### Quick start: cosmological zoom
 
+* Download and unzip the example cosmological zoom [halo685.zip](https://zenodo.org/records/17203702/files/halo685.zip?download=1).
+  Note this is a 7.6GB download and unzips to 11GB.
+* This simulation is provided courtesy of Gandhali Joshi, as described in 
+  Joshi et al (2025) [MNRAS 537, 3792](https://ui.adsabs.harvard.edu/abs/2025MNRAS.537.3792J/abstract). It was 
+  performed using the [IllustrisTNG](http://www.tng-project.org) code.
+* Launch topsy from your command line: `topsy halo685/`
 Once `topsy` is installed, if you just want to try it out and you don't have a 
 suitable simulation snapshot to hand, you can download some
 from the [tangos tutorial datasets (5.1GB)](https://zenodo.org/records/5959983/files/tutorial_changa.tar.gz?download=1).
 You need to untar them (`tar -xzf tutorial_changa.tar.gz` from your command line), then
 you can type `topsy pioneer50h128.1536gst1.bwK1.000832` to visualise that file's
 dark matter content.
+
+### Quick start: planetary collision
+
+* Download the example planetary collision simulation snapshot [planetary.hdf5](https://zenodo.org/records/17203702/files/planetary.hdf5?download=1).
+* This simulation is provided courtesy of Jacob Kegerreis, and is described in
+  Keggerreis et al (2022) [ApJ 937, L40](https://iopscience.iop.org/article/10.3847/2041-8213/ac8d96)
+* Launch topsy from your command line: `topsy planetary.hdf5 -p gas -c all --render-mode surface -q u`
+* Zoom in and out using the scroll wheel, rotate by dragging the mouse, and move the center by double-clicking or shift-dragging.
+* Then play with the colormap controls (click 'color' in the toolbar)
 
 ### More detailed description
 
