@@ -5,7 +5,7 @@ import numpy as np
 import numpy.testing as npt
 
 from pathlib import Path
-from matplotlib import colors, cm
+from matplotlib import colors, cm, colormaps
 
 from topsy import colormap
 from topsy.canvas import offscreen
@@ -96,7 +96,7 @@ def _univariate_colormap_in_software(input_image, cmap):
     log_scale = cmap.get_parameter("log")
 
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
-    mpl_cmap = cm.ScalarMappable(norm=norm, cmap=cm.get_cmap(mpl_cmap_name)).to_rgba
+    mpl_cmap = cm.ScalarMappable(norm=norm, cmap=colormaps.get_cmap(mpl_cmap_name)).to_rgba
 
     content = cmap.sph_raw_output_to_content(input_image)
     if log_scale:

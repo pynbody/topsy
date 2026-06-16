@@ -259,14 +259,14 @@ class ColorAsSurfaceMap(Colormap):
     def _encode_smoothing_filter_pass(self, command_encoder, compute_bind_group=None):
         if compute_bind_group is None:
             compute_bind_group = self._smooth_compute_bind_group
-        bilateral_params = np.zeros((), dtype=self.smooth_parameter_dtype)
+        bilateral_params = np.zeros((), dtype=self.smooth_parameter_dtype)[()]
         sig = self._params.get('smoothing_scale', 0.01)
         if sig < 1e-5:
             sig = 1e-5
         bilateral_params["spatial_sigma"] = sig * self._input_texture.size[0]
         bilateral_params["range_sigma"] = sig * 2
 
-        n_pix = int(bilateral_params["spatial_sigma"] * 4) + 1
+        n_pix = int(bilateral_params["spatial_sigma"][0] * 4) + 1
         if n_pix > config.MAX_SURFACE_SMOOTH_PIXELS:
             n_pix = config.MAX_SURFACE_SMOOTH_PIXELS
 
