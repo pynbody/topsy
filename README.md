@@ -86,8 +86,10 @@ Trying it out
 
 ### Quick start: cosmological zoom
 
-* Download and unzip the example cosmological zoom [halo685.zip](https://zenodo.org/records/17203702/files/halo685.zip?download=1).
-  Note this is a 7.6GB download and unzips to 11GB.
+* Download and unzip the example cosmological zoom. Due to file size limitations, this is in two parts:
+[halo685.zip](https://osf.io/cmrjn/download) and [halo685.z01](https://osf.io/2pnd5/download).
+  The total download is 7.6GB, and unzips to 11GB (in linux/macOS, you can unzip using `unzip halo685.zip` from the 
+command line, and it will automatically pick up the second file).
 * This simulation is provided courtesy of Gandhali Joshi, as described in 
   Joshi et al (2025) [MNRAS 537, 3792](https://ui.adsabs.harvard.edu/abs/2025MNRAS.537.3792J/abstract). It was 
   performed using the [IllustrisTNG](http://www.tng-project.org) code.
@@ -101,7 +103,7 @@ dark matter content.
 
 ### Quick start: planetary collision
 
-* Download the example planetary collision simulation snapshot [planetary.hdf5](https://zenodo.org/records/17203702/files/planetary.hdf5?download=1).
+* Download the example planetary collision simulation snapshot: [planetary.hdf5](https://zenodo.org/records/17203702/files/planetary.hdf5?download=1).
 * This simulation is provided courtesy of Jacob Kegerreis, and is described in
   Keggerreis et al (2022) [ApJ 937, L40](https://iopscience.iop.org/article/10.3847/2041-8213/ac8d96)
 * Launch topsy from your command line: `topsy planetary.hdf5 -p gas -c all --render-mode surface -q u`
