@@ -303,9 +303,10 @@ class VisualizerBase:
                 raise ValueError(f"Unable to get quantity named '{value}'") from e
 
         self.particle_buffers.quantity_name = value
-        self.invalidate(DrawReason.CHANGE)
+        self._sph.invalidate(DrawReason.CHANGE)
         self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
         self._initialize_colormap_and_bar()
+        self.invalidate(DrawReason.CHANGE)
 
 
     def colormap_autorange(self):
