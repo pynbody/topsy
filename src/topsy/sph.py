@@ -4,6 +4,7 @@ import copy
 import numpy as np
 import wgpu
 import pynbody
+import threading
 
 from logging import getLogger
 
@@ -86,6 +87,8 @@ class SPH:
         self.rotation_matrix = np.eye(3)
         self.position_offset = np.zeros(3)
         self.has_rendered = False
+
+        self._render_lock = threading.Lock()
 
     def _get_depth_renderer(self) -> SPH:
         """Returns a SPH renderer that will generate the depth in the scene"""
@@ -304,32 +307,31 @@ class SPH:
             self.has_rendered = False
 
     def render(self, draw_reason=DrawReason.CHANGE):
-        performance.signposter.emit_event("Start SPH render")
+        with self._render_lock:
+            if draw_reason == DrawReason.PRESENTATION_CHANGE:
+                return
 
-        if draw_reason == DrawReason.PRESENTATION_CHANGE:
-            return
+            if draw_reason != DrawReason.REFINE:
+                self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
+                self._update_transform_buffer()
 
-        if draw_reason != DrawReason.REFINE:
-            self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
-            self._update_transform_buffer()
+            clear = self._render_progression.start_frame(draw_reason)
 
-        clear = self._render_progression.start_frame(draw_reason)
+            while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
+                encoded_render_pass = self.encode_render_pass(clear=clear)
+                self._visualizer.particle_buffers.update_particle_ranges(*block)
+                with self._render_timer:
+                    # we only time this part, because otherwise the timing is very unstable in interactive
+                    # use where most of the time we are not updating particle ranges
+                    self._device.queue.submit([encoded_render_pass])
+                self._render_progression.end_block(self._render_timer.total_time_in_frame())
+                clear = False
 
-        while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
-            encoded_render_pass = self.encode_render_pass(clear=clear)
-            self._visualizer.particle_buffers.update_particle_ranges(*block)
-            with self._render_timer:
-                # we only time this part, because otherwise the timing is very unstable in interactive
-                # use where most of the time we are not updating particle ranges
-                self._device.queue.submit([encoded_render_pass])
-            self._render_progression.end_block(self._render_timer.total_time_in_frame())
-            clear = False
+            self._render_timer.end_frame()
 
-        self._render_timer.end_frame()
-
-        self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
-        self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
-        self.has_rendered = True
+            self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
+            self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+            self.has_rendered = True
 
     def needs_refine(self):
         return self._render_progression.needs_refine()
