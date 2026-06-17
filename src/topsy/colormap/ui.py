@@ -114,9 +114,12 @@ class ColorMapController(GenericController):
 
     def apply_quantity(self, name: str) -> None:
         new = None if name == self.default_quantity_name else name
+        old = self.visualizer.quantity_name
         self.visualizer.quantity_name = new
-        # other elements of the UI may need to be updated
-        self.refresh_ui()
+
+        if new != old:
+            # other elements of the UI may need to be updated
+            self.refresh_ui()
 
     def apply_slider(self, vmin: float, vmax: float) -> None:
         self.colormap.update_parameters({'vmin': vmin, 'vmax': vmax})
