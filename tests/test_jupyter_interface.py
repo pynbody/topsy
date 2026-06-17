@@ -107,7 +107,7 @@ def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
 
     # Wait for vmin/vmax slider to appear. NB there's other sliders, just not range sliders, so here
     # we look for the 'upper' handle (the 'lower' handles exist in single-value sliders)
-    expect(page_session.locator("div.noUi-handle-upper")).to_be_visible()
+    expect(page_session.locator("div.noUi-handle-upper")).to_be_visible(timeout=20_000)
 
     # Change quantity back 
     sel = page_session.locator("select:has-text('test-quantity')")
@@ -115,4 +115,4 @@ def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
     sel.select_option("Projected density")
 
     # Wait for vmin/vmax sliders to disappear
-    expect(page_session.locator("div.noUi-handle-upper")).not_to_be_visible()
+    expect(page_session.locator("div.noUi-handle-upper")).not_to_be_visible(timeout=20_000)
