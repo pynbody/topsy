@@ -1,3 +1,4 @@
+import os
 import time 
 import ipywidgets as widgets
 from playwright.sync_api import Page, expect
@@ -10,8 +11,12 @@ from typing import Callable
 
 import topsy, topsy.canvas.jupyter
 
+_IS_CI = os.environ.get("CI", "").lower() in ("1", "true", "yes")
+DEFAULT_TIMEOUT = 60.0 if _IS_CI else 2.0
+DEFAULT_TIMEOUT_MS = int(DEFAULT_TIMEOUT * 1000)
+expect.set_options(timeout=DEFAULT_TIMEOUT_MS)
 
-def poll_until_true(assertion: Callable, timeout=5, iteration_delay=0.01):
+def poll_until_true(assertion: Callable, timeout=DEFAULT_TIMEOUT, iteration_delay=0.01):
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         if assertion():
@@ -56,11 +61,10 @@ def test_quantity_name_select(jupyter_vis, page_session: Page):
     assert cb.is_checked()
     sel.select_option("test-quantity")
 
-
     assert poll_until_true(lambda: jupyter_vis.quantity_name == "test-quantity")
 
     # check that log quantity is no longer selected    
-    assert poll_until_true(lambda: not cb.is_checked())
+    expect(cb).not_to_be_checked()
 
 def test_alter_range(jupyter_vis, page_session: Page):
     vis = jupyter_vis
@@ -91,8 +95,7 @@ def test_rgb_map(solara_test, page_session: Page):
     display(vis)
 
     # at the moment we just check this actually gives the alternative panel
-    sel = page_session.locator("text=gamma")
-    sel.wait_for()
+    expect(page_session.locator("text=gamma")).to_be_visible()
 
     
 def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
@@ -107,12 +110,10 @@ def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
 
     # Wait for vmin/vmax slider to appear. NB there's other sliders, just not range sliders, so here
     # we look for the 'upper' handle (the 'lower' handles exist in single-value sliders)
-    expect(page_session.locator("div.noUi-handle-upper")).to_be_visible(timeout=20_000)
+    expect(page_session.locator("div.noUi-handle-upper")).to_be_visible()
 
     # Change quantity back 
-    sel = page_session.locator("select:has-text('test-quantity')")
-    sel.wait_for()
     sel.select_option("Projected density")
 
     # Wait for vmin/vmax sliders to disappear
-    expect(page_session.locator("div.noUi-handle-upper")).not_to_be_visible(timeout=20_000)
+    expect(page_session.locator("div.noUi-handle-upper")).not_to_be_visible()
