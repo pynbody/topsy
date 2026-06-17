@@ -1,6 +1,6 @@
 import time 
 import ipywidgets as widgets
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 import pytest 
 
 from IPython.display import display
@@ -11,7 +11,7 @@ from typing import Callable
 import topsy, topsy.canvas.jupyter
 
 
-def poll_until_true(assertion: Callable, timeout=10, iteration_delay=0.01):
+def poll_until_true(assertion: Callable, timeout=5, iteration_delay=0.01):
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         if assertion():
@@ -107,7 +107,7 @@ def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
 
     # Wait for vmin/vmax slider to appear. NB there's other sliders, just not range sliders, so here
     # we look for the 'upper' handle (the 'lower' handles exist in single-value sliders)
-    assert poll_until_true(lambda: page_session.locator("div.noUi-handle-upper").count() > 0)
+    expect(page_session.locator("div.noUi-handle-upper")).to_be_visible()
 
     # Change quantity back 
     sel = page_session.locator("select:has-text('test-quantity')")
@@ -115,4 +115,4 @@ def test_quantity_bar_adapting(jupyter_vis_surface, page_session: Page):
     sel.select_option("Projected density")
 
     # Wait for vmin/vmax sliders to disappear
-    assert poll_until_true(lambda: page_session.locator("div.noUi-handle-upper").count() == 0)
+    expect(page_session.locator("div.noUi-handle-upper")).not_to_be_visible()
