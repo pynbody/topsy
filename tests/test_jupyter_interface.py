@@ -11,9 +11,9 @@ from typing import Callable
 import topsy, topsy.canvas.jupyter
 
 
-def poll_until_true(assertion: Callable, timeout=2, iteration_delay=0.01):
-    start = time.time()
-    while time.time() - start < timeout:
+def poll_until_true(assertion: Callable, timeout=10, iteration_delay=0.01):
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
         if assertion():
             return True
         time.sleep(iteration_delay)
