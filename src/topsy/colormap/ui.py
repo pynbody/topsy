@@ -151,7 +151,7 @@ class ColorMapController(GenericController):
                                 ControlSpec("auto", "button", label="Auto",
                                             callback=lambda _: self.apply_auto()),
                             ]))
-
+        print("ColorMapController.get_layout returns:", children)
         return LayoutSpec(
             type="vbox",
             children=children

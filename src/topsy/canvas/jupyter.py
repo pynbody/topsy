@@ -99,6 +99,7 @@ class VisualizerCanvas(VisualizerCanvasBase, RenderCanvas):
             return widgets.VBox(children)
 
     def make_widget(self, spec):
+        print("make_widget:", spec)
         if spec.type == "combo" or spec.type == 'combo-edit':  # can't get a good implementation of combo editing in ipython currently
             w = widgets.Dropdown(
                 options=spec.options or [],
