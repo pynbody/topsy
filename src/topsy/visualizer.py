@@ -162,7 +162,8 @@ class VisualizerBase:
             if max_buffer_size > 2**63:
                 max_buffer_size = 2**63
             type(self).device: wgpu.GPUDevice = self.adapter.request_device_sync(
-                required_features=["texture-adapter-specific-format-features", "float32-filterable"],
+                required_features=["texture-adapter-specific-format-features", "float32-filterable",
+                                   "indirect-first-instance"],
                 required_limits={"max_buffer_size": max_buffer_size})
         self.context: wgpu.GPUCanvasContext = self.canvas.get_context("wgpu")
 
