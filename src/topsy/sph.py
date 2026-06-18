@@ -88,7 +88,7 @@ class SPH:
         self.position_offset = np.zeros(3)
         self.has_rendered = False
 
-        self._render_lock = threading.Lock()
+        self._render_lock = threading.RLock()
 
     def _get_depth_renderer(self) -> SPH:
         """Returns a SPH renderer that will generate the depth in the scene"""
@@ -128,17 +128,18 @@ class SPH:
         return self._get_image_unscaled() * self.last_render_mass_scale
 
     def _get_image_unscaled(self):
-        if not self.has_rendered:
-            logger.info("Export-quality render has been triggered, because no render has been done yet.")
-            self.render(DrawReason.EXPORT)
+        with self._render_lock:
+            if not self.has_rendered:
+                logger.info("Export-quality render has been triggered, because no render has been done yet.")
+                self.render(DrawReason.EXPORT)
 
-        np_dtype = self._output_dtype
-        bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
-        im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
-                                             {'bytes_per_row': bytes_per_pixel * self._render_resolution},
-                                             (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
-                                                           self._nchannels_output))
+            np_dtype = self._output_dtype
+            bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
+            im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
+                                                 {'bytes_per_row': bytes_per_pixel * self._render_resolution},
+                                                 (self._render_resolution, self._render_resolution, 1))
+            np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
+                                                               self._nchannels_output))
                                                            
         return np_im
 
@@ -304,7 +305,8 @@ class SPH:
     def invalidate(self, draw_reason=DrawReason.CHANGE):
         """Invalidates the current render, so that an attempt to get the current image will fail."""
         if draw_reason != DrawReason.REFINE and draw_reason != DrawReason.PRESENTATION_CHANGE:
-            self.has_rendered = False
+            with self._render_lock:
+                self.has_rendered = False
 
     def render(self, draw_reason=DrawReason.CHANGE):
         with self._render_lock:
