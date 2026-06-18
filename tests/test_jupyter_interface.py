@@ -12,7 +12,7 @@ from typing import Callable
 import topsy, topsy.canvas.jupyter
 
 _IS_CI = os.environ.get("CI", "").lower() in ("1", "true", "yes")
-DEFAULT_TIMEOUT = 10.0 if _IS_CI else 2.0
+DEFAULT_TIMEOUT = 20.0 if _IS_CI else 2.0
 DEFAULT_TIMEOUT_MS = int(DEFAULT_TIMEOUT * 1000)
 expect.set_options(timeout=DEFAULT_TIMEOUT_MS)
 
