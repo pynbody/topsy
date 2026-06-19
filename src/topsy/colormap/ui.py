@@ -104,6 +104,11 @@ class ColorMapController(GenericController):
     def apply_log_scale(self, state: bool) -> None:
         params = self.colormap.get_parameters()
         ui_range = params['ui_range_linear'] if not state else params['ui_range_log']
+        vmin = ui_range[0]
+        vmax = ui_range[1]
+        if vmin!=vmin or vmax!=vmax:
+            vmin, vmax = 0.0, 1.0
+
         self.colormap.update_parameters({
             'log': state,
             'vmin': ui_range[0],
@@ -151,7 +156,6 @@ class ColorMapController(GenericController):
                                 ControlSpec("auto", "button", label="Auto",
                                             callback=lambda _: self.apply_auto()),
                             ]))
-        print("ColorMapController.get_layout returns:", children)
         return LayoutSpec(
             type="vbox",
             children=children

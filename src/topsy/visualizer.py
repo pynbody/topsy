@@ -305,7 +305,6 @@ class VisualizerBase:
 
         self.particle_buffers.quantity_name = value
         self.invalidate(DrawReason.CHANGE)
-        print("quantity name changed to", value)
         self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
         self._initialize_colormap_and_bar()
 

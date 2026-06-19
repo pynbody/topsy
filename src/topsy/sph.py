@@ -124,8 +124,8 @@ class SPH:
         If the current SPH output is invalid, this triggers an EXPORT-quality render. If you don't want this to happen,
         you should call your own CHANGED render for example.
         """
-
-        return self._get_image_unscaled() * self.last_render_mass_scale
+        with self._render_lock:
+            return self._get_image_unscaled() * self.last_render_mass_scale
 
     def _get_image_unscaled(self):
         with self._render_lock:
@@ -145,7 +145,6 @@ class SPH:
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
-
 
     def _setup_shader_module(self):
         code = load_shader("sph.wgsl")
@@ -336,7 +335,8 @@ class SPH:
             self.has_rendered = True
 
     def needs_refine(self):
-        return self._render_progression.needs_refine()
+        with self._render_lock:
+            return self._render_progression.needs_refine()
 
     def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')
