@@ -104,6 +104,11 @@ class ColorMapController(GenericController):
     def apply_log_scale(self, state: bool) -> None:
         params = self.colormap.get_parameters()
         ui_range = params['ui_range_linear'] if not state else params['ui_range_log']
+        vmin = ui_range[0]
+        vmax = ui_range[1]
+        if vmin!=vmin or vmax!=vmax:
+            vmin, vmax = 0.0, 1.0
+
         self.colormap.update_parameters({
             'log': state,
             'vmin': ui_range[0],
@@ -114,9 +119,12 @@ class ColorMapController(GenericController):
 
     def apply_quantity(self, name: str) -> None:
         new = None if name == self.default_quantity_name else name
+        old = self.visualizer.quantity_name
         self.visualizer.quantity_name = new
-        # other elements of the UI may need to be updated
-        self.refresh_ui()
+
+        if new != old:
+            # other elements of the UI may need to be updated
+            self.refresh_ui()
 
     def apply_slider(self, vmin: float, vmax: float) -> None:
         self.colormap.update_parameters({'vmin': vmin, 'vmax': vmax})
@@ -148,7 +156,6 @@ class ColorMapController(GenericController):
                                 ControlSpec("auto", "button", label="Auto",
                                             callback=lambda _: self.apply_auto()),
                             ]))
-
         return LayoutSpec(
             type="vbox",
             children=children

@@ -4,6 +4,7 @@ import copy
 import numpy as np
 import wgpu
 import pynbody
+import threading
 
 from logging import getLogger
 
@@ -87,6 +88,8 @@ class SPH:
         self.position_offset = np.zeros(3)
         self.has_rendered = False
 
+        self._render_lock = threading.RLock()
+
     def _get_depth_renderer(self) -> SPH:
         """Returns a SPH renderer that will generate the depth in the scene"""
         renderer = DepthSPH(self._visualizer, self._render_resolution, wrapping=self._wrapping,
@@ -121,27 +124,27 @@ class SPH:
         If the current SPH output is invalid, this triggers an EXPORT-quality render. If you don't want this to happen,
         you should call your own CHANGED render for example.
         """
-
-        return self._get_image_unscaled() * self.last_render_mass_scale
+        with self._render_lock:
+            return self._get_image_unscaled() * self.last_render_mass_scale
 
     def _get_image_unscaled(self):
-        if not self.has_rendered:
-            logger.info("Export-quality render has been triggered, because no render has been done yet.")
-            self.render(DrawReason.EXPORT)
+        with self._render_lock:
+            if not self.has_rendered:
+                logger.info("Export-quality render has been triggered, because no render has been done yet.")
+                self.render(DrawReason.EXPORT)
 
-        np_dtype = self._output_dtype
-        bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
-        im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
-                                             {'bytes_per_row': bytes_per_pixel * self._render_resolution},
-                                             (self._render_resolution, self._render_resolution, 1))
-        np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
-                                                           self._nchannels_output))
+            np_dtype = self._output_dtype
+            bytes_per_pixel = self._nchannels_output * np.dtype(np_dtype).itemsize
+            im = self._device.queue.read_texture({'texture': self.get_output_texture(), 'origin': (0, 0, 0)},
+                                                 {'bytes_per_row': bytes_per_pixel * self._render_resolution},
+                                                 (self._render_resolution, self._render_resolution, 1))
+            np_im = np.frombuffer(im, dtype=np_dtype).reshape((self._render_resolution, self._render_resolution,
+                                                               self._nchannels_output))
                                                            
         return np_im
 
     def get_output_texture(self) -> wgpu.Texture:
         return self._render_texture
-
 
     def _setup_shader_module(self):
         code = load_shader("sph.wgsl")
@@ -301,38 +304,39 @@ class SPH:
     def invalidate(self, draw_reason=DrawReason.CHANGE):
         """Invalidates the current render, so that an attempt to get the current image will fail."""
         if draw_reason != DrawReason.REFINE and draw_reason != DrawReason.PRESENTATION_CHANGE:
-            self.has_rendered = False
+            with self._render_lock:
+                self.has_rendered = False
 
     def render(self, draw_reason=DrawReason.CHANGE):
-        performance.signposter.emit_event("Start SPH render")
+        with self._render_lock:
+            if draw_reason == DrawReason.PRESENTATION_CHANGE:
+                return
 
-        if draw_reason == DrawReason.PRESENTATION_CHANGE:
-            return
+            if draw_reason != DrawReason.REFINE:
+                self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
+                self._update_transform_buffer()
 
-        if draw_reason != DrawReason.REFINE:
-            self._render_progression.select_sphere(-self.position_offset, self.scale*1.2)
-            self._update_transform_buffer()
+            clear = self._render_progression.start_frame(draw_reason)
 
-        clear = self._render_progression.start_frame(draw_reason)
+            while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
+                encoded_render_pass = self.encode_render_pass(clear=clear)
+                self._visualizer.particle_buffers.update_particle_ranges(*block)
+                with self._render_timer:
+                    # we only time this part, because otherwise the timing is very unstable in interactive
+                    # use where most of the time we are not updating particle ranges
+                    self._device.queue.submit([encoded_render_pass])
+                self._render_progression.end_block(self._render_timer.total_time_in_frame())
+                clear = False
 
-        while block := self._render_progression.get_block(self._render_timer.total_time_in_frame()):
-            encoded_render_pass = self.encode_render_pass(clear=clear)
-            self._visualizer.particle_buffers.update_particle_ranges(*block)
-            with self._render_timer:
-                # we only time this part, because otherwise the timing is very unstable in interactive
-                # use where most of the time we are not updating particle ranges
-                self._device.queue.submit([encoded_render_pass])
-            self._render_progression.end_block(self._render_timer.total_time_in_frame())
-            clear = False
+            self._render_timer.end_frame()
 
-        self._render_timer.end_frame()
-
-        self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
-        self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
-        self.has_rendered = True
+            self.last_render_mass_scale = self._render_progression.end_frame_get_scalefactor()
+            self.last_render_fps = 1.0 / self._render_timer.running_mean_duration
+            self.has_rendered = True
 
     def needs_refine(self):
-        return self._render_progression.needs_refine()
+        with self._render_lock:
+            return self._render_progression.needs_refine()
 
     def encode_render_pass(self, clear=True) -> wgpu.GPUCommandBuffer:
         command_encoder: wgpu.GPUCommandEncoder = self._device.create_command_encoder(label='sph_render')

@@ -56,6 +56,9 @@ class QLabeledDoubleRangeSliderWithAutoscale(QLabeledDoubleRangeSlider):
             return 0
 
     def setRange(self, vmin: float, vmax: float) -> None:
+        if vmin!=vmin or vmax!=vmax:
+            vmin, vmax = 0.0, 1.0
+
         if vmin == 0.0 and vmax == 0.0:
             repr_val = 1.0
         elif vmin==0.0:
