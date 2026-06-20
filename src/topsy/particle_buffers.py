@@ -91,15 +91,41 @@ class ParticleBuffers:
         return self._pos_smooth_buffers
 
     def get_mass_and_quantity_buffers(self):
+        self._setup_mass_and_quantity_buffers_if_needed()
+        return self._mass_and_quantity_buffers
+
+    def _setup_mass_and_quantity_buffers_if_needed(self):
         if self._quantity_buffer_is_for_name != self.quantity_name:
-            self._create_mass_and_quantity_buffers_if_needed()
-            data = np.zeros((len(self._loader), 3), dtype=np.float32)
-            data[:, 0] = self._loader.get_mass()
             if self.quantity_name is not None:
-                data[:, 1] = self._loader.get_named_quantity(self.quantity_name)
+                quantity_data =  self._loader.get_named_quantity(self.quantity_name)
+                match quantity_data.shape:
+                    case (N,):
+                        buffer_dim = 3
+                    case (N, 3):
+                        buffer_dim = 4
+                    case _:
+                        raise ValueError(f"Quantity {self.quantity_name} has wrong shape {quantity_data.shape}, "
+                                         f"expected (N,) or (N,3)")
+                if N != len(self._loader):
+                    raise ValueError(f"Quantity {self.quantity_name} has wrong length {N}, expected {len(self._loader)}")
+            else:
+                buffer_dim = 3
+                quantity_data = None
+            self._create_mass_and_quantity_buffers_if_needed(buffer_dim)
+            data = np.zeros((len(self._loader), buffer_dim), dtype=np.float32)
+            data[:, 0] = self._loader.get_mass()
+            if quantity_data is not None:
+                if buffer_dim == 4:
+                    data[:, 1:] = quantity_data
+                else:
+                    data[:, 1] = quantity_data
             self._split_buffers.write_buffers(self._device, self._mass_and_quantity_buffers, data)
             self._quantity_buffer_is_for_name = self.quantity_name
-        return self._mass_and_quantity_buffers
+
+    def get_mass_and_quantity_buffers_dimension(self):
+        self._setup_mass_and_quantity_buffers_if_needed()
+        return self._mass_and_quantity_buffers_dim
+
 
     def get_rgb_buffers(self):
         if not hasattr(self, "_rgb_masses_buffers"):
@@ -110,9 +136,10 @@ class ParticleBuffers:
             self._split_buffers.write_buffers(self._device, self._rgb_masses_buffers, data)
         return self._rgb_masses_buffers
 
-    def _create_mass_and_quantity_buffers_if_needed(self):
-        if self._mass_and_quantity_buffers is not None:
+    def _create_mass_and_quantity_buffers_if_needed(self, buffer_dim: int):
+        if self._mass_and_quantity_buffers is not None and self._mass_and_quantity_buffers_dim == buffer_dim:
             return
         logger.info("Creating quantity buffer")
-        self._mass_and_quantity_buffers = self._split_buffers.create_buffers(self._device, 4 * 3,
+        self._mass_and_quantity_buffers = self._split_buffers.create_buffers(self._device, 4 * buffer_dim,
                                                                              wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
+        self._mass_and_quantity_buffers_dim = buffer_dim
