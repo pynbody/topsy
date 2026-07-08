@@ -556,7 +556,7 @@ class BivariateColormap(Colormap):
 
     _default_params = Colormap._default_params | {'density_vmin': 0.0, 'density_vmax': 1.0,
                                                   'ui_range_density': (0.0, 1.0),
-                                                  'combination_mode': 'multiply'}
+                                                  'combination_mode': 'brightness'}
 
     @classmethod
     def accepts_parameters(cls, parameters: dict) -> bool:
