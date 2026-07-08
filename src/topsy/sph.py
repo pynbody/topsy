@@ -24,6 +24,11 @@ class SPH:
     render_format = wgpu.TextureFormat.rg32float
     _nchannels_input = 2
     _nchannels_output = 2
+
+    _vertex_format = wgpu.VertexFormat.float32x3
+    _vertex_array_stride = 12
+    _shader_flags = []
+
     _output_dtype = np.float32
     _buffer_name = "mass_and_quantity" # as defined in particle_buffers.py
     _vertex_name = "vertex_weighting" # as defined in sph.wgsl
@@ -42,11 +47,14 @@ class SPH:
                 },
               }
 
-    _transform_params_dtype = [("transform", np.float32, (4, 4)),
-                              ("scale_factor", np.float32, (1,)),
-                              ("min_max_size", np.float32, (2,)),
-                              ("boxsize_by_2_clipspace", np.float32, (1,)),
-                              ("density_cut", np.float32, (1,))]
+    _transform_params_dtype = np.dtype([("transform", np.float32, (4, 4)),
+                                       ("rotation", np.float32, (3, 4)), # vec3x3 padded
+                                      ("scale_factor", np.float32, (1,)),
+                                      ("min_max_size", np.float32, (2,)),
+                                      ("boxsize_by_2_clipspace", np.float32, (1,)),
+                                      ("density_cut", np.float32, (1,)),
+                                      ("_pad", np.float32, (3,)),
+                                        ])
 
     def __init__(self, visualizer: Visualizer, render_resolution,
                  wrapping = False, share_render_progression=None):
@@ -147,12 +155,12 @@ class SPH:
         return self._render_texture
 
     def _setup_shader_module(self):
-        code = load_shader("sph.wgsl")
+        code = preprocess_shader(load_shader("sph.wgsl"), self._shader_flags)
         self._shader = self._device.create_shader_module(code=code, label="sph")
 
     def _setup_transform_buffer(self):
         self._transform_buffer = self._device.create_buffer(
-            size=(4*4*4) + 4 + 8 + 8 + 12,  # 4x4 float32 matrix + one float32 scale + float32 min,max size + int32 x 2 + padding
+            size=self._transform_params_dtype.itemsize,
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
         )
 
@@ -207,14 +215,12 @@ class SPH:
                 bind_group_layouts=[self._bind_group_layout]
             )
 
-        vertex_format = wgpu.VertexFormat.float32x3
-
         channel_buffers = [{
-            "array_stride": 12,
+            "array_stride": self._vertex_array_stride,
             "step_mode": wgpu.VertexStepMode.instance,
             "attributes": [
                 {
-                    "format": vertex_format,
+                    "format": self._vertex_format,
                     "offset": 0,
                     "shader_location": 1,
                 }
@@ -269,6 +275,8 @@ class SPH:
         self._device.queue.write_buffer(self._transform_buffer, 0, transform_params)
 
     def _get_transform_params(self):
+        transform_params = np.zeros((), dtype=self._transform_params_dtype)
+
         model_displace = np.array([[1.0, 0, 0, self.position_offset[0]],
                                    [0, 1.0, 0, self.position_offset[1]],
                                    [0, 0, 1.0, self.position_offset[2]],
@@ -282,12 +290,11 @@ class SPH:
                                        [0, 0, 0.5, 0.5],
                                        [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
-        transform[:3, :3] = self.rotation_matrix
+        transform_params["rotation"][:,:3] = transform[:3, :3] = self.rotation_matrix
         rotation_and_scaling = transform / self.scale
         rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
         scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
 
-        transform_params = np.zeros((), dtype=self._transform_params_dtype)
         transform_params["transform"] = scaled_displaced_transform
         transform_params["scale_factor"] = 1. / self.scale
         if self._visualizer.periodicity_scale is not None:
@@ -432,6 +439,10 @@ class SPH:
 class BivariateSPH(SPH):
     """Renders a density, mass-weighted-mean pair"""
 
+class LOSVectorSPH(SPH):
+    _vertex_format = wgpu.VertexFormat.float32x4
+    _vertex_array_stride = 16
+    _shader_flags = ["SPH_VECTOR"]
 
 class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float

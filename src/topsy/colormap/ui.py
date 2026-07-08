@@ -169,6 +169,12 @@ class BivariateColorMapController(ColorMapController):
         })
         self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
 
+    def apply_combination_mode(self, mode: str) -> None:
+        self.colormap.update_parameters({
+            'combination_mode': mode
+        })
+        self.visualizer.invalidate(drawreason.DrawReason.PRESENTATION_CHANGE)
+
     def get_layout(self) -> LayoutSpec:
         layout = super().get_layout()
         params = self.colormap.get_parameters()
@@ -182,7 +188,10 @@ class BivariateColorMapController(ColorMapController):
             ControlSpec("range_den", "range_slider",
                         value=den_range,
                         range=den_ui_range, callback=lambda vv: self.apply_denslider(*vv),
-                        label="density")
+                        label="density"),
+            ControlSpec("combination_mode", "combo", options=['multiply', 'brightness'],
+                                 value=params['combination_mode'],
+                                 callback=self.apply_combination_mode)
             ]))
 
         return LayoutSpec("vbox", children=children)

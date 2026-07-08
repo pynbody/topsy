@@ -77,13 +77,13 @@ def test_colormap(vis, input_image, mode, log_scale, folder):
 
     p.imsave(folder / f"test_colormap_{mode}_{log_scale}.png", image)
 
-    image_via_mpl = _colormap_in_software(input_image, cmap, log_scale, vmax, vmin)
+    image_via_mpl = _colormap_in_software(input_image, cmap)
     p.imsave(folder / f"test_colormap_software_{mode}_{log_scale}.png", image_via_mpl)
 
     npt.assert_allclose(image, image_via_mpl, atol=5)
 
 
-def _colormap_in_software(input_image, cmap, log_scale, vmax, vmin):
+def _colormap_in_software(input_image, cmap):
     if cmap.get_parameter("type") == "bivariate":
         return _bivariate_colormap_in_software(input_image, cmap)
     else:
@@ -178,6 +178,40 @@ def test_colormap_updating(vis):
     cmap.update_parameters({'type': 'bivariate'})
     assert isinstance(cmap._impl, colormap.implementation.BivariateColormap)
     assert impl_id != id(cmap._impl)  # should create a new implementation
+
+def test_bivariate_combination_mode_selection(vis, input_image, folder):
+    cmap = vis.colormap
+    cmap.update_parameters({'type': 'bivariate',
+                            'weighted_average': True,
+                            'combination_mode': 'brightness',
+                            'density_vmin': -3.0,
+                            'density_vmax': 0.0,
+                            'log': False,
+                            'vmin': 0.0,
+                            'vmax': 1.0,
+                            })
+    assert isinstance(cmap._impl, colormap.implementation.BivariateColormap)
+
+    image = cmap.sph_raw_output_to_image(input_image)
+
+    assert image.shape == (200, 200, 4)
+
+    image_brightness = cmap.sph_raw_output_to_image(input_image)
+
+    cmap.update_parameters({'combination_mode': 'multiply'})
+    image_multiply = cmap.sph_raw_output_to_image(input_image)
+
+    assert (image_brightness[0, -1, 0] == (255, 255, 255)).all()
+    assert (image_multiply[0, -1, 0] != (255, 255, 255)).any()
+
+    image_multiply_software = _colormap_in_software(input_image, cmap)
+
+    p.imsave(folder / f"test_colormap_bivariate_multiply.png", image_multiply)
+    p.imsave(folder / f"test_colormap_bivariate_multiply_software.png", image_multiply_software)
+
+    npt.assert_allclose(image_multiply, image_multiply_software, atol=5)
+
+
 
 def test_rgb_colormap_vmin_vmax():
     """Test that RGB colormap can be updated either with vmin/vmax or with min_mag/max_mag"""

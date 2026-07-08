@@ -93,15 +93,20 @@ class VisualizerBase:
                                      , 10.0)
         self._cube = simcube.SimCube(self, (1, 1, 1, 0.3), 10.0)
 
-    def _get_sph_class_for_render_mode(self, render_mode):
+    def _get_sph_class_for_render_mode_and_dimension(self, render_mode, mass_qty_buffer_dimension):
         """Map render mode to appropriate SPH class."""
-        if render_mode == 'rgb' or render_mode == 'rgb-hdr':
+        if (render_mode == 'rgb' or render_mode == 'rgb-hdr') and mass_qty_buffer_dimension == 3:
             return sph.RGBSPH
-        elif render_mode == 'surface':
+        elif render_mode == 'surface' and mass_qty_buffer_dimension == 3:
             return sph.DepthSPHWithOcclusion
         else:  # 'univariate', 'bivariate'
-            return sph.SPH
-    
+            if mass_qty_buffer_dimension == 3:
+                return sph.SPH
+            elif mass_qty_buffer_dimension == 4:
+                return sph.LOSVectorSPH
+
+        raise(ValueError(f"Unsupported render mode '{render_mode}' or mass/quantity buffer dimension) '{mass_qty_buffer_dimension}'"))
+
     def _get_colormap_parameters_for_render_mode(self, render_mode):
         """Generate colormap parameters for the given render mode."""
         colormap_params = {'weighted_average': self.quantity_name is not None}
@@ -135,7 +140,8 @@ class VisualizerBase:
             self._sph = periodic_sph.PeriodicSPH(self, self._render_resolution)
         else:
             # Use render mode to select SPH class
-            sph_class = self._get_sph_class_for_render_mode(self._render_mode)
+            sph_class = self._get_sph_class_for_render_mode_and_dimension(self._render_mode,
+                                                                          self.particle_buffers.get_mass_and_quantity_buffers_dimension())
             logger.info(f"Using {sph_class.__name__} renderer for render mode '{self._render_mode}'")
             self._sph = sph_class(self, self._render_resolution)
 
@@ -303,7 +309,12 @@ class VisualizerBase:
             except Exception as e:
                 raise ValueError(f"Unable to get quantity named '{value}'") from e
 
+        old_sph_input_dim =  self.particle_buffers.get_mass_and_quantity_buffers_dimension()
         self.particle_buffers.quantity_name = value
+        if self.particle_buffers.get_mass_and_quantity_buffers_dimension() != old_sph_input_dim:
+            logger.info("Mass/quantity buffer dimension changed; reinitializing SPH and colormap")
+            self._initialize_sph_and_colormap_and_bar()
+
         self.invalidate(DrawReason.CHANGE)
         self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
         self._initialize_colormap_and_bar()

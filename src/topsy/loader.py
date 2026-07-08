@@ -34,7 +34,7 @@ class AbstractDataLoader(ABC):
         pass
 
     @abstractmethod
-    def get_named_quantity(self, name):
+    def get_named_quantity(self, name) -> np.ndarray:
         pass
 
     @abstractmethod
@@ -122,8 +122,6 @@ class PynbodyDataInMemory(AbstractDataLoader):
 
     def get_named_quantity(self, name):
         qty = self.snapshot[name]
-        if len(qty.shape) == 2:
-            qty = qty[:, 0]
         return qty.astype(np.float32)[self._particle_order]
 
     def get_quantity_names(self):
@@ -301,6 +299,12 @@ class TestDataLoader(AbstractDataLoader):
     def get_named_quantity(self, name):
         if name == "test-quantity":
             return np.sin(self._gmm_pos[:, 0]) * np.cos(self._gmm_pos[:, 1]) * np.cos(self._gmm_pos[:, 2]) * 1e-4
+        elif name == "vel":
+            vel = np.zeros((self._n_particles, 3))
+            vel[:, 0] = self._gmm_pos[:, 2] * 1e-3  * np.exp(-abs(self._gmm_pos[:, 1]))
+            vel[:, 2] = -self._gmm_pos[:, 0] * 1e-3 * np.exp(-abs(self._gmm_pos[:, 1]))
+            vel[:, 1] = -self._gmm_pos[:, 1] * 1e-3
+            return vel
         else:
             raise KeyError("Unknown quantity name")
 
@@ -308,7 +312,7 @@ class TestDataLoader(AbstractDataLoader):
         return "kpc"
 
     def get_quantity_names(self):
-        return ["test-quantity"]
+        return ["test-quantity", "vel"]
 
     def get_quantity_label(self, quantity_name):
         if quantity_name is None:

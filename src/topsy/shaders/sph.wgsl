@@ -1,5 +1,6 @@
 struct TransformParams {
     transform: mat4x4<f32>,
+    rotation: mat3x3<f32>, // already in transform, but we need it separately for the vector quantities
     scale_factor: f32,
     clipspace_size_min: f32,
     clipspace_size_max: f32,
@@ -9,7 +10,11 @@ struct TransformParams {
 
 struct VertexInput {
    @location(0) pos: vec4<f32>, // NB w is used for the smoothing length
+#ifdef SPH_VECTOR
+   @location(1) quantities: vec4<f32>,
+#else
    @location(1) quantities: vec3<f32>,
+#endif
    @builtin(vertex_index) vertexIndex: u32,
    @builtin(instance_index) instanceIndex: u32
 }
@@ -68,7 +73,7 @@ fn vertex_calculate_positions(input: VertexInput) -> VertexOutput {
 @vertex
 fn vertex_rgb(input: VertexInput) -> VertexOutput {
     var output: VertexOutput = vertex_calculate_positions(input);
-    output.intensities = input.quantities/(input.pos.w * input.pos.w);
+    output.intensities = input.quantities.xyz/(input.pos.w * input.pos.w);
     return output;
 }
 
@@ -77,8 +82,11 @@ fn vertex_weighting(input: VertexInput) -> VertexOutput {
     var output: VertexOutput = vertex_calculate_positions(input);
 
     output.intensities.x = input.quantities.x/(input.pos.w * input.pos.w);
+#ifdef SPH_VECTOR
+    output.intensities.y = (trans_params.rotation * input.quantities.yzw).z;
+#else
     output.intensities.y = input.quantities.y;
-
+#endif
     return output;
 }
 
