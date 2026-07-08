@@ -555,11 +555,19 @@ class BivariateColormap(Colormap):
     map_dimension = wgpu.TextureViewDimension.d2
 
     _default_params = Colormap._default_params | {'density_vmin': 0.0, 'density_vmax': 1.0,
-                                                  'ui_range_density': (0.0, 1.0)}
+                                                  'ui_range_density': (0.0, 1.0),
+                                                  'combination_mode': 'multiply'}
 
     @classmethod
     def accepts_parameters(cls, parameters: dict) -> bool:
         return parameters.get("type", None) == "bivariate" and (not parameters.get("hdr", False))
+
+    def update_parameters(self, parameters: dict):
+        super().update_parameters(parameters)
+        if "combination_mode" in parameters:
+            logger.info(f"Updating combination mode to {parameters['combination_mode']}")
+            self._setup_map_texture()
+            self._setup_render_pipeline()
 
     def _setup_shader_module(self, active_flags=None):
         assert active_flags is None
@@ -588,8 +596,17 @@ class BivariateColormap(Colormap):
         self._autorange_using_values(vals[..., 1])
 
     def _generate_mapping_rgba_f32(self, num_points):
-        cmap = matplotlib.colormaps[self._params['colormap_name']]
+        match self._params["combination_mode"]:
+            case "brightness":
+                rgba = self._generate_mapping_rgba_f32_brightness(num_points)
+            case "multiply":
+                rgba = self._generate_mapping_rgba_f32_multiply(num_points)
+            case _:
+                raise ValueError(f"Unknown combination mode: {self._params['combination_mode']}")
+        return rgba
 
+    def _generate_mapping_rgba_f32_brightness(self, num_points):
+        cmap = matplotlib.colormaps[self._params['colormap_name']]
         rgba = np.ones((num_points, num_points, 4), dtype=np.float32)
         rgba[:, :, :] = cmap(np.linspace(0.001, 0.999, num_points))[:, np.newaxis, :]
 
@@ -597,10 +614,21 @@ class BivariateColormap(Colormap):
         hsv[..., 2] = np.linspace(0.001, 0.999, num_points)[np.newaxis, :]
 
         reduce_saturation = np.ones(num_points)
-        reduce_saturation[3*num_points//4:] = np.linspace(1.0, 0.0, num_points//4)
+        reduce_saturation[3 * num_points // 4:] = np.linspace(1.0, 0.0, num_points // 4)
 
         hsv[..., 1] *= reduce_saturation[np.newaxis, :]
 
-        rgba[..., :3] =matplotlib.colors.hsv_to_rgb(hsv)
+        rgba[..., :3] = matplotlib.colors.hsv_to_rgb(hsv)
+
+        return rgba
+
+    def _generate_mapping_rgba_f32_multiply(self, num_points):
+        cmap = matplotlib.colormaps[self._params['colormap_name']]
+        rgba = np.ones((num_points, num_points, 4), dtype=np.float32)
+        rgba[:, :, :] = cmap(np.linspace(0.001, 0.999, num_points))[:, np.newaxis, :]
+
+        multiplier_factor = np.linspace(0.0, 1.0, num_points)
+
+        rgba[:, :, :3] *= multiplier_factor[np.newaxis, :, np.newaxis]
 
         return rgba
