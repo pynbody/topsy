@@ -5,6 +5,7 @@ import numpy.testing as npt
 import pytest
 
 import topsy
+from topsy import sph
 from topsy.drawreason import DrawReason
 
 
@@ -592,3 +593,97 @@ def test_surface_render(folder):
     # this is a very loose test -- unfortunately different pipelines just give different results, though
     # visually are similar, presumably due to differences in order of operations and accuracy in shaders
     npt.assert_allclose(presentation_result[::20, ::20].ravel(), presentation_expectation, atol=30)
+
+
+def _render_transverse_and_los(vis, rotation):
+    """Render a TransverseVectorSPH and a LOSVectorSPH at the given rotation, returning their images.
+
+    Both use the same projection, so the LOS renderer provides the line-of-sight (z) velocity
+    component and the transverse renderer provides the two in-plane (x, y) components.
+    """
+    resolution = vis._render_resolution
+    los = sph.LOSVectorSPH(vis, resolution)
+    transverse = sph.TransverseVectorSPH(vis, resolution)
+    for renderer in (los, transverse):
+        renderer.rotation_matrix = rotation
+        renderer.scale = vis._sph.scale
+        renderer.position_offset = vis._sph.position_offset
+        renderer.render(DrawReason.EXPORT)
+    return los.get_image(), transverse.get_image()
+
+
+def _rotate_image_90(a):
+    """Apply the rigid 90-degree image rotation matching the rotation matrix used below.
+
+    This is the same permutation as in test_rotated_sph_output, and involves no interpolation."""
+    if a.ndim == 2:
+        return a.T[:, ::-1]
+    return a.transpose(1, 0, 2)[:, ::-1]
+
+
+def test_transverse_vector_output(vis, folder):
+    vis.quantity_name = "vel"
+    assert vis.particle_buffers.get_mass_and_quantity_buffers_dimension() == 4
+
+    los, transverse = _render_transverse_and_los(vis, np.eye(3, dtype=np.float32))
+
+    # the output holds (projected_density, <vx>*density, <vy>*density) in rgb; a is unused
+    assert transverse.shape == (200, 200, 4)
+    assert transverse.dtype == np.float32
+
+    np.save(folder / "test_transverse.npy", transverse)
+
+    # the projected-density channel must be identical to that of the LOS renderer
+    npt.assert_allclose(transverse[..., 0], los[..., 0], rtol=1e-4)
+
+    # recovered density-weighted mean velocities should lie within the input velocity range
+    density = transverse[..., 0]
+    mask = density > np.percentile(density, 90)
+    vel = vis.data_loader.get_named_quantity("vel")
+    vmin, vmax = vel.min(), vel.max()
+    for channel in (1, 2):
+        mean_velocity = transverse[..., channel][mask] / density[mask]
+        assert mean_velocity.min() >= vmin - 1e-3
+        assert mean_velocity.max() <= vmax + 1e-3
+
+
+def test_transverse_vector_rotation_invariance(vis):
+    vis.quantity_name = "vel"
+
+    los0, transverse0 = _render_transverse_and_los(vis, np.eye(3, dtype=np.float32))
+
+    # a 90-degree rotation about the line of sight: a rigid in-plane image rotation (no interpolation)
+    rotation_90 = np.array([[0.0, 1.0, 0.0],
+                            [-1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0]], dtype=np.float32)
+    los1, transverse1 = _render_transverse_and_los(vis, rotation_90)
+
+    vel = vis.data_loader.get_named_quantity("vel")
+    velocity_tol = 0.05 * np.abs(vel).max()
+
+    density0 = transverse0[..., 0]
+    density1 = transverse1[..., 0]
+
+    # the density projection just rotates rigidly
+    npt.assert_allclose(density1, _rotate_image_90(density0), rtol=5e-2, atol=density1.max() * 1e-3)
+
+    # compare only well-populated pixels that are present in both renders
+    mask = (density1 > np.percentile(density1, 90)) & _rotate_image_90(density0 > np.percentile(density0, 90))
+
+    def weighted(image, channel):
+        density = image[..., 0]
+        return image[..., channel] / np.where(density == 0, 1, density)
+
+    vx0, vy0, vz0 = weighted(transverse0, 1), weighted(transverse0, 2), weighted(los0, 1)
+    vx1, vy1, vz1 = weighted(transverse1, 1), weighted(transverse1, 2), weighted(los1, 1)
+
+    # the line-of-sight component is invariant under an in-plane rotation
+    npt.assert_allclose(vz1[mask], _rotate_image_90(vz0)[mask], atol=velocity_tol)
+
+    # the transverse magnitude is invariant under an in-plane rotation
+    npt.assert_allclose(np.hypot(vx1, vy1)[mask], _rotate_image_90(np.hypot(vx0, vy0))[mask], atol=velocity_tol)
+
+    # the full 3d speed is invariant under any rotation
+    speed0 = np.sqrt(vx0 ** 2 + vy0 ** 2 + vz0 ** 2)
+    speed1 = np.sqrt(vx1 ** 2 + vy1 ** 2 + vz1 ** 2)
+    npt.assert_allclose(speed1[mask], _rotate_image_90(speed0)[mask], atol=velocity_tol)

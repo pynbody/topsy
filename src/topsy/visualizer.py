@@ -16,6 +16,7 @@ from . import sph, periodic_sph
 from . import colorbar
 from . import text
 from . import scalebar
+from . import vectors
 from . import loader
 from . import util
 from . import line
@@ -56,6 +57,10 @@ class VisualizerBase:
 
         self.show_colorbar = True
         self.show_scalebar = True
+        self.show_vectors = True
+        self._vectors_need_recompute = False
+        self._vector_sph = None
+        self.vector_render_resolution = config.DEFAULT_VECTOR_RESOLUTION
 
         self._validate_render_mode(render_mode)
         self._render_mode = render_mode
@@ -84,6 +89,8 @@ class VisualizerBase:
         self._status = text.TextOverlay(self, "topsy", (-0.9, 0.9), 40, color=(1, 1, 1, 1))
 
         self._scalebar = scalebar.ScalebarOverlay(self)
+
+        self._vectors = vectors.VectorOverlay(self)
 
         self._crosshairs = line.Line(self,
                                      [(-1, 0,0,0), (1, 0,0,0),
@@ -192,7 +199,14 @@ class VisualizerBase:
         logger.info(f"Canvas format {self.canvas_format}")
 
     def invalidate(self, reason=DrawReason.CHANGE):
-        self._sph.invalidate(reason)
+        if reason in (DrawReason.INITIAL_UPDATE, DrawReason.CHANGE):
+            # the view has changed, so any previously-computed vector field is now stale
+            self._vectors_need_recompute = True
+
+        if reason != DrawReason.VECTOR_UPDATE:
+            # a VECTOR_UPDATE is an overlay-only refresh; it must not invalidate the main SPH
+            # render (which would reset the progressive refinement and flicker the image)
+            self._sph.invalidate(reason)
 
         # NB no need to check if we're already pending a draw - rendercanvas does that for us
         self.canvas.request_draw(lambda: self.draw(reason))
@@ -379,6 +393,8 @@ class VisualizerBase:
         command_encoder = self.device.create_command_encoder()
 
         self._colormap.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_vectors and not self._vectors_need_recompute:
+            self._vectors.encode_render_pass(command_encoder, target_texture_view)
         if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
@@ -399,9 +415,14 @@ class VisualizerBase:
         if target_texture_view is None:
             target_texture_view = self.canvas.get_context("wgpu").get_current_texture().create_view()
 
+        if reason == DrawReason.VECTOR_UPDATE:
+            # refresh the vector overlay's texture before the overlays are encoded below
+            self._update_vector_field()
+
         command_buffer_future = self._encoder_executor.submit(self._encode_draw, target_texture_view)
 
-        if not self._prevent_sph_rendering:
+        if reason != DrawReason.VECTOR_UPDATE and not self._prevent_sph_rendering:
+            # a VECTOR_UPDATE only refreshes the overlay; the main SPH image is left untouched
             self.render_sph(reason)
 
         self._colormap.set_scaling(*target_texture_view.size[:2], self._sph.last_render_mass_scale)
@@ -411,9 +432,54 @@ class VisualizerBase:
         if reason != DrawReason.EXPORT and (not self._prevent_sph_rendering):
             if self._sph.needs_refine():
                 self.invalidate(DrawReason.REFINE)
+            elif self.show_vectors and self._vectors_need_recompute:
+                # the main image has settled; now (re)compute the overlaid vector field
+                self.invalidate(DrawReason.VECTOR_UPDATE)
 
     def render_sph(self, draw_reason = DrawReason.CHANGE):
         self._sph.render(draw_reason)
+
+    def _update_vector_field(self):
+        """Compute the projected transverse vector field and hand it to the vector overlay."""
+        self._vectors.update_vector_field(self._compute_vector_field())
+        self._vectors_need_recompute = False
+
+    def _compute_vector_field(self, num_arrows=config.VECTOR_FIELD_NUM_ARROWS):
+        """Render the density-weighted, projected transverse velocity field and bin it down to a
+        coarse (num_arrows x num_arrows) grid suitable for a quiver overlay."""
+        resolution = self.vector_render_resolution
+        if self._vector_sph is None or self._vector_sph._render_resolution != resolution:
+            self._vector_sph = sph.TransverseVectorSPH(self, resolution)
+
+        num_arrows = min(num_arrows, resolution)
+
+        vector_sph = self._vector_sph
+        vector_sph.rotation_matrix = self._sph.rotation_matrix
+        vector_sph.scale = self._sph.scale
+        vector_sph.position_offset = self._sph.position_offset
+        vector_sph.render(DrawReason.EXPORT)
+
+        # channels: (projected_density, <vx>*density, <vy>*density, unused)
+        image = vector_sph.get_image()
+
+        density = self._bin_sum(image[..., 0], num_arrows)
+        vx = self._bin_sum(image[..., 1], num_arrows)
+        vy = self._bin_sum(image[..., 2], num_arrows)
+
+        # density-weighted mean within each bin: sum(v*density)/sum(density)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            vx = np.where(density > 0, vx / density, 0.0)
+            vy = np.where(density > 0, vy / density, 0.0)
+
+        return np.stack([vx, vy], axis=-1).astype(np.float32)
+
+    @staticmethod
+    def _bin_sum(image, num_bins):
+        """Sum a square image into num_bins x num_bins blocks."""
+        resolution = image.shape[0]
+        factor = resolution // num_bins
+        image = image[:factor * num_bins, :factor * num_bins]
+        return image.reshape(num_bins, factor, num_bins, factor).sum(axis=(1, 3))
 
     def sph_clipspace_to_screen_clipspace_matrix(self):
         aspect_ratio = self.canvas.width_physical / self.canvas.height_physical

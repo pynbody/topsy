@@ -55,6 +55,8 @@ class ParticleBuffers:
                     buffers.append(self.get_mass_and_quantity_buffers())
                 case "rgb":
                     buffers.append(self.get_rgb_buffers())
+                case "vec":
+                    buffers.append(self.get_vec_buffers())
                 case _:
                     raise ValueError(f"Unknown buffer name: {name}")
         self._current_vertex_buffers = buffers
@@ -135,6 +137,26 @@ class ParticleBuffers:
                                                 wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
             self._split_buffers.write_buffers(self._device, self._rgb_masses_buffers, data)
         return self._rgb_masses_buffers
+
+    def get_vec_buffers(self):
+        """Buffers for rendering a projected vector field, independent of the main visualised quantity.
+
+        Each element is a vec4 (mass, vx, vy, vz), i.e. the mass is bundled with the vector quantity.
+        This duplicates the mass (already present in the mass_and_quantity buffer), but in return the
+        vector SPH shader can read a single, contiguous vec4 vertex input exactly as it already does
+        for the LOS vector renderer -- no extra vertex buffer binding or shader input is needed. The
+        modest GPU-RAM overhead (one extra float per particle) is well traded off against that
+        simplicity and the better memory access pattern.
+        """
+        if not hasattr(self, "_vec_buffers"):
+            logger.info("Creating vector buffer")
+            data = np.zeros((len(self._loader), 4), dtype=np.float32)
+            data[:, 0] = self._loader.get_mass()
+            data[:, 1:] = self._loader.get_named_quantity('vel')
+            self._vec_buffers = self._split_buffers.create_buffers(self._device, 4 * 4,
+                                                wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
+            self._split_buffers.write_buffers(self._device, self._vec_buffers, data)
+        return self._vec_buffers
 
     def _create_mass_and_quantity_buffers_if_needed(self, buffer_dim: int):
         if self._mass_and_quantity_buffers is not None and self._mass_and_quantity_buffers_dim == buffer_dim:
