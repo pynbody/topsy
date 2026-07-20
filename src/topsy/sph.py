@@ -290,12 +290,14 @@ class SPH:
                                        [0, 0, 0.5, 0.5],
                                        [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
-        transform_params["rotation"][:,:3] = transform[:3, :3] = self.rotation_matrix
+        transform[:3, :3] = self.rotation_matrix
+        transform_params["rotation"][:,:3] = self.rotation_matrix.T # row -> column major for shader
+
         rotation_and_scaling = transform / self.scale
         rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
-        scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
+        scaled_displaced_transform = clipcoord_displace @ rotation_and_scaling @ model_displace
 
-        transform_params["transform"] = scaled_displaced_transform
+        transform_params["transform"] = scaled_displaced_transform.T # row -> column major for shader
         transform_params["scale_factor"] = 1. / self.scale
         if self._visualizer.periodicity_scale is not None:
             transform_params["boxsize_by_2_clipspace"] = 0.5 * \
