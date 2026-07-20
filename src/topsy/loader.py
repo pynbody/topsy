@@ -301,9 +301,10 @@ class TestDataLoader(AbstractDataLoader):
             return np.sin(self._gmm_pos[:, 0]) * np.cos(self._gmm_pos[:, 1]) * np.cos(self._gmm_pos[:, 2]) * 1e-4
         elif name == "vel":
             vel = np.zeros((self._n_particles, 3))
-            vel[:, 0] = self._gmm_pos[:, 2] * 1e-3  * np.exp(-abs(self._gmm_pos[:, 1]))
-            vel[:, 2] = -self._gmm_pos[:, 0] * 1e-3 * np.exp(-abs(self._gmm_pos[:, 1]))
-            vel[:, 1] = -self._gmm_pos[:, 1] * 1e-3
+            falloff = np.exp(-(self._gmm_pos[:, 2]**2 + self._gmm_pos[:, 0]**2)/60 - abs(self._gmm_pos[:, 1])/10)
+            vel[:, 0] = self._gmm_pos[:, 2] * 1e-3  * falloff
+            vel[:, 2] = -self._gmm_pos[:, 0] * 1e-3 * falloff
+            vel[:, 1] = -self._gmm_pos[:, 1] * 1e-3 * falloff
             return vel
         else:
             raise KeyError("Unknown quantity name")

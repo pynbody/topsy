@@ -647,7 +647,24 @@ def test_transverse_vector_output(vis, folder):
         assert mean_velocity.max() <= vmax + 1e-3
 
 
-def test_transverse_vector_rotation_invariance(vis):
+def test_transverse_vector_rotation(vis):
+    """Check that projected vectors transform correctly under an in-plane view rotation.
+
+    The transverse vector must be rotated into screen space by the same rotation R that maps world
+    positions to the screen -- i.e. screen_v = R @ world_v. Under the 90-degree roll about the line
+    of sight R = [[0,1,0],[-1,0,0],[0,0,1]], a world vector (vx, vy, vz) projects to screen
+    components (R v)_xy = (vy, -vx). Combined with the rigid image rotation that carries each
+    particle to its new pixel, this predicts, per pixel:
+        vx_rotated == _rotate_image_90(vy_unrotated)
+        vy_rotated == _rotate_image_90(-vx_unrotated)
+
+    Note this is a *signed*, per-component check: it pins the arrow direction, not just its length.
+    A magnitude-only check cannot see the difference between R and its transpose R^T = R^-1 (since
+    |R v| == |R^T v|), yet R^T rotates the vectors by the *inverse* angle, reversing the arrows
+    relative to the particles under a roll. The signed check below fails for that transpose bug --
+    and it subsumes magnitude invariance, which together with the line-of-sight check below implies
+    the full 3d speed is preserved.
+    """
     vis.quantity_name = "vel"
 
     los0, transverse0 = _render_transverse_and_los(vis, np.eye(3, dtype=np.float32))
@@ -677,13 +694,9 @@ def test_transverse_vector_rotation_invariance(vis):
     vx0, vy0, vz0 = weighted(transverse0, 1), weighted(transverse0, 2), weighted(los0, 1)
     vx1, vy1, vz1 = weighted(transverse1, 1), weighted(transverse1, 2), weighted(los1, 1)
 
+    # the transverse components rotate as a proper vector: (vx, vy) -> (vy, -vx)
+    npt.assert_allclose(vx1[mask], _rotate_image_90(vy0)[mask], atol=velocity_tol)
+    npt.assert_allclose(vy1[mask], _rotate_image_90(-vx0)[mask], atol=velocity_tol)
+
     # the line-of-sight component is invariant under an in-plane rotation
     npt.assert_allclose(vz1[mask], _rotate_image_90(vz0)[mask], atol=velocity_tol)
-
-    # the transverse magnitude is invariant under an in-plane rotation
-    npt.assert_allclose(np.hypot(vx1, vy1)[mask], _rotate_image_90(np.hypot(vx0, vy0))[mask], atol=velocity_tol)
-
-    # the full 3d speed is invariant under any rotation
-    speed0 = np.sqrt(vx0 ** 2 + vy0 ** 2 + vz0 ** 2)
-    speed1 = np.sqrt(vx1 ** 2 + vy1 ** 2 + vz1 ** 2)
-    npt.assert_allclose(speed1[mask], _rotate_image_90(speed0)[mask], atol=velocity_tol)
