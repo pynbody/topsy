@@ -5,6 +5,7 @@ import pynbody
 
 from . import text
 from . import overlay
+from .util import quantize_to_1_2_5, format_scientific_latex
 
 
 from typing import TYPE_CHECKING
@@ -25,7 +26,7 @@ class BarLengthRecommender:
 
     def __init__(self, initial_window_width_in_base_units=1.0, base_units="kpc"):
         self.unit_conversion_to_base = np.array([
-            pynbody.units.Unit(u).in_units(base_units) for u in self.acceptable_units
+            float(pynbody.units.Unit(u).in_units(base_units)) for u in self.acceptable_units
         ])
         self._window_width_in_base_units = initial_window_width_in_base_units
         self._update_recommendation()
@@ -45,37 +46,11 @@ class BarLengthRecommender:
     @classmethod
     def _quantize_length(cls, physical_scalebar_length):
         """Find a length less than or equal to physical_scalebar_length, that is 1, 2, or 5 times a power of ten."""
-        power_of_ten = np.floor(np.log10(physical_scalebar_length))
-        mantissa = physical_scalebar_length / 10 ** power_of_ten
-        if mantissa < 2.0:
-            physical_scalebar_length = 10.0 ** power_of_ten
-        elif mantissa < 5.0:
-            physical_scalebar_length = 2.0 * 10.0 ** power_of_ten
-        else:
-            physical_scalebar_length = 5.0 * 10.0 ** power_of_ten
-        return physical_scalebar_length
-
-    @classmethod
-    def _format_scientific_latex(cls, value, unit):
-        """Format a number in scientific notation with LaTeX rendering."""
-        if value == 0:
-            return f"0 {unit}"
-
-        # Only use scientific notation for very small or very large numbers
-        if 0.01 <= abs(value) <= 1000:
-            if value == int(value):
-                return f"{int(value)} {unit}"
-            else:
-                return f"{value:.2f}".rstrip('0').rstrip('.') + f" {unit}"
-
-        exponent = int(np.floor(np.log10(abs(value))))
-        mantissa = value / (10 ** exponent)
-
-        return f"${mantissa:.0f} \\times 10^{{{exponent}}}$ {unit}"
+        return quantize_to_1_2_5(physical_scalebar_length, mode="floor")
 
     def _update_label(self):
-        self._label = self._format_scientific_latex(self._physical_scalebar_length_in_chosen_unit,
-                                                   self._physical_scalebar_length_unit_name)
+        self._label = format_scientific_latex(self._physical_scalebar_length_in_chosen_unit,
+                                              self._physical_scalebar_length_unit_name)
         self._label_is_for = (self._physical_scalebar_length_in_chosen_unit, self._physical_scalebar_length_unit_name)
 
     def update_window_width(self, window_width_in_base_units):

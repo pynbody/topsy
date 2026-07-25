@@ -16,8 +16,10 @@ class ParticleBuffers:
         self._loader = loader
 
         self.quantity_name = None
+        self.vector_name = 'vel'
         self._mass_and_quantity_buffers = None
         self._quantity_buffer_is_for_name = _UNSET # can't use None here because None is valid (means 'density render')
+        self._vec_buffer_is_for_name = _UNSET # tracks which vector_name _vec_buffers currently holds
         self._current_vertex_buffers = []
 
         self._create_indirect_draw_buffers(max_draw_calls_per_buffer)
@@ -150,12 +152,16 @@ class ParticleBuffers:
         """
         if not hasattr(self, "_vec_buffers"):
             logger.info("Creating vector buffer")
-            data = np.zeros((len(self._loader), 4), dtype=np.float32)
-            data[:, 0] = self._loader.get_mass()
-            data[:, 1:] = self._loader.get_named_quantity('vel')
             self._vec_buffers = self._split_buffers.create_buffers(self._device, 4 * 4,
                                                 wgpu.BufferUsage.VERTEX | wgpu.BufferUsage.STORAGE | wgpu.BufferUsage.COPY_DST)
+        if self._vec_buffer_is_for_name != self.vector_name:
+            # (re)fill the buffer whenever the selected vector quantity changes
+            logger.info(f"Filling vector buffer for '{self.vector_name}'")
+            data = np.zeros((len(self._loader), 4), dtype=np.float32)
+            data[:, 0] = self._loader.get_mass()
+            data[:, 1:] = self._loader.get_named_quantity(self.vector_name)
             self._split_buffers.write_buffers(self._device, self._vec_buffers, data)
+            self._vec_buffer_is_for_name = self.vector_name
         return self._vec_buffers
 
     def _create_mass_and_quantity_buffers_if_needed(self, buffer_dim: int):

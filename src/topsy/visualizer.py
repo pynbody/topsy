@@ -60,6 +60,8 @@ class VisualizerBase:
         self.show_vectors = True
         self._vectors_need_recompute = False
         self._vector_sph = None
+        self._vector_unit = None
+
         self.vector_render_resolution = config.DEFAULT_VECTOR_RESOLUTION
 
         self._validate_render_mode(render_mode)
@@ -91,6 +93,7 @@ class VisualizerBase:
         self._scalebar = scalebar.ScalebarOverlay(self)
 
         self._vectors = vectors.VectorOverlay(self)
+        self._vector_key = vectors.VectorKeyOverlay(self)
 
         self._crosshairs = line.Line(self,
                                      [(-1, 0,0,0), (1, 0,0,0),
@@ -288,7 +291,7 @@ class VisualizerBase:
             scale = self.data_loader.get_initial_view_width()
 
         self._sph.rotation_matrix = rotation_matrix
-        self._sph.scale = scale
+        self._sph.scale = float(scale) # coerce away any pynbody units; scale is a plain factor
         self._sph.position_offset = position_offset
 
     @property
@@ -298,7 +301,7 @@ class VisualizerBase:
     
     @scale.setter
     def scale(self, value):
-        self._sph.scale = value
+        self._sph.scale = float(value) # coerce away any pynbody units; scale is a plain factor
         self.invalidate()
 
     @property
@@ -332,6 +335,27 @@ class VisualizerBase:
         self.invalidate(DrawReason.CHANGE)
         self._colormap.update_parameters({'vmin': None, 'vmax': None, 'log': None})
         self._initialize_colormap_and_bar()
+
+    @property
+    def vector_name(self):
+        """The name of the vector quantity being visualised, or None if no vector field."""
+        return self.particle_buffers.vector_name
+
+    @vector_name.setter
+    def vector_name(self, value):
+        if value == self.particle_buffers.vector_name:
+            return
+
+        if value is not None:
+            # see if we can get it. Assume it'll be cached, so this won't waste time.
+            buf = self.data_loader.get_named_quantity(value)
+            if buf.ndim != 2 or buf.shape[1] != 3:
+                raise ValueError(f"Vector quantity '{value}' must have shape (N, 3), got {buf.shape}")
+
+        self._vector_unit = None
+        self.particle_buffers.vector_name = value
+        self._vectors_need_recompute = True
+        self.invalidate(DrawReason.VECTOR_UPDATE)
 
 
     def colormap_autorange(self):
@@ -397,6 +421,17 @@ class VisualizerBase:
             self._vectors.encode_render_pass(command_encoder, target_texture_view)
         if self.show_colorbar and self._colorbar is not None:
             self._colorbar.encode_render_pass(command_encoder, target_texture_view)
+        if self.show_vectors and not self._vectors_need_recompute:
+            # drawn after the colorbar, alongside which it is positioned; its arrow
+            # is sized to match the field's current scaling (only re-renders if the
+            # length actually changed)
+            self._vector_key.key_length_dots = self._vectors.reference_length_dots
+            if self._vector_unit is None:
+                self._vector_unit = self.data_loader.get_quantity_units_string(self.vector_name)
+            self._vector_key.label = util.format_scientific_latex(self._vectors.reference_value,
+                                                                  self._vector_unit)
+
+            self._vector_key.encode_render_pass(command_encoder, target_texture_view)
         if self.show_scalebar:
             self._scalebar.encode_render_pass(command_encoder, target_texture_view)
         if self.crosshairs_visible:

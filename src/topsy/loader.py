@@ -42,6 +42,10 @@ class AbstractDataLoader(ABC):
         pass
 
     @abstractmethod
+    def get_quantity_units_string(self, quantity_name):
+        pass
+
+    @abstractmethod
     def get_rgb_masses(self):
         pass
 
@@ -89,7 +93,10 @@ class PynbodyDataInMemory(AbstractDataLoader):
         boxmin = self.snapshot['pos'].min()
         boxmax = self.snapshot['pos'].max()
         boxrange = boxmax - boxmin
-        self._initial_view_width = boxrange
+        # Strip pynbody units here: the view width is consumed as a plain scale factor
+        # (in position units) throughout the visualizer, and a units-carrying SimArray
+        # leaks into e.g. the scalebar's quantization where it raises UnitsException.
+        self._initial_view_width = float(boxrange)
         boxmin -= config.CELL_LAYOUT_FRACTIONAL_PADDING * boxrange
         boxmax += config.CELL_LAYOUT_FRACTIONAL_PADDING * boxrange
         self._cell_layout, ordering = cell_layout.CellLayout.from_positions(self.snapshot['pos'], boxmin, boxmax,
@@ -128,13 +135,17 @@ class PynbodyDataInMemory(AbstractDataLoader):
         return self.snapshot.loadable_keys()
 
     def get_quantity_label(self, quantity_name):
+        name = r"Projected density" if quantity_name is None else quantity_name
+        return f"{name} / {self.get_quantity_units_string(quantity_name)}"
+
+    def get_quantity_units_string(self, quantity_name):
         if quantity_name is None:
-            return r"density / $M_{\odot} / \mathrm{kpc}^2$"
+            return r"$M_{\odot} / \mathrm{kpc}^2$"
         else:
             lunit = self.snapshot[quantity_name].units.latex()
             if lunit != "":
-                lunit = "$/" + lunit + "$"
-            return quantity_name + lunit
+                lunit = "$" + lunit + "$"
+            return lunit
 
     def __len__(self):
         return len(self.snapshot)
@@ -302,10 +313,15 @@ class TestDataLoader(AbstractDataLoader):
         elif name == "vel":
             vel = np.zeros((self._n_particles, 3))
             falloff = np.exp(-(self._gmm_pos[:, 2]**2 + self._gmm_pos[:, 0]**2)/60 - abs(self._gmm_pos[:, 1])/10)
-            vel[:, 0] = self._gmm_pos[:, 2] * 1e-3  * falloff
-            vel[:, 2] = -self._gmm_pos[:, 0] * 1e-3 * falloff
-            vel[:, 1] = -self._gmm_pos[:, 1] * 1e-3 * falloff
+            vel[:, 0] = self._gmm_pos[:, 2] * 100  * falloff
+            vel[:, 2] = -self._gmm_pos[:, 0] * 100 * falloff
+            vel[:, 1] = -self._gmm_pos[:, 1] * 100 * falloff
             return vel
+        elif name == "vel-mps":
+            # the same velocity field expressed in m/s: exactly 1000x the magnitude of
+            # "vel" and carrying different units. Lets tests exercise vector rescaling
+            # and unit relabelling when vector_name is changed.
+            return self.get_named_quantity("vel") * 1000.0
         else:
             raise KeyError("Unknown quantity name")
 
@@ -320,6 +336,18 @@ class TestDataLoader(AbstractDataLoader):
             return r"test density / $M_{\odot} / \mathrm{kpc}^2$"
         elif quantity_name == "test-quantity":
             return "test quantity"
+        else:
+            return "unknown"
+
+    def get_quantity_units_string(self, quantity_name):
+        if quantity_name is None:
+            return r"$M_{\odot} / \mathrm{kpc}^2$"
+        elif quantity_name == "test-quantity":
+            return "ergs"
+        elif quantity_name == "vel":
+            return r"$\mathrm{km\,s^{-1}}$"
+        elif quantity_name == "vel-mps":
+            return r"$\mathrm{m\,s^{-1}}$"
         else:
             return "unknown"
 
