@@ -171,5 +171,5 @@ def test_vector_key_length_matches_field_after_draw():
 
 def test_invalid_vector_name_raises():
     vis = _make_visualizer()
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
         vis.vector_name = "not-a-real-quantity"
