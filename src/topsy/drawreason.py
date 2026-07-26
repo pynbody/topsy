@@ -7,3 +7,4 @@ class DrawReason(enum.Enum):
     REFINE = 3              # render the SPH at full resolution, within an interactive context
     PRESENTATION_CHANGE = 4 # i.e. don't rerender SPH
     EXPORT = 5              # full rendering, always at full resolution
+    VECTOR_UPDATE = 6      # recompute the overlaid vector field; don't rerender the main SPH

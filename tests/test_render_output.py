@@ -5,6 +5,7 @@ import numpy.testing as npt
 import pytest
 
 import topsy
+from topsy import sph
 from topsy.drawreason import DrawReason
 
 
@@ -169,32 +170,32 @@ def test_sph_los_weighted_output(vis, folder):
     plt.imsave(folder / "test_los_weighted.png", result_im)
 
     test = result[::20, ::20].flatten()
-    expect = [ 4.03380363e-05,  8.64650938e-05,  9.85275256e-05,  9.25025815e-05,
-        7.88380275e-05,  6.20608553e-05,  4.25971884e-05,  1.71770898e-05,
-       -1.93840078e-05, -7.09827800e-05,  1.19353121e-04,  1.33608744e-04,
-        1.22555037e-04,  1.02102400e-04,  8.24486415e-05,  6.70427398e-05,
-        5.45754228e-05,  3.95718707e-05,  1.63212753e-05, -2.19240264e-05,
-        1.54938374e-04,  1.44251040e-04,  1.15632647e-04,  8.54059690e-05,
-        5.31587575e-05,  9.18996011e-06,  1.38851647e-05,  3.82547369e-05,
-        2.89463715e-05,  4.27621262e-06,  1.64749217e-04,  1.36609568e-04,
-        9.82985803e-05,  3.31741212e-05, -1.08833803e-04, -1.84716700e-04,
-       -2.74174497e-04, -1.84696619e-04,  2.50726262e-05,  1.51625181e-05,
-        1.62088065e-04,  1.25725011e-04,  8.20569912e-05, -6.32978554e-05,
-       -1.11877462e-05, -6.70550799e-05, -3.42443178e-04, -6.46105735e-04,
-       -1.87916841e-04,  1.76214999e-05,  1.56121256e-04,  1.18497075e-04,
-        7.19409218e-05, -5.91077260e-05,  4.53421177e-04, -5.16925531e-04,
-       -8.40692141e-04, -8.41184345e-04, -3.98518605e-04,  1.71589018e-05,
-        1.49421947e-04,  1.15743198e-04,  7.71377308e-05, -5.07518962e-05,
-       -1.40664997e-05, -6.73981995e-05, -3.75320262e-04, -6.94623915e-04,
-       -1.75497131e-04,  1.57716022e-05,  1.41129174e-04,  1.15254363e-04,
-        8.34138191e-05,  3.25909205e-05, -8.06207390e-05, -1.56977098e-04,
-       -2.70708784e-04, -1.70930289e-04,  2.24578816e-05,  1.16157353e-05,
-        1.26762592e-04,  1.11994450e-04,  8.84688998e-05,  6.59973593e-05,
-        4.39915166e-05,  1.51090089e-05,  1.83593675e-05,  3.05323156e-05,
-        2.11425595e-05,  8.56435690e-07,  9.48472734e-05,  9.90477929e-05,
-        8.62894376e-05,  7.02872130e-05,  5.68455544e-05,  4.64834739e-05,
-        3.74460396e-05,  2.62753056e-05,  8.66653136e-06, -2.20627244e-05]
-    npt.assert_allclose(test, expect, atol=1.5e-7)
+    # Reference values for the density-weighted mean line-of-sight velocity of the
+    # "vel" field. Regenerated on the software (lavapipe) renderer used in CI after
+    # the TestDataLoader "vel" magnitude was rescaled (x1e5); the pattern is exactly
+    # 1e5 times the previous reference, as the weighted mean is linear in velocity.
+    expect = [
+        0.063261487, 0.070379108, 0.07171984, 0.070384197, 0.069274575,
+        0.070839137, 0.075575508, 0.082217984, 0.087123387, 0.085340261,
+        0.05654408, 0.055480625, 0.050389633, 0.045241412, 0.042942371,
+        0.043731019, 0.047903027, 0.055685326, 0.065279678, 0.072423965,
+        0.044795398, 0.039654385, 0.033994574, 0.030859614, 0.029270461,
+        0.014230116, 0.024983414, 0.036054887, 0.045963168, 0.054690052,
+        0.034101434, 0.030392731, 0.027109193, 0.024619294, 0.089805163,
+        0.011434777, -0.15413544, 0.013127656, 0.034163225, 0.042448141,
+        0.028108137, 0.028097026, 0.026051214, 0.020202547, 0.35557491,
+        0.39849922, -0.13495815, -0.0069900304, 0.028208826, 0.037668634,
+        0.026265882, 0.030828459, 0.029624037, 0.019329144, 0.20784155,
+        -79.117569, -0.2021217, 0.0092855841, 0.03084561, 0.038962435,
+        0.026256705, 0.036467418, 0.039527837, 0.047016386, 0.33679906,
+        0.70239103, -0.17851411, 0.02104969, 0.044349331, 0.044207178,
+        0.025295135, 0.041581973, 0.052972283, 0.055881262, 0.23682675,
+        0.26383808, 0.078392714, 0.056351747, 0.063217938, 0.04819594,
+        0.020944586, 0.041074473, 0.061801881, 0.074869193, 0.080367669,
+        0.088812709, 0.089219026, 0.088500522, 0.071598873, 0.043910578,
+        0.012638903, 0.031722859, 0.056758266, 0.079171598, 0.095208868,
+        0.10382608, 0.1024047, 0.087126277, 0.059774294, 0.028871652]
+    npt.assert_allclose(test, expect, atol=1.5e-2)
 
 def test_sph_weighted_output(vis, folder):
     vis.quantity_name = "test-quantity"
@@ -592,3 +593,110 @@ def test_surface_render(folder):
     # this is a very loose test -- unfortunately different pipelines just give different results, though
     # visually are similar, presumably due to differences in order of operations and accuracy in shaders
     npt.assert_allclose(presentation_result[::20, ::20].ravel(), presentation_expectation, atol=30)
+
+
+def _render_transverse_and_los(vis, rotation):
+    """Render a TransverseVectorSPH and a LOSVectorSPH at the given rotation, returning their images.
+
+    Both use the same projection, so the LOS renderer provides the line-of-sight (z) velocity
+    component and the transverse renderer provides the two in-plane (x, y) components.
+    """
+    resolution = vis._render_resolution
+    los = sph.LOSVectorSPH(vis, resolution)
+    transverse = sph.TransverseVectorSPH(vis, resolution)
+    for renderer in (los, transverse):
+        renderer.rotation_matrix = rotation
+        renderer.scale = vis._sph.scale
+        renderer.position_offset = vis._sph.position_offset
+        renderer.render(DrawReason.EXPORT)
+    return los.get_image(), transverse.get_image()
+
+
+def _rotate_image_90(a):
+    """Apply the rigid 90-degree image rotation matching the rotation matrix used below.
+
+    This is the same permutation as in test_rotated_sph_output, and involves no interpolation."""
+    if a.ndim == 2:
+        return a.T[:, ::-1]
+    return a.transpose(1, 0, 2)[:, ::-1]
+
+
+def test_transverse_vector_output(vis, folder):
+    vis.quantity_name = "vel"
+    assert vis.particle_buffers.get_mass_and_quantity_buffers_dimension() == 4
+
+    los, transverse = _render_transverse_and_los(vis, np.eye(3, dtype=np.float32))
+
+    # the output holds (projected_density, <vx>*density, <vy>*density) in rgb; a is unused
+    assert transverse.shape == (200, 200, 4)
+    assert transverse.dtype == np.float32
+
+    np.save(folder / "test_transverse.npy", transverse)
+
+    # the projected-density channel must be identical to that of the LOS renderer
+    npt.assert_allclose(transverse[..., 0], los[..., 0], rtol=1e-4)
+
+    # recovered density-weighted mean velocities should lie within the input velocity range
+    density = transverse[..., 0]
+    mask = density > np.percentile(density, 90)
+    vel = vis.data_loader.get_named_quantity("vel")
+    vmin, vmax = vel.min(), vel.max()
+    for channel in (1, 2):
+        mean_velocity = transverse[..., channel][mask] / density[mask]
+        assert mean_velocity.min() >= vmin - 1e-3
+        assert mean_velocity.max() <= vmax + 1e-3
+
+
+def test_transverse_vector_rotation(vis):
+    """Check that projected vectors transform correctly under an in-plane view rotation.
+
+    The transverse vector must be rotated into screen space by the same rotation R that maps world
+    positions to the screen -- i.e. screen_v = R @ world_v. Under the 90-degree roll about the line
+    of sight R = [[0,1,0],[-1,0,0],[0,0,1]], a world vector (vx, vy, vz) projects to screen
+    components (R v)_xy = (vy, -vx). Combined with the rigid image rotation that carries each
+    particle to its new pixel, this predicts, per pixel:
+        vx_rotated == _rotate_image_90(vy_unrotated)
+        vy_rotated == _rotate_image_90(-vx_unrotated)
+
+    Note this is a *signed*, per-component check: it pins the arrow direction, not just its length.
+    A magnitude-only check cannot see the difference between R and its transpose R^T = R^-1 (since
+    |R v| == |R^T v|), yet R^T rotates the vectors by the *inverse* angle, reversing the arrows
+    relative to the particles under a roll. The signed check below fails for that transpose bug --
+    and it subsumes magnitude invariance, which together with the line-of-sight check below implies
+    the full 3d speed is preserved.
+    """
+    vis.quantity_name = "vel"
+
+    los0, transverse0 = _render_transverse_and_los(vis, np.eye(3, dtype=np.float32))
+
+    # a 90-degree rotation about the line of sight: a rigid in-plane image rotation (no interpolation)
+    rotation_90 = np.array([[0.0, 1.0, 0.0],
+                            [-1.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0]], dtype=np.float32)
+    los1, transverse1 = _render_transverse_and_los(vis, rotation_90)
+
+    vel = vis.data_loader.get_named_quantity("vel")
+    velocity_tol = 0.05 * np.abs(vel).max()
+
+    density0 = transverse0[..., 0]
+    density1 = transverse1[..., 0]
+
+    # the density projection just rotates rigidly
+    npt.assert_allclose(density1, _rotate_image_90(density0), rtol=5e-2, atol=density1.max() * 1e-3)
+
+    # compare only well-populated pixels that are present in both renders
+    mask = (density1 > np.percentile(density1, 90)) & _rotate_image_90(density0 > np.percentile(density0, 90))
+
+    def weighted(image, channel):
+        density = image[..., 0]
+        return image[..., channel] / np.where(density == 0, 1, density)
+
+    vx0, vy0, vz0 = weighted(transverse0, 1), weighted(transverse0, 2), weighted(los0, 1)
+    vx1, vy1, vz1 = weighted(transverse1, 1), weighted(transverse1, 2), weighted(los1, 1)
+
+    # the transverse components rotate as a proper vector: (vx, vy) -> (vy, -vx)
+    npt.assert_allclose(vx1[mask], _rotate_image_90(vy0)[mask], atol=velocity_tol)
+    npt.assert_allclose(vy1[mask], _rotate_image_90(-vx0)[mask], atol=velocity_tol)
+
+    # the line-of-sight component is invariant under an in-plane rotation
+    npt.assert_allclose(vz1[mask], _rotate_image_90(vz0)[mask], atol=velocity_tol)

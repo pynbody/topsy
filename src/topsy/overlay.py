@@ -27,6 +27,7 @@ class Overlay(metaclass=ABCMeta):
         self._visualizer = visualizer
         self._device = self._visualizer.device
         self._contents = None
+        self.opacity = 1.0 # global opacity applied to the whole overlay when rendering
         if target_canvas_format is None:
             target_canvas_format = self._visualizer.canvas_format
         self._target_canvas_format = target_canvas_format
@@ -101,7 +102,7 @@ class Overlay(metaclass=ABCMeta):
     def _setup_params_buffer(self):
         self._overlay_params_buffer = self._device.create_buffer(
             label="overlay_params_buffer",
-            size=4*8,
+            size=4*12, # 8 floats of geometry + opacity, padded to a 16-byte multiple
             usage=wgpu.BufferUsage.UNIFORM | wgpu.BufferUsage.COPY_DST
         )
 
@@ -112,14 +113,14 @@ class Overlay(metaclass=ABCMeta):
         x, y, w, h = self.get_clipspace_coordinates(width, height)
         x_t, y_t, w_t, h_t = self.get_texturespace_coordinates(width, height)
         self._device.queue.write_buffer(self._overlay_params_buffer, 0,
-                                        np.array([x,y,w,h,x_t,y_t,w_t,h_t], dtype=np.float32).tobytes())
+                                        np.array([x,y,w,h,x_t,y_t,w_t,h_t,self.opacity], dtype=np.float32).tobytes())
     def _setup_render_pipeline(self):
         self._bind_group_layout = self._device.create_bind_group_layout(
             label="overlay_bind_group_layout",
             entries=[
                 {
                     "binding": 0,
-                    "visibility": wgpu.ShaderStage.VERTEX,
+                    "visibility": wgpu.ShaderStage.VERTEX | wgpu.ShaderStage.FRAGMENT,
                     "buffer": {
                         "type": wgpu.BufferBindingType.uniform,
                     },
@@ -151,7 +152,7 @@ class Overlay(metaclass=ABCMeta):
                     "resource": {
                         "buffer": self._overlay_params_buffer,
                         "offset": 0,
-                        "size": 4*8,
+                        "size": 4*12,
                     },
                 },
                 {

@@ -53,6 +53,56 @@ def preprocess_shader(shader_code, active_flags):
 
     return result
 
+def quantize_to_1_2_5(value, mode="nearest"):
+    """Snap a positive value to a "nice" number of the form {1, 2, 5} x 10^N.
+
+    Such numbers make natural reference lengths for scalebars and vector keys.
+
+    :param value: the positive value to quantize
+    :param mode: how to choose between the candidate nice numbers:
+        - "nearest": the nice number closest to ``value`` in log space (i.e. by
+          ratio), so that e.g. 3.1 -> 2 but 3.2 -> 5.
+        - "floor": the largest nice number that is <= ``value``.
+    :return: the chosen nice number, as a float
+    """
+    if value <= 0.0:
+        raise ValueError("quantize_to_1_2_5 requires a strictly positive value")
+
+    power_of_ten = np.floor(np.log10(value))
+    # candidates span this decade plus the bottom of the next, so that values
+    # sitting just below a power of ten can round up to it
+    candidates = np.array([1.0, 2.0, 5.0, 10.0]) * 10.0 ** power_of_ten
+
+    if mode == "floor":
+        # tiny tolerance so that value == candidate isn't excluded by rounding
+        eligible = candidates[candidates <= value * (1.0 + 1e-9)]
+        return float(eligible.max())
+    elif mode == "nearest":
+        closest = np.argmin(np.abs(np.log10(candidates) - np.log10(value)))
+        return float(candidates[closest])
+    else:
+        raise ValueError(f"Unknown quantization mode {mode!r}")
+
+def format_scientific_latex(value, unit=None):
+    """Format a number in scientific notation with LaTeX rendering."""
+    if value == 0:
+        result = "0"
+    # Only use scientific notation for very small or very large numbers
+    elif 0.01 <= abs(value) <= 1000:
+        if value == int(value):
+            result = f"{int(value)}"
+        else:
+            result = f"{value:.2f}".rstrip('0').rstrip('.')
+    else:
+        exponent = int(np.floor(np.log10(abs(value))))
+        mantissa = value / (10 ** exponent)
+        result = f"${mantissa:.0f} \\times 10^{{{exponent}}}$"
+
+    if unit is None:
+        return result
+    else:
+        return f"{result} {unit}"
+
 def is_inside_ipython():
     try:
         __IPYTHON__

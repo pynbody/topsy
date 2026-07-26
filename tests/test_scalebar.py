@@ -1,6 +1,74 @@
 import pytest
 import numpy as np
 from topsy.scalebar import BarLengthRecommender
+from topsy.util import format_scientific_latex
+
+
+def _make_pynbody_loader():
+    """Build a minimal pynbody-backed data loader with position units."""
+    import pynbody
+    from topsy.loader import PynbodyDataInMemory
+
+    snap = pynbody.new(64)
+    snap['pos'] = np.random.uniform(-10.0, 10.0, (64, 3)).astype(np.float32)
+    snap['pos'].units = 'kpc'
+    snap['mass'] = np.ones(64, dtype=np.float32)
+    snap['mass'].units = 'Msol'
+
+    # the loader only stores the device; None is fine for this CPU-only test
+    return PynbodyDataInMemory(None, snap)
+
+
+def test_initial_view_width_is_unitless():
+    """The initial view width must be a plain float, not a units-carrying SimArray.
+
+    A pynbody SimArray leaking out here propagates through visualizer.scale into the
+    scalebar's quantize step, where comparing it against a plain numpy array raises
+    pynbody.units.UnitsException (regression).
+    """
+    loader = _make_pynbody_loader()
+    width = loader.get_initial_view_width()
+
+    assert not hasattr(width, 'units'), f"view width carries units: {width!r}"
+    assert isinstance(width, float)
+
+
+def test_scalebar_recommender_accepts_loader_view_width():
+    """End-to-end: the view width from a pynbody loader must feed the scalebar cleanly.
+
+    This mirrors the interactive path (visualizer.scale -> ScalebarOverlay._update_length
+    -> BarLengthRecommender), which previously raised a pynbody UnitsException.
+    """
+    loader = _make_pynbody_loader()
+    recommender = BarLengthRecommender(1.0, loader.get_position_units())
+
+    # 2 * scale is the window width, exactly as ScalebarOverlay computes it
+    recommender.update_window_width(2.0 * loader.get_initial_view_width())
+
+    assert isinstance(recommender.physical_scalebar_length_base_units, float)
+    assert "kpc" in recommender.label
+
+
+def test_visualizer_scale_coerces_away_units():
+    """The scale setter and reset_view must strip pynbody units, so a units-carrying
+    value can never reach the scalebar's quantization (defensive backstop for the
+    loader-side fix)."""
+    import pynbody
+    import topsy
+    from topsy.canvas import offscreen
+
+    vis = topsy.test(100, render_resolution=50,
+                     canvas_class=offscreen.VisualizerCanvas)
+
+    vis.scale = pynbody.array.SimArray(12.5, 'kpc')
+    assert isinstance(vis.scale, float)
+    assert not hasattr(vis.scale, 'units')
+
+    vis.reset_view(scale=pynbody.array.SimArray(7.0, 'kpc'))
+    assert isinstance(vis.scale, float)
+
+    # and the scalebar path runs cleanly with the coerced scale
+    vis._scalebar._update_length()
 
 
 def test_very_small_scales_parsecs():
@@ -158,28 +226,35 @@ def test_format_scientific_latex():
     """Test the LaTeX scientific notation formatter."""
 
     # Test normal range values (no scientific notation)
-    result = BarLengthRecommender._format_scientific_latex(0.1, "pc")
+    result = format_scientific_latex(0.1, "pc")
     assert result == "0.1 pc"
 
-    result = BarLengthRecommender._format_scientific_latex(1.0, "pc")
+    result = format_scientific_latex(1.0, "pc")
     assert result == "1 pc"
 
-    result = BarLengthRecommender._format_scientific_latex(10.5, "kpc")
+    result = format_scientific_latex(10.5, "kpc")
     assert result == "10.5 kpc"
 
     # Test very small values (scientific notation)
-    result = BarLengthRecommender._format_scientific_latex(0.005, "pc")
+    result = format_scientific_latex(0.005, "pc")
     assert result == "$5 \\times 10^{-3}$ pc"
 
-    result = BarLengthRecommender._format_scientific_latex(0.002, "pc")
+    result = format_scientific_latex(0.002, "pc")
     assert result == "$2 \\times 10^{-3}$ pc"
 
     # Test very large values (scientific notation)
-    result = BarLengthRecommender._format_scientific_latex(2000, "Mpc")
+    result = format_scientific_latex(2000, "Mpc")
     assert result == "$2 \\times 10^{3}$ Mpc"
 
     # Test zero
-    result = BarLengthRecommender._format_scientific_latex(0, "pc")
+    result = format_scientific_latex(0, "pc")
     assert result == "0 pc"
+
+    # Test unitless (no trailing unit)
+    result = format_scientific_latex(0, None)
+    assert result == "0"
+
+    result = format_scientific_latex(100.0, None)
+    assert result == "100"
 
 

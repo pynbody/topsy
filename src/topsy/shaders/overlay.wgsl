@@ -3,6 +3,7 @@ struct OverlayParams {
     clipspace_extent: vec2<f32>,
     texturespace_origin: vec2<f32>,
     texturespace_extent: vec2<f32>,
+    opacity: f32,
 };
 
 @group(0) @binding(0)
@@ -47,5 +48,8 @@ var image_sampler: sampler;
 
 @fragment
 fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
-   return textureSample(image_texture, image_sampler, input.texcoord) * input.weight;
+   var color = textureSample(image_texture, image_sampler, input.texcoord) * input.weight;
+   // scale only alpha, so the global opacity composites correctly through the straight-alpha blend
+   color.a *= overlay_params.opacity;
+   return color;
 }

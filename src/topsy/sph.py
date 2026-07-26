@@ -56,7 +56,7 @@ class SPH:
                                       ("_pad", np.float32, (3,)),
                                         ])
 
-    def __init__(self, visualizer: Visualizer, render_resolution,
+    def __init__(self, visualizer: VisualizerBase, render_resolution,
                  wrapping = False, share_render_progression=None):
         logger.info(f"Initializing {self.__class__} with resolution {render_resolution}")
         self._visualizer = visualizer
@@ -290,12 +290,14 @@ class SPH:
                                        [0, 0, 0.5, 0.5],
                                        [0, 0, 0.0, 1.0]])
         transform = np.zeros((4, 4))
-        transform_params["rotation"][:,:3] = transform[:3, :3] = self.rotation_matrix
+        transform[:3, :3] = self.rotation_matrix
+        transform_params["rotation"][:,:3] = self.rotation_matrix.T # row -> column major for shader
+
         rotation_and_scaling = transform / self.scale
         rotation_and_scaling[3, 3] = 1.0  # w should be unchanged after transform
-        scaled_displaced_transform = (clipcoord_displace @ rotation_and_scaling @ model_displace).T
+        scaled_displaced_transform = clipcoord_displace @ rotation_and_scaling @ model_displace
 
-        transform_params["transform"] = scaled_displaced_transform
+        transform_params["transform"] = scaled_displaced_transform.T # row -> column major for shader
         transform_params["scale_factor"] = 1. / self.scale
         if self._visualizer.periodicity_scale is not None:
             transform_params["boxsize_by_2_clipspace"] = 0.5 * \
@@ -443,6 +445,29 @@ class LOSVectorSPH(SPH):
     _vertex_format = wgpu.VertexFormat.float32x4
     _vertex_array_stride = 16
     _shader_flags = ["SPH_VECTOR"]
+
+
+class TransverseVectorSPH(SPH):
+    """Renders the density-weighted, projected *transverse* vector field.
+
+    Where LOSVectorSPH projects the line-of-sight component of a 3d vector quantity, this
+    projects the two components in the plane of the image. The output texture therefore holds
+    the triple (projected_density, <vel_transverse_x>*projected_density,
+    <vel_transverse_y>*projected_density) in its r, g and b channels. (The texture is rgba32float
+    since rgb32float is not renderable; the a channel is unused.) Dividing the g and b channels by
+    the r channel recovers the density-weighted mean transverse velocity components.
+    """
+    render_format = wgpu.TextureFormat.rgba32float
+    _nchannels_output = 4  # rgba32float target; only r, g, b carry meaningful data
+    _shader_flags = ["SPH_VECTOR", "SPH_TRANSVERSE"]
+    _fragment_name = "fragment_weighting_transverse"
+
+    # Draw from a dedicated (mass, vx, vy, vz) buffer rather than the main mass_and_quantity buffer,
+    # since the vector field is independent of whatever scalar quantity is being visualised.
+    _buffer_name = "vec"
+
+    _vertex_format = wgpu.VertexFormat.float32x4
+    _vertex_array_stride = 16
 
 class RGBSPH(SPH):
     render_format = wgpu.TextureFormat.rgba32float

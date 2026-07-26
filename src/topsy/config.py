@@ -13,6 +13,9 @@ GLIDE_TIME = 0.3 # seconds after double click to reach destination
 COLORBAR_ASPECT_RATIO = 0.15
 COLORMAP_NUM_SAMPLES = 1000
 
+VECTOR_FIELD_NUM_ARROWS = 32 # number of quiver arrows across the image when overlaying a vector field
+DEFAULT_VECTOR_RESOLUTION = 2 * VECTOR_FIELD_NUM_ARROWS # resolution of the SPH render used to compute the vector field
+
 TEST_DATA_NUM_PARTICLES_DEFAULT = int(1e6)
 
 MAX_PARTICLES_PER_BUFFER = 2**27

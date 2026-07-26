@@ -83,7 +83,13 @@ fn vertex_weighting(input: VertexInput) -> VertexOutput {
 
     output.intensities.x = input.quantities.x/(input.pos.w * input.pos.w);
 #ifdef SPH_VECTOR
+  #ifdef SPH_TRANSVERSE
+    let rotated_quantity = trans_params.rotation * input.quantities.yzw;
+    output.intensities.y = rotated_quantity.x;
+    output.intensities.z = rotated_quantity.y;
+  #else
     output.intensities.y = (trans_params.rotation * input.quantities.yzw).z;
+  #endif
 #else
     output.intensities.y = input.quantities.y;
 #endif
@@ -138,6 +144,10 @@ struct FragmentOutputRGB {
     @location(0) output: vec4<f32>
 }
 
+struct FragmentOutputTransverse {
+    @location(0) output: vec4<f32>
+}
+
 struct FragmentOutputRaw {
     @location(0) output: vec2<f32>,
     @builtin(frag_depth) depth: f32,
@@ -149,6 +159,17 @@ fn fragment_weighting(input: VertexOutput) -> FragmentOutputWeighting {
 
     value *= input.intensities.x;
     var output = FragmentOutputWeighting(vec2<f32>(value, value*input.intensities.y));
+
+    return output;
+}
+
+@fragment
+fn fragment_weighting_transverse(input: VertexOutput) -> FragmentOutputTransverse {
+    var value = textureSample(kernel_texture, kernel_sampler, input.texcoord).r;
+
+    value *= input.intensities.x;
+    var output = FragmentOutputTransverse(
+        vec4<f32>(value, value*input.intensities.y, value*input.intensities.z, 0.0));
 
     return output;
 }
